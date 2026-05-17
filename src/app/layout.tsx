@@ -1,6 +1,5 @@
 import type { Metadata } from 'next';
 import { Archivo_Black, Barlow_Condensed, DM_Sans, IBM_Plex_Mono } from 'next/font/google';
-import { AnnouncementBar } from '@/components/layout/AnnouncementBar';
 import { Footer } from '@/components/layout/Footer';
 import { Navbar } from '@/components/layout/Navbar';
 import { CartDrawer } from '@/components/cart/CartDrawer';
@@ -47,7 +46,6 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
         <a className="skipLink" href="#main">
           Skip to main content
         </a>
-        <AnnouncementBar />
         <Navbar />
         <main id="main">{children}</main>
         <Footer />

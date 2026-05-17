@@ -521,29 +521,69 @@ export function ProductDetail({ product }: ProductDetailProps) {
           {/* Extremely visual Selection Summary Breakdown Card */}
           {totalQuantity > 0 && !checkoutSuccess && (
             <div style={{
-              background: '#090909',
+              background: 'linear-gradient(135deg, rgba(16, 16, 16, 0.95) 0%, rgba(8, 8, 8, 0.99) 100%)',
               border: '1px solid rgba(255, 255, 255, 0.08)',
               borderRadius: '8px',
-              padding: '16px',
-              marginBottom: '20px',
-              fontFamily: 'monospace',
-              fontSize: '0.85rem'
+              padding: '20px',
+              marginBottom: '24px',
+              fontFamily: 'var(--font-mono), monospace',
+              fontSize: '0.85rem',
+              boxShadow: '0 8px 32px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.05)'
             }}>
-              <div style={{ color: '#888', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '10px', fontSize: '0.75rem', fontWeight: 'bold' }}>
-                🛒 CURRENT SELECTION BAG
+              {/* Header Title with Glowing Dot */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px' }}>
+                <span style={{ 
+                  display: 'inline-block', 
+                  width: '6px', 
+                  height: '6px', 
+                  borderRadius: '50%', 
+                  background: 'var(--color-red)', 
+                  boxShadow: '0 0 8px var(--color-red)' 
+                }}></span>
+                <span style={{ 
+                  fontSize: '0.75rem', 
+                  fontWeight: 700, 
+                  letterSpacing: '0.12em', 
+                  color: 'var(--color-steel)', 
+                  textTransform: 'uppercase' 
+                }}>
+                  SELECTION MANIFEST
+                </span>
               </div>
-              <div style={{ display: 'grid', gap: '8px' }}>
+
+              <div style={{ display: 'grid', gap: '12px' }}>
                 {Object.entries(quantities).map(([color, sizesObj]) => {
                   const selectedSizes = Object.entries(sizesObj).filter(([_, qty]) => qty > 0);
                   if (selectedSizes.length === 0) return null;
+                  
+                  // Get color hex dynamically if configured
+                  const colorHexMap: Record<string, string> = {
+                    'Obsidian Black': '#090909',
+                    'Oxide Bone': '#f5f3ee',
+                    'Signal Red': '#d72638',
+                    'Graphite': '#2b2c2d'
+                  };
+                  const swatchColor = colorHexMap[color] || '#555555';
+
                   return (
-                    <div key={color} style={{ borderBottom: '1px dashed rgba(255,255,255,0.05)', paddingBottom: '8px' }}>
-                      <span style={{ color: '#10b981', fontWeight: 'bold' }}>{color}</span>
-                      <div style={{ paddingLeft: '12px', marginTop: '4px', color: '#fff' }}>
+                    <div key={color} style={{ borderBottom: '1px solid rgba(255, 255, 255, 0.05)', paddingBottom: '10px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
+                        <span style={{ 
+                          display: 'inline-block', 
+                          width: '10px', 
+                          height: '10px', 
+                          borderRadius: '50%', 
+                          background: swatchColor, 
+                          border: '1px solid rgba(255, 255, 255, 0.2)' 
+                        }}></span>
+                        <span style={{ color: '#fff', fontWeight: 600, fontSize: '0.85rem' }}>{color}</span>
+                      </div>
+                      
+                      <div style={{ paddingLeft: '18px', display: 'grid', gap: '4px', color: 'var(--color-text-secondary)' }}>
                         {selectedSizes.map(([sz, qty]) => (
-                          <div key={sz} style={{ display: 'flex', justifyContent: 'space-between' }}>
+                          <div key={sz} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem' }}>
                             <span>Size {sz} (x{qty})</span>
-                            <span style={{ color: '#888' }}>GH₵{product.price * qty}</span>
+                            <span style={{ color: '#fff' }}>GH₵{product.price * qty}</span>
                           </div>
                         ))}
                       </div>
@@ -551,13 +591,123 @@ export function ProductDetail({ product }: ProductDetailProps) {
                   );
                 })}
               </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px solid rgba(255,255,255,0.1)', paddingTop: '10px', marginTop: '10px', fontWeight: 'bold' }}>
-                <span style={{ color: '#fff' }}>Total Quantity</span>
-                <span style={{ color: '#fff' }}>{totalQuantity} {totalQuantity === 1 ? 'piece' : 'pieces'}</span>
+
+              {/* Total Item Count */}
+              <div style={{ 
+                display: 'flex', 
+                justifyContent: 'space-between', 
+                borderTop: '1px solid rgba(255, 255, 255, 0.08)', 
+                paddingTop: '12px', 
+                marginTop: '12px', 
+                fontSize: '0.8rem', 
+                color: 'var(--color-text-secondary)' 
+              }}>
+                <span>TOTAL QUANTITY</span>
+                <span>{totalQuantity} {totalQuantity === 1 ? 'piece' : 'pieces'}</span>
               </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold', fontSize: '1rem', color: '#10b981', marginTop: '4px' }}>
-                <span>Subtotal</span>
-                <span>GH₵{totalPrice}</span>
+
+              {/* Estimated Invoice Subtotal */}
+              <div style={{ 
+                display: 'flex', 
+                justifyContent: 'space-between', 
+                alignItems: 'baseline', 
+                marginTop: '6px', 
+                borderTop: '1px dashed rgba(255, 255, 255, 0.08)', 
+                paddingTop: '10px' 
+              }}>
+                <span style={{ fontSize: '0.85rem', fontWeight: 700, color: '#fff' }}>ESTIMATED SUBTOTAL</span>
+                <span style={{ 
+                  fontSize: '1.18rem', 
+                  fontWeight: 700, 
+                  color: 'var(--color-red)', 
+                  letterSpacing: '0.02em', 
+                  textShadow: '0 0 10px rgba(215, 38, 56, 0.25)' 
+                }}>
+                  GH₵{totalPrice}
+                </span>
+              </div>
+
+              {/* Sleek Streetwear Barcode */}
+              <div style={{ 
+                marginTop: '18px', 
+                paddingTop: '14px', 
+                borderTop: '1px solid rgba(255, 255, 255, 0.05)', 
+                display: 'flex', 
+                flexDirection: 'column', 
+                alignItems: 'center', 
+                gap: '6px', 
+                opacity: 0.35 
+              }}>
+                <svg width="100%" height="20" style={{ display: 'block' }}>
+                  <rect x="0" width="2" height="20" fill="#fff" />
+                  <rect x="4" width="4" height="20" fill="#fff" />
+                  <rect x="10" width="1" height="20" fill="#fff" />
+                  <rect x="13" width="2" height="20" fill="#fff" />
+                  <rect x="18" width="6" height="20" fill="#fff" />
+                  <rect x="26" width="2" height="20" fill="#fff" />
+                  <rect x="30" width="1" height="20" fill="#fff" />
+                  <rect x="34" width="4" height="20" fill="#fff" />
+                  <rect x="40" width="2" height="20" fill="#fff" />
+                  <rect x="44" width="1" height="20" fill="#fff" />
+                  <rect x="48" width="6" height="20" fill="#fff" />
+                  <rect x="56" width="3" height="20" fill="#fff" />
+                  <rect x="62" width="1" height="20" fill="#fff" />
+                  <rect x="66" width="4" height="20" fill="#fff" />
+                  <rect x="72" width="2" height="20" fill="#fff" />
+                  <rect x="76" width="1" height="20" fill="#fff" />
+                  <rect x="80" width="8" height="20" fill="#fff" />
+                  <rect x="90" width="2" height="20" fill="#fff" />
+                  <rect x="94" width="3" height="20" fill="#fff" />
+                  <rect x="99" width="1" height="20" fill="#fff" />
+                  <rect x="102" width="4" height="20" fill="#fff" />
+                  <rect x="108" width="2" height="20" fill="#fff" />
+                  <rect x="112" width="1" height="20" fill="#fff" />
+                  <rect x="116" width="6" height="20" fill="#fff" />
+                  <rect x="124" width="2" height="20" fill="#fff" />
+                  <rect x="128" width="4" height="20" fill="#fff" />
+                  <rect x="134" width="1" height="20" fill="#fff" />
+                  <rect x="137" width="2" height="20" fill="#fff" />
+                  <rect x="142" width="6" height="20" fill="#fff" />
+                  <rect x="150" width="2" height="20" fill="#fff" />
+                  <rect x="154" width="1" height="20" fill="#fff" />
+                  <rect x="158" width="4" height="20" fill="#fff" />
+                  <rect x="164" width="2" height="20" fill="#fff" />
+                  <rect x="168" width="1" height="20" fill="#fff" />
+                  <rect x="172" width="6" height="20" fill="#fff" />
+                  <rect x="180" width="3" height="20" fill="#fff" />
+                  <rect x="186" width="1" height="20" fill="#fff" />
+                  <rect x="190" width="4" height="20" fill="#fff" />
+                  <rect x="196" width="2" height="20" fill="#fff" />
+                  <rect x="200" width="1" height="20" fill="#fff" />
+                  <rect x="204" width="8" height="20" fill="#fff" />
+                  <rect x="214" width="2" height="20" fill="#fff" />
+                  <rect x="218" width="3" height="20" fill="#fff" />
+                  <rect x="223" width="1" height="20" fill="#fff" />
+                  <rect x="226" width="4" height="20" fill="#fff" />
+                  <rect x="232" width="2" height="20" fill="#fff" />
+                  <rect x="236" width="1" height="20" fill="#fff" />
+                  <rect x="240" width="6" height="20" fill="#fff" />
+                  <rect x="248" width="2" height="20" fill="#fff" />
+                  <rect x="252" width="4" height="20" fill="#fff" />
+                  <rect x="258" width="1" height="20" fill="#fff" />
+                  <rect x="261" width="2" height="20" fill="#fff" />
+                  <rect x="266" width="6" height="20" fill="#fff" />
+                  <rect x="274" width="2" height="20" fill="#fff" />
+                  <rect x="278" width="1" height="20" fill="#fff" />
+                  <rect x="282" width="4" height="20" fill="#fff" />
+                  <rect x="288" width="2" height="20" fill="#fff" />
+                  <rect x="292" width="1" height="20" fill="#fff" />
+                  <rect x="296" width="6" height="20" fill="#fff" />
+                  <rect x="304" width="3" height="20" fill="#fff" />
+                  <rect x="310" width="1" height="20" fill="#fff" />
+                  <rect x="314" width="4" height="20" fill="#fff" />
+                  <rect x="320" width="2" height="20" fill="#fff" />
+                  <rect x="324" width="1" height="20" fill="#fff" />
+                  <rect x="328" width="8" height="20" fill="#fff" />
+                </svg>
+                <span style={{ fontSize: '0.55rem', letterSpacing: '0.25em', color: 'var(--color-text-muted)', textTransform: 'uppercase' }}>
+                  REDOX-DESIGNSX-SYS-VER-1.0
+                </span>
               </div>
             </div>
           )}
@@ -602,7 +752,7 @@ export function ProductDetail({ product }: ProductDetailProps) {
           {showCheckout && !checkoutSuccess && (
             <div className={styles.directCheckout} ref={checkoutRef}>
               <div className={styles.checkoutHeader}>
-                ⚡ DIRECT SECURE CHECKOUT — {formatCurrency(product.price)}
+                DIRECT SECURE CHECKOUT — {formatCurrency(product.price)}
               </div>
               
               <form onSubmit={handleOrderSubmit} className={styles.checkoutForm}>

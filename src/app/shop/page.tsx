@@ -1,6 +1,5 @@
 import { ShopGrid } from '@/components/commerce/ShopGrid';
-import { collections } from '@/data/catalog';
-import { getDbProducts } from '@/lib/catalog-db';
+import { getDbProducts, getDbCollections } from '@/lib/catalog-db';
 import { buildMetadata } from '@/lib/metadata';
 
 export const metadata = buildMetadata({
@@ -11,6 +10,7 @@ export const metadata = buildMetadata({
 
 export default async function ShopPage() {
   const products = await getDbProducts();
+  const collections = await getDbCollections();
 
   return (
     <>

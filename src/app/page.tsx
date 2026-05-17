@@ -1,6 +1,7 @@
 import { ProductCard } from '@/components/product/ProductCard';
 import { TrackOrder } from '@/components/commerce/TrackOrder';
 import { getDbProducts } from '@/lib/catalog-db';
+import styles from './pages.module.css';
 
 export default async function HomePage() {
   const products = await getDbProducts();
@@ -9,13 +10,7 @@ export default async function HomePage() {
     <main style={{ minHeight: '80vh', paddingTop: '132px', paddingBottom: '100px' }}>
       <div style={{ width: 'min(100%, var(--container-max))', margin: '0 auto', padding: '0 var(--section-x)' }}>
         {products.length > 0 ? (
-          <div 
-            style={{ 
-              display: 'grid', 
-              gridTemplateColumns: 'repeat(2, 1fr)', 
-              gap: 'var(--space-6)' 
-            }}
-          >
+          <div className={styles.landingGrid}>
             {products.map((product, index) => (
               <ProductCard key={product.id} priority={index < 4} product={product} />
             ))}
