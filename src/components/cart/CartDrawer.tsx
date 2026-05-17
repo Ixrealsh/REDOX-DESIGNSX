@@ -390,7 +390,7 @@ export function CartDrawer() {
                   Proceed to Checkout
                 </Button>
                 <p className={styles.checkoutNote} style={{ letterSpacing: '0.04em', fontSize: '0.68rem' }}>
-                  🔒 Secure payment gateway processed by Paystack.
+                Secure payment gateway processed by Paystack.
                 </p>
               </div>
             )}

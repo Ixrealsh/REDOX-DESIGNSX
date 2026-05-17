@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { rateLimit, requestKey } from '@/lib/rate-limit';
-import { addDbOrder } from '@/lib/catalog-db';
+import { addDbOrder, getDbProduct } from '@/lib/catalog-db';
 
 const orderSchema = z.object({
   productId: z.string().min(1),
@@ -81,6 +81,57 @@ export async function POST(request: Request) {
     }
 
     const orderData = parsed.data;
+
+    // 1. SECURE SERVER-SIDE PRICE LOOKUP & VERIFICATION
+    const dbProduct = await getDbProduct(orderData.productSlug);
+    if (!dbProduct) {
+      return NextResponse.json({ error: 'Product manifest not found in database.' }, { status: 404 });
+    }
+
+    // Infer order quantity based on unit price
+    const inferredQty = Math.max(1, Math.round(orderData.price / dbProduct.price));
+    const verifiedTotalPrice = dbProduct.price * inferredQty;
+
+    // 2. SECURE PAYSTACK TRANSACTION REFERENCE VERIFICATION
+    const paystackSecret = process.env.PAYSTACK_SECRET_KEY;
+    
+    // Only run if we are in live/testing mode with actual secret credentials configured
+    if (orderData.paymentMethod === 'PAYSTACK' && paystackSecret && paystackSecret !== 'your_paystack_secret_key_here') {
+      const paymentRef = orderData.momoNumber; // Loaded from client callback reference
+      if (!paymentRef) {
+        return NextResponse.json({ error: 'Payment authorization reference is missing.' }, { status: 400 });
+      }
+
+      // Query the official Paystack Verification Endpoint securely from the server
+      const verifyRes = await fetch(`https://api.paystack.co/transaction/verify/${encodeURIComponent(paymentRef)}`, {
+        method: 'GET',
+        headers: {
+          Authorization: `Bearer ${paystackSecret}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (!verifyRes.ok) {
+        return NextResponse.json({ error: 'Could not communicate with Paystack payment gateway.' }, { status: 400 });
+      }
+
+      const verifyData = await verifyRes.json();
+      if (!verifyData.status || verifyData.data.status !== 'success') {
+        return NextResponse.json({ error: 'Security breach: Transaction payment has not been successfully capture-verified.' }, { status: 400 });
+      }
+
+      // Check if the amount paid to Paystack matches our verified database price (in kobo/pesewas)
+      const amountPaidGhs = verifyData.data.amount / 100;
+      if (amountPaidGhs < verifiedTotalPrice) {
+        return NextResponse.json({
+          error: `Security breach: The amount captured (GH₵${amountPaidGhs}) does not match the product total price (GH₵${verifiedTotalPrice}).`
+        }, { status: 400 });
+      }
+    }
+
+    // 3. OVERWRITE WITH AUTHORITATIVE DATA BEFORE WRITE
+    // Force write the actual verified price to Neon Postgres to bypass any local client edits
+    orderData.price = verifiedTotalPrice;
     
     // Save order in database (or fallback sandbox orders list)
     const order = await addDbOrder({
