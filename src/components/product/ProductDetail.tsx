@@ -712,18 +712,13 @@ export function ProductDetail({ product }: ProductDetailProps) {
             </div>
           )}
 
-          {/* Action Buttons: Instantly Checkout or Add to Cart */}
+          {/* Action Buttons: Instantly Checkout */}
           {!checkoutSuccess && (
             <div className={styles.actions}>
               <div className={styles.mainButtons}>
                 <Button disabled={product.badge === 'COMING SOON'} fullWidth onClick={handleBuyNowClick}>
                   {product.badge === 'COMING SOON' ? 'Coming soon' : 'Buy & Place Order Now'}
                 </Button>
-                {product.badge !== 'COMING SOON' && (
-                  <button className={styles.addToCartButton} onClick={handleAddToCart} type="button">
-                    Add to Cart
-                  </button>
-                )}
               </div>
               
               <div className={styles.utilityButtons}>
@@ -814,15 +809,22 @@ export function ProductDetail({ product }: ProductDetailProps) {
                       value={formData.city}
                       onChange={(e) => setFormData(f => ({ ...f, city: e.target.value }))}
                     >
-                      <option value="Accra">Accra (Greater Accra)</option>
-                      <option value="Kumasi">Kumasi (Ashanti)</option>
-                      <option value="Tema">Tema (Greater Accra)</option>
-                      <option value="Takoradi">Sekondi-Takoradi (Western)</option>
-                      <option value="Tamale">Tamale (Northern)</option>
-                      <option value="Cape Coast">Cape Coast (Central)</option>
-                      <option value="Koforidua">Koforidua (Eastern)</option>
-                      <option value="Sunyani">Sunyani (Bono)</option>
-                      <option value="Ho">Ho (Volta)</option>
+                      <option value="Greater Accra">Greater Accra Region</option>
+                      <option value="Ashanti">Ashanti Region</option>
+                      <option value="Western">Western Region</option>
+                      <option value="Eastern">Eastern Region</option>
+                      <option value="Central">Central Region</option>
+                      <option value="Volta">Volta Region</option>
+                      <option value="Northern">Northern Region</option>
+                      <option value="Upper East">Upper East Region</option>
+                      <option value="Upper West">Upper West Region</option>
+                      <option value="Savannah">Savannah Region</option>
+                      <option value="North East">North East Region</option>
+                      <option value="Bono">Bono Region</option>
+                      <option value="Bono East">Bono East Region</option>
+                      <option value="Ahafo">Ahafo Region</option>
+                      <option value="Western North">Western North Region</option>
+                      <option value="Oti">Oti Region</option>
                     </select>
                   </div>
 

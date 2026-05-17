@@ -3,8 +3,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useState } from 'react';
-import { BagIcon, HeartIcon, MenuIcon, SearchIcon, UserIcon, XIcon } from '@/components/ui/Icons';
-import { getCartTotals, useCartStore } from '@/store/cart.store';
+import { HeartIcon, MenuIcon, SearchIcon, UserIcon, XIcon } from '@/components/ui/Icons';
 import { useWishlistStore } from '@/store/wishlist.store';
 import styles from './Navbar.module.css';
 
@@ -13,16 +12,13 @@ const primaryLinks = [
   { href: '/collections', label: 'Collections' },
   { href: '/drops', label: 'Drops' },
   { href: '/lookbook', label: 'Lookbook' },
-  { href: '/about', label: 'About' }
+  { href: '/track-order', label: 'Track Order' }
 ];
 
 export function Navbar() {
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
-  const items = useCartStore((state) => state.items);
-  const openCart = useCartStore((state) => state.openCart);
   const wishlistCount = useWishlistStore((state) => state.items.length);
-  const { totalItems } = getCartTotals(items);
 
   const closeMobile = () => setMobileOpen(false);
 
@@ -40,7 +36,7 @@ export function Navbar() {
         </button>
 
         <div className={styles.links}>
-          {primaryLinks.slice(0, 4).map((link) => (
+          {primaryLinks.map((link) => (
             <Link
               className={`${styles.navLink} ${pathname.startsWith(link.href) ? styles.navLinkActive : ''}`}
               href={link.href}
@@ -86,15 +82,6 @@ export function Navbar() {
           <Link aria-label="Account" className={`${styles.iconButton} ${styles.hideMobile}`} href="/account">
             <UserIcon />
           </Link>
-          <button
-            aria-label={`Cart: ${totalItems} items`}
-            className={styles.iconButton}
-            onClick={openCart}
-            type="button"
-          >
-            <BagIcon />
-            {totalItems > 0 ? <span className={styles.count}>{totalItems}</span> : null}
-          </button>
         </div>
       </div>
 

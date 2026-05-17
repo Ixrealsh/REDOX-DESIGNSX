@@ -1,5 +1,4 @@
 import { ProductCard } from '@/components/product/ProductCard';
-import { TrackOrder } from '@/components/commerce/TrackOrder';
 import { getDbProducts } from '@/lib/catalog-db';
 import styles from './pages.module.css';
 
@@ -25,9 +24,6 @@ export default async function HomePage() {
             </p>
           </div>
         )}
-
-        {/* Dynamic Interactive Order Tracing Console */}
-        <TrackOrder />
       </div>
     </main>
   );
