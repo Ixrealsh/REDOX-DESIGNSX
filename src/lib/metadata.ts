@@ -2,12 +2,12 @@ import type { Metadata } from 'next';
 
 export const siteMeta = {
   siteName: 'Redox Designsx',
-  siteUrl: process.env.NEXT_PUBLIC_SITE_URL || 'https://redoxdesign.com',
-  defaultTitle: 'Redox Designsx - Premium Streetwear and Contemporary Clothing',
+  siteUrl: 'https://redoxdesignx.com',
+  defaultTitle: 'REDOX DESIGNSX | Premium Streetwear & Contemporary Blanks',
   defaultDescription:
-    'Redox Designsx crafts limited-run streetwear for those who dress with intention. Explore collections, drops, and lookbooks.',
-  defaultOgImage: 'https://res.cloudinary.com/dti75gff0/image/upload/v1779032145/redox_designsx/redox_hero.png',
-  twitterHandle: '@redoxdesign'
+    'Chemical precision. Street tension. Redox Designsx crafts premium limited-run 230gsm heavyweight blank tees and contemporary apparel. Engineered with intention, zero restocks.',
+  defaultOgImage: 'https://redoxdesignx.com/assets/icons/redoxlogo.jpg',
+  twitterHandle: '@redoxdesignsx'
 };
 
 export function buildMetadata({
@@ -29,6 +29,19 @@ export function buildMetadata({
     metadataBase: new URL(siteMeta.siteUrl),
     title: pageTitle,
     description: pageDescription,
+    keywords: [
+      'Redox Designsx',
+      'Redox Designs',
+      'Redox',
+      'streetwear Ghana',
+      'Accra clothing brand',
+      '230gsm heavyweight blank tee',
+      'premium blank t-shirt',
+      'luxury apparel Accra',
+      'minimalist blank tees',
+      'limited streetwear drops',
+      'contemporary clothing blanks'
+    ],
     alternates: { canonical: url },
     icons: {
       icon: '/assets/icons/redoxlogo.jpg',
@@ -40,11 +53,11 @@ export function buildMetadata({
       description: pageDescription,
       url,
       siteName: siteMeta.siteName,
-      images: [{ url: image, width: 1200, height: 630, alt: siteMeta.siteName }],
+      images: [{ url: image, width: 600, height: 600, alt: siteMeta.siteName }],
       type: 'website'
     },
     twitter: {
-      card: 'summary_large_image',
+      card: 'summary',
       title: pageTitle,
       description: pageDescription,
       images: [image],

@@ -20,6 +20,50 @@ const orderSchema = z.object({
   momoNumber: z.string().max(100).optional()
 });
 
+async function sendSmsNotification(order: any) {
+  const apiKey = process.env.MNOTIFY_API_KEY;
+  const senderId = process.env.MNOTIFY_SENDER_ID || 'RedoxDesx';
+  
+  if (!apiKey) {
+    console.warn('mNotify API Key is not set in environment variables. Skipping SMS.');
+    return;
+  }
+
+  let rawPhone = order.customerPhone || '';
+  let cleanedPhone = rawPhone.replace(/\D/g, '');
+  
+  // Format to standard 233 Ghana international code
+  if (cleanedPhone.startsWith('0') && cleanedPhone.length === 10) {
+    cleanedPhone = '233' + cleanedPhone.substring(1);
+  } else if (cleanedPhone.length === 9 && !cleanedPhone.startsWith('0')) {
+    cleanedPhone = '233' + cleanedPhone;
+  }
+
+  const messageText = `REDOX DESIGNSX\nOrder #RD-${order.id} verified!\n\nItem: ${order.productName}\nSpecs: ${order.selectedColor} - Size ${order.selectedSize}\nPrice: GH₵${order.price}\n\nTrack status: https://redox-designsx.vercel.app/track-order?ref=RD-${order.id}`;
+
+  try {
+    const url = `https://api.mnotify.com/api/sms/quick?key=${apiKey}`;
+    const payload = {
+      recipient: [cleanedPhone],
+      sender: senderId.substring(0, 11), // Max 11 chars required by mNotify
+      message: messageText,
+      is_schedule: false,
+      schedule_date: ''
+    };
+
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+
+    const resData = await res.json();
+    console.log('mNotify API send log:', resData);
+  } catch (err) {
+    console.error('mNotify SMS system error:', err);
+  }
+}
+
 export async function POST(request: Request) {
   const limit = rateLimit(`orders:${requestKey(request)}`, 10);
 
@@ -42,6 +86,11 @@ export async function POST(request: Request) {
     const order = await addDbOrder({
       ...orderData,
       status: 'Pending'
+    });
+
+    // Send instant background SMS notification
+    sendSmsNotification(order).catch((err) => {
+      console.error('Background SMS worker failed:', err);
     });
 
     return NextResponse.json({ 
