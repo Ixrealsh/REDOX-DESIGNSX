@@ -1,4 +1,5 @@
 import { ProductCard } from '@/components/product/ProductCard';
+import { TrackOrder } from '@/components/commerce/TrackOrder';
 import { getDbProducts } from '@/lib/catalog-db';
 
 export default async function HomePage() {
@@ -11,7 +12,7 @@ export default async function HomePage() {
           <div 
             style={{ 
               display: 'grid', 
-              gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', 
+              gridTemplateColumns: 'repeat(2, 1fr)', 
               gap: 'var(--space-6)' 
             }}
           >
@@ -29,6 +30,9 @@ export default async function HomePage() {
             </p>
           </div>
         )}
+
+        {/* Dynamic Interactive Order Tracing Console */}
+        <TrackOrder />
       </div>
     </main>
   );

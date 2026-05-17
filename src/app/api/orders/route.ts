@@ -57,3 +57,48 @@ export async function POST(request: Request) {
     );
   }
 }
+
+export async function GET(request: Request) {
+  try {
+    const { searchParams } = new URL(request.url);
+    const query = searchParams.get('ref');
+
+    if (!query) {
+      return NextResponse.json({ error: 'Order reference query parameter is required.' }, { status: 400 });
+    }
+
+    const cleanQuery = query.replace('#RD-', '').replace('RD-', '').trim();
+    const idNum = parseInt(cleanQuery, 10);
+
+    const { getDbOrders } = require('@/lib/catalog-db');
+    const orders = await getDbOrders();
+    
+    const order = orders.find((o: any) => {
+      if (!isNaN(idNum) && o.id === idNum) return true;
+      if (o.momoNumber && o.momoNumber.toLowerCase() === query.toLowerCase()) return true;
+      if (o.momoNumber && o.momoNumber.toLowerCase() === cleanQuery.toLowerCase()) return true;
+      return false;
+    });
+
+    if (!order) {
+      return NextResponse.json({ error: 'No active order found with this reference.' }, { status: 404 });
+    }
+
+    return NextResponse.json({
+      success: true,
+      order: {
+        id: order.id,
+        productName: order.productName,
+        selectedColor: order.selectedColor,
+        selectedSize: order.selectedSize,
+        price: order.price,
+        customerName: order.customerName,
+        status: order.status || 'Pending',
+        createdAt: order.createdAt
+      }
+    });
+  } catch (error: any) {
+    console.error('API orders GET status tracking error:', error);
+    return NextResponse.json({ error: 'Failed to search order.' }, { status: 500 });
+  }
+}

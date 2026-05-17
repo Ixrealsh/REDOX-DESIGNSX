@@ -150,6 +150,25 @@ export function AdminDashboard({
     }
   };
 
+  const handleUpdateOrderStatus = async (orderId: number, status: string) => {
+    try {
+      const response = await fetch('/api/admin/orders', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orderId, status })
+      });
+      const data = await response.json();
+      if (response.ok) {
+        setOrders(prev => prev.map(o => o.id === orderId ? { ...o, status } : o));
+        triggerNotification(`Order #RD-${orderId} status set to "${status}" successfully!`, 'success');
+      } else {
+        throw new Error(data.error || 'Failed to update order status.');
+      }
+    } catch (err: any) {
+      triggerNotification(err.message || 'Error updating order status.', 'error');
+    }
+  };
+
   // Sync orders on dashboard mount
   useEffect(() => {
     refreshOrders();
@@ -1134,6 +1153,7 @@ export function AdminDashboard({
                     <th style={{ padding: 'var(--space-3)', color: '#aaa', fontWeight: 600 }}>Price</th>
                     <th style={{ padding: 'var(--space-3)', color: '#aaa', fontWeight: 600 }}>Shipping Destination</th>
                     <th style={{ padding: 'var(--space-3)', color: '#aaa', fontWeight: 600 }}>Payment Info</th>
+                    <th style={{ padding: 'var(--space-3)', color: '#aaa', fontWeight: 600 }}>Order Status</th>
                     <th style={{ padding: 'var(--space-3)', color: '#aaa', fontWeight: 600 }}>Date Placed</th>
                   </tr>
                 </thead>
@@ -1161,7 +1181,12 @@ export function AdminDashboard({
                         <div style={{ color: '#888', fontSize: '0.75rem' }}>{o.shippingCity}</div>
                       </td>
                       <td style={{ padding: 'var(--space-3)' }}>
-                        {o.paymentMethod === 'COD' ? (
+                        {o.paymentMethod === 'PAYSTACK' ? (
+                          <div>
+                            <span style={{ color: '#10b981', fontWeight: 'bold' }}>Paystack Secure</span>
+                            {o.momoNumber && <div style={{ color: '#888', fontSize: '0.725rem', marginTop: '4px' }}>Ref: {o.momoNumber}</div>}
+                          </div>
+                        ) : o.paymentMethod === 'COD' ? (
                           <span style={{ color: '#f59e0b', fontWeight: 'bold' }}>Cash on Delivery</span>
                         ) : (
                           <div>
@@ -1169,6 +1194,35 @@ export function AdminDashboard({
                             <div style={{ color: '#888', fontSize: '0.75rem' }}>{o.momoNumber}</div>
                           </div>
                         )}
+                      </td>
+                      <td style={{ padding: 'var(--space-3)' }}>
+                        <select
+                          value={o.status || 'Pending'}
+                          onChange={(e) => handleUpdateOrderStatus(o.id, e.target.value)}
+                          style={{
+                            background: o.status === 'Pending' ? 'rgba(245, 158, 11, 0.15)' :
+                                        o.status === 'Processing' ? 'rgba(59, 130, 246, 0.15)' :
+                                        o.status === 'Shipped' ? 'rgba(139, 92, 246, 0.15)' :
+                                        o.status === 'Delivered' ? 'rgba(16, 185, 129, 0.15)' : 'rgba(239, 68, 68, 0.15)',
+                            color: o.status === 'Pending' ? '#f59e0b' :
+                                   o.status === 'Processing' ? '#3b82f6' :
+                                   o.status === 'Shipped' ? '#8b5cf6' :
+                                   o.status === 'Delivered' ? '#10b981' : '#ef4444',
+                            border: '1px solid currentColor',
+                            padding: '4px 8px',
+                            borderRadius: '4px',
+                            fontWeight: 'bold',
+                            fontSize: '0.75rem',
+                            cursor: 'pointer',
+                            outline: 'none'
+                          }}
+                        >
+                          <option value="Pending" style={{ background: '#111', color: '#f59e0b' }}>Pending</option>
+                          <option value="Processing" style={{ background: '#111', color: '#3b82f6' }}>Processing</option>
+                          <option value="Shipped" style={{ background: '#111', color: '#8b5cf6' }}>Shipped</option>
+                          <option value="Delivered" style={{ background: '#111', color: '#10b981' }}>Delivered</option>
+                          <option value="Cancelled" style={{ background: '#111', color: '#ef4444' }}>Cancelled</option>
+                        </select>
                       </td>
                       <td style={{ padding: 'var(--space-3)', color: '#777' }}>{new Date(o.createdAt).toLocaleString()}</td>
                     </tr>

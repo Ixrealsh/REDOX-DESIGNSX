@@ -104,7 +104,7 @@ export function ProductDetail({ product }: ProductDetailProps) {
     email: '',
     address: '',
     city: 'Accra',
-    paymentMethod: 'COD',
+    paymentMethod: 'PAYSTACK',
     momoNetwork: 'MTN',
     momoNumber: ''
   });
@@ -234,8 +234,7 @@ export function ProductDetail({ product }: ProductDetailProps) {
           shippingCity: formData.city,
           paymentMethod: formData.paymentMethod,
           momoNetwork: formData.paymentMethod === 'MOMO' ? formData.momoNetwork : undefined,
-          momoNumber: formData.paymentMethod === 'MOMO' ? formData.momoNumber : undefined,
-          paymentReference: paymentRef
+          momoNumber: formData.paymentMethod === 'MOMO' ? formData.momoNumber : (formData.paymentMethod === 'PAYSTACK' ? paymentRef : undefined)
         })
       });
 
@@ -637,50 +636,27 @@ export function ProductDetail({ product }: ProductDetailProps) {
                     </select>
                   </div>
 
-                  <div className={styles.formGroup}>
-                    <label className={styles.fieldLabel}>PAYMENT METHOD *</label>
-                    <select
-                      className={styles.formSelect}
-                      value={formData.paymentMethod}
-                      onChange={(e) => setFormData(f => ({ ...f, paymentMethod: e.target.value }))}
-                    >
-                      <option value="COD">Cash on Delivery (COD)</option>
-                      <option value="PAYSTACK">Credit/Debit Card or Momo (Paystack Secure)</option>
-                      <option value="MOMO">Mobile Money (Direct Wallet Link)</option>
-                    </select>
-                  </div>
-                </div>
-
-                {formData.paymentMethod === 'MOMO' && (
-                  <div className={styles.momoDetails}>
-                    <div className={styles.formGrid}>
-                      <div className={styles.formGroup}>
-                        <label className={styles.fieldLabel}>NETWORK *</label>
-                        <select
-                          className={styles.formSelect}
-                          value={formData.momoNetwork}
-                          onChange={(e) => setFormData(f => ({ ...f, momoNetwork: e.target.value }))}
-                        >
-                          <option value="MTN">MTN Mobile Money</option>
-                          <option value="Telecel">Telecel Cash</option>
-                          <option value="AT">AT Money</option>
-                        </select>
-                      </div>
-
-                      <div className={styles.formGroup}>
-                        <label className={styles.fieldLabel}>MOMO NUMBER *</label>
-                        <input
-                          type="tel"
-                          required
-                          className={styles.formInput}
-                          placeholder="e.g. 0540123456"
-                          value={formData.momoNumber}
-                          onChange={(e) => setFormData(f => ({ ...f, momoNumber: e.target.value }))}
-                        />
-                      </div>
+                  <div className={styles.formGroup} style={{ gridColumn: 'span 2' }}>
+                    <div style={{
+                      padding: 'var(--space-3) var(--space-4)',
+                      background: 'rgba(16, 185, 129, 0.08)',
+                      border: '1px solid rgba(16, 185, 129, 0.2)',
+                      borderRadius: 'var(--radius-md)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 'var(--space-3)',
+                      color: '#10b981',
+                      fontSize: '0.85rem',
+                      lineHeight: '1.4'
+                    }}>
+                      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ flexShrink: 0 }}>
+                        <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+                        <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                      </svg>
+                      <span><strong>SECURED BY PAYSTACK</strong> — Cards (Visa/Mastercard), Mobile Money (MTN, Telecel, AT), and bank channels are accepted instantly.</span>
                     </div>
                   </div>
-                )}
+                </div>
 
                 {error && <p className={styles.error}>{error}</p>}
 
@@ -712,7 +688,7 @@ export function ProductDetail({ product }: ProductDetailProps) {
                 <p><strong>Item:</strong> {product.name} ({selectedColor} / {selectedSize})</p>
                 <p><strong>Total:</strong> {formatCurrency(checkoutSuccess.price)}</p>
                 <p><strong>Shipping to:</strong> {checkoutSuccess.shippingAddress}, {checkoutSuccess.shippingCity}</p>
-                <p><strong>Payment:</strong> {checkoutSuccess.paymentMethod === 'COD' ? 'Cash on Delivery' : `${checkoutSuccess.momoNetwork} Mobile Money (${checkoutSuccess.momoNumber})`}</p>
+                <p><strong>Payment:</strong> Paystack Secure Checkout</p>
               </div>
               <p className={styles.successFooter}>
                 Our sales team will contact you via <strong>{checkoutSuccess.customerPhone}</strong> shortly to finalize dispatch and shipping details!
