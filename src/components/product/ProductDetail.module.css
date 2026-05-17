@@ -1,6 +1,6 @@
 .pdp {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(360px, 1fr);
+  display: flex;
+  justify-content: center;
   gap: var(--space-8);
   width: min(100%, var(--container-max));
   margin: 0 auto;
@@ -8,8 +8,7 @@
 }
 
 .gallery {
-  display: grid;
-  gap: var(--space-5);
+  display: none !important;
 }
 
 .mainImage {
@@ -51,6 +50,8 @@
   position: sticky;
   top: 132px;
   align-self: start;
+  width: 100%;
+  max-width: 650px;
 }
 
 .collection {

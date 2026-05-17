@@ -104,7 +104,7 @@ export function ProductDetail({ product }: ProductDetailProps) {
     phone: '',
     email: '',
     address: '',
-    city: 'Accra',
+    city: 'Greater Accra',
     paymentMethod: 'PAYSTACK',
     momoNetwork: 'MTN',
     momoNumber: ''
@@ -285,9 +285,9 @@ export function ProductDetail({ product }: ProductDetailProps) {
         const handler = paystack.setup({
           key: paystackKey,
           email: formData.email,
-          amount: totalPrice * 100, // minor units
+          amount: Math.round(totalPrice * 100), // minor units (must be integer)
           currency: 'GHS',
-          ref: 'RDX-' + Math.floor(Math.random() * 1000000000 + 1),
+          reference: 'RDX-' + Math.floor(Math.random() * 1000000000 + 1),
           callback: async (response: any) => {
             await completeOrderSubmit(response.reference);
           },
