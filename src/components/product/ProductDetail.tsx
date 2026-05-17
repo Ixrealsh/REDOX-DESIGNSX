@@ -123,7 +123,7 @@ export function ProductDetail({ product }: ProductDetailProps) {
       return product.colorImages[selectedColor];
     }
     // Fallback if no color specific images are added yet by admin
-    return [product.image, product.secondaryImage, '/assets/images/campaigns/redox-hero.png'].filter(Boolean) as string[];
+    return [product.image, product.secondaryImage, 'https://res.cloudinary.com/dti75gff0/image/upload/v1779032145/redox_designsx/redox_hero.png'].filter(Boolean) as string[];
   }, [product.image, product.secondaryImage, product.colorImages, selectedColor]);
 
   // Sync main image on color change

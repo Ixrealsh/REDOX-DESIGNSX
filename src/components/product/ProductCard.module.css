@@ -16,6 +16,7 @@
 
 .image {
   object-fit: contain;
+  padding: 12px;
   transition:
     opacity var(--duration-normal) var(--ease-out),
     transform var(--duration-slow) var(--ease-out);

@@ -12,7 +12,7 @@ export function HomeHero() {
         fill
         priority
         sizes="100vw"
-        src="/assets/images/campaigns/redox-hero.png"
+        src="https://res.cloudinary.com/dti75gff0/image/upload/v1779032145/redox_designsx/redox_hero.png"
       />
       <div className={styles.heroScrim} />
       <div className={styles.heroContent}>

@@ -24,7 +24,7 @@ export default function AboutPage() {
       <section className={styles.section}>
         <div className={`${styles.inner} ${styles.split}`}>
           <div className={styles.imageCard}>
-            <Image alt="Redox Designsx campaign models in dark apparel" fill sizes="(min-width: 1040px) 50vw, 100vw" src="/assets/images/campaigns/redox-hero.png" />
+            <Image alt="Redox Designsx campaign models in dark apparel" fill sizes="(min-width: 1040px) 50vw, 100vw" src="https://res.cloudinary.com/dti75gff0/image/upload/v1779032145/redox_designsx/redox_hero.png" />
           </div>
           <div className={styles.panel}>
             <h2>Chemical precision. Street tension.</h2>

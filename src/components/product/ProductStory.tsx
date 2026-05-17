@@ -87,7 +87,7 @@ export function ProductStory({ product }: ProductStoryProps) {
           </div>
         </div>
         <div className={styles.media} data-story-image>
-          <Image alt={`${product.name} editorial styling`} fill sizes="(min-width: 860px) 45vw, 100vw" src="/assets/images/lookbook/underpass-editorial.png" />
+          <Image alt={`${product.name} editorial styling`} fill sizes="(min-width: 860px) 45vw, 100vw" src="https://res.cloudinary.com/dti75gff0/image/upload/v1779032147/redox_designsx/underpass_editorial.png" />
         </div>
       </div>
     </section>

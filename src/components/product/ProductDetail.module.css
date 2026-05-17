@@ -1,6 +1,6 @@
 .pdp {
   display: grid;
-  grid-template-columns: minmax(0, 1.35fr) minmax(360px, 0.65fr);
+  grid-template-columns: minmax(0, 1fr) minmax(360px, 1fr);
   gap: var(--space-8);
   width: min(100%, var(--container-max));
   margin: 0 auto;
@@ -24,6 +24,7 @@
 
 .mainImage img {
   object-fit: contain;
+  padding: var(--space-6);
   transition: transform var(--duration-normal) var(--ease-out);
 }
 
