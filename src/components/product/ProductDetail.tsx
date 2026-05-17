@@ -781,7 +781,7 @@ export function ProductDetail({ product }: ProductDetailProps) {
           </Button>
         </div>
       )}
-      <Script src="https://js.paystack.co/v1/inline.js" strategy="lazyOnload" />
+      <Script src="https://js.paystack.co/v1/inline.js" strategy="beforeInteractive" />
     </>
   );
 }
