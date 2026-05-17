@@ -13,8 +13,7 @@ export const siteMeta = {
 export function buildMetadata({
   title,
   description,
-  path = '/',
-  image = siteMeta.defaultOgImage
+  path = '/'
 }: {
   title?: string;
   description?: string;
@@ -24,6 +23,7 @@ export function buildMetadata({
   const pageTitle = title ? `${title} | ${siteMeta.siteName}` : siteMeta.defaultTitle;
   const pageDescription = description || siteMeta.defaultDescription;
   const url = new URL(path, siteMeta.siteUrl).toString();
+  const image = siteMeta.defaultOgImage; // Consistently enforce website logo as absolute preview image
 
   return {
     metadataBase: new URL(siteMeta.siteUrl),

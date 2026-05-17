@@ -8,6 +8,7 @@ import { MinusIcon, PlusIcon, TrashIcon, XIcon } from '@/components/ui/Icons';
 import { LinkButton } from '@/components/ui/LinkButton';
 import { formatCurrency } from '@/lib/format';
 import { getCartTotals, useCartStore } from '@/store/cart.store';
+import { loadPaystackScript } from '@/lib/paystack';
 import styles from './CartDrawer.module.css';
 
 export function CartDrawer() {
@@ -79,9 +80,9 @@ export function CartDrawer() {
 
     if (paystackKey && paystackKey !== 'your_paystack_public_key_here') {
       try {
-        const paystack = (window as any).PaystackPop;
+        const paystack = await loadPaystackScript();
         if (!paystack) {
-          throw new Error('Paystack secure payment library is loading. Please click pay again in a second.');
+          throw new Error('Paystack secure payment library failed to load. Please verify your connection.');
         }
 
         const handler = paystack.setup({

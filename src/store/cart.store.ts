@@ -39,13 +39,14 @@ export const useCartStore = create<CartStore>()(
       hydrated: false,
       addItem: (product, variant, quantity = 1, selectedColorImage) =>
         set((state) => {
-          const existing = state.items.find((item) => item.variantId === variant.id);
+          const compositeId = `${variant.id}-${variant.color}`;
+          const existing = state.items.find((item) => item.variantId === compositeId);
 
           if (existing) {
             return {
               isOpen: true,
               items: state.items.map((item) =>
-                item.variantId === variant.id
+                item.variantId === compositeId
                   ? { ...item, quantity: clamp(item.quantity + quantity, 1, 99) }
                   : item
               )
@@ -62,7 +63,7 @@ export const useCartStore = create<CartStore>()(
                 name: product.name,
                 image: selectedColorImage || product.image,
                 price: product.price,
-                variantId: variant.id,
+                variantId: compositeId,
                 size: variant.size,
                 color: variant.color,
                 sku: variant.sku,

@@ -11,6 +11,7 @@ import { formatCurrency } from '@/lib/format';
 import { useWishlistStore } from '@/store/wishlist.store';
 import { useCartStore } from '@/store/cart.store';
 import type { Product } from '@/types/product';
+import { loadPaystackScript } from '@/lib/paystack';
 import styles from './ProductDetail.module.css';
 
 interface ProductDetailProps {
@@ -271,9 +272,9 @@ export function ProductDetail({ product }: ProductDetailProps) {
     if (formData.paymentMethod === 'PAYSTACK') {
       if (paystackKey && paystackKey !== 'your_paystack_public_key_here') {
         try {
-          const paystack = (window as any).PaystackPop;
+          const paystack = await loadPaystackScript();
           if (!paystack) {
-            throw new Error('Paystack secure payment library is loading. Please click pay again in a second.');
+            throw new Error('Paystack secure payment library failed to load. Please verify your connection.');
           }
 
           const handler = paystack.setup({
