@@ -3,7 +3,8 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useState } from 'react';
-import { HeartIcon, MenuIcon, SearchIcon, UserIcon, XIcon } from '@/components/ui/Icons';
+import { BagIcon, HeartIcon, MenuIcon, SearchIcon, UserIcon, XIcon } from '@/components/ui/Icons';
+import { getCartTotals, useCartStore } from '@/store/cart.store';
 import { useWishlistStore } from '@/store/wishlist.store';
 import styles from './Navbar.module.css';
 
@@ -18,7 +19,10 @@ const primaryLinks = [
 export function Navbar() {
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const items = useCartStore((state) => state.items);
+  const openCart = useCartStore((state) => state.openCart);
   const wishlistCount = useWishlistStore((state) => state.items.length);
+  const { totalItems } = getCartTotals(items);
 
   const closeMobile = () => setMobileOpen(false);
 
@@ -82,6 +86,15 @@ export function Navbar() {
           <Link aria-label="Account" className={`${styles.iconButton} ${styles.hideMobile}`} href="/account">
             <UserIcon />
           </Link>
+          <button
+            aria-label={`Cart: ${totalItems} items`}
+            className={styles.iconButton}
+            onClick={openCart}
+            type="button"
+          >
+            <BagIcon />
+            {totalItems > 0 ? <span className={styles.count}>{totalItems}</span> : null}
+          </button>
         </div>
       </div>
 

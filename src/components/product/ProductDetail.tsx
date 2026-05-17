@@ -319,13 +319,15 @@ export function ProductDetail({ product }: ProductDetailProps) {
           <div className={styles.mainImage}>
             <Image alt={product.imageAlt} fill priority sizes="(min-width: 980px) 58vw, 100vw" src={activeImage} />
           </div>
-          <div className={styles.thumbs}>
-            {colorSpecificImages.map((image) => (
-              <button className={styles.thumb} key={image} onClick={() => setActiveImage(image)} type="button">
-                <Image alt="" fill sizes="180px" src={image} />
-              </button>
-            ))}
-          </div>
+          {colorSpecificImages.filter((img) => img !== activeImage).length > 0 && (
+            <div className={styles.thumbs}>
+              {colorSpecificImages.filter((img) => img !== activeImage).map((image) => (
+                <button className={styles.thumb} key={image} onClick={() => setActiveImage(image)} type="button">
+                  <Image alt="" fill sizes="180px" src={image} />
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
         <div className={styles.panel}>
@@ -712,13 +714,18 @@ export function ProductDetail({ product }: ProductDetailProps) {
             </div>
           )}
 
-          {/* Action Buttons: Instantly Checkout */}
+          {/* Action Buttons: Instantly Checkout or Add to Cart */}
           {!checkoutSuccess && (
             <div className={styles.actions}>
               <div className={styles.mainButtons}>
                 <Button disabled={product.badge === 'COMING SOON'} fullWidth onClick={handleBuyNowClick}>
                   {product.badge === 'COMING SOON' ? 'Coming soon' : 'Buy & Place Order Now'}
                 </Button>
+                {product.badge !== 'COMING SOON' && (
+                  <button className={styles.addToCartButton} onClick={handleAddToCart} type="button">
+                    Add to Cart
+                  </button>
+                )}
               </div>
               
               <div className={styles.utilityButtons}>
