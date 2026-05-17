@@ -1,0 +1,40 @@
+.badge {
+  display: inline-flex;
+  min-height: 24px;
+  align-items: center;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: 3px 8px;
+  font-family: var(--font-mono), monospace;
+  font-size: 0.68rem;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.new {
+  background: var(--color-surface-3);
+  color: var(--color-white);
+}
+
+.sale {
+  border-color: var(--color-red);
+  background: var(--color-red);
+  color: var(--color-white);
+}
+
+.limited {
+  border-style: dashed;
+  background: var(--color-void);
+  color: var(--color-white);
+}
+
+.soldOut {
+  background: rgba(92, 92, 92, 0.2);
+  color: var(--color-text-muted);
+}
+
+.comingSoon {
+  border-color: var(--color-steel);
+  background: var(--color-void);
+  color: var(--color-steel);
+}
