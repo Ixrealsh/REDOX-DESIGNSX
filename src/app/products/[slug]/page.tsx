@@ -1,6 +1,5 @@
 import { notFound } from 'next/navigation';
 import { ProductDetail } from '@/components/product/ProductDetail';
-import { ProductStory } from '@/components/product/ProductStory';
 import { getDbProduct, getDbProducts } from '@/lib/catalog-db';
 import { buildMetadata, siteMeta } from '@/lib/metadata';
 
@@ -64,7 +63,6 @@ export default async function ProductPage({ params }: ProductPageProps) {
         type="application/ld+json"
       />
       <ProductDetail product={product} />
-      <ProductStory product={product} />
     </>
   );
 }

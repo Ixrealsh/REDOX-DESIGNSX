@@ -316,9 +316,7 @@ export function ProductDetail({ product }: ProductDetailProps) {
     <>
       <section className={styles.pdp}>
         <div className={styles.gallery} ref={imageRef}>
-          <div className={styles.mainImage}>
-            <Image alt={product.imageAlt} fill priority sizes="(min-width: 980px) 58vw, 100vw" src={activeImage} />
-          </div>
+
           <div className={styles.thumbs}>
             {colorSpecificImages.map((image) => (
               <button className={styles.thumb} key={image} onClick={() => setActiveImage(image)} type="button">
@@ -404,9 +402,6 @@ export function ProductDetail({ product }: ProductDetailProps) {
           <div className={`${styles.optionGroup} ${shaking ? styles.shaking : ''}`}>
             <div className={styles.optionHeader}>
               <h2 className={styles.optionTitle}>Select Sizes & Quantities</h2>
-              <Link className={styles.sizeGuide} href="/size-guide">
-                <RulerIcon /> Size guide
-              </Link>
             </div>
             
             {!selectedColor ? (
@@ -530,22 +525,30 @@ export function ProductDetail({ product }: ProductDetailProps) {
               fontSize: '0.85rem'
             }}>
               <div style={{ color: '#888', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '10px', fontSize: '0.75rem', fontWeight: 'bold' }}>
-                🛒 CURRENT SELECTION BAG
+                CURRENT SELECTION BAG
               </div>
-              <div style={{ display: 'grid', gap: '8px' }}>
+              <div style={{ display: 'grid', gap: '12px', maxHeight: '130px', overflowY: 'auto', paddingRight: '8px' }}>
                 {Object.entries(quantities).map(([color, sizesObj]) => {
                   const selectedSizes = Object.entries(sizesObj).filter(([_, qty]) => qty > 0);
                   if (selectedSizes.length === 0) return null;
+                  const itemImage = product.colorImages?.[color]?.[0] || product.image;
                   return (
-                    <div key={color} style={{ borderBottom: '1px dashed rgba(255,255,255,0.05)', paddingBottom: '8px' }}>
-                      <span style={{ color: '#10b981', fontWeight: 'bold' }}>{color}</span>
-                      <div style={{ paddingLeft: '12px', marginTop: '4px', color: '#fff' }}>
-                        {selectedSizes.map(([sz, qty]) => (
-                          <div key={sz} style={{ display: 'flex', justifyContent: 'space-between' }}>
-                            <span>Size {sz} (x{qty})</span>
-                            <span style={{ color: '#888' }}>GH₵{product.price * qty}</span>
-                          </div>
-                        ))}
+                    <div key={color} style={{ display: 'flex', gap: '12px', borderBottom: '1px dashed rgba(255,255,255,0.05)', paddingBottom: '8px' }}>
+                      {itemImage && (
+                        <div style={{ position: 'relative', width: '40px', height: '50px', borderRadius: '4px', overflow: 'hidden', flexShrink: 0, border: '1px solid rgba(255,255,255,0.1)' }}>
+                          <Image src={itemImage} alt={color} fill sizes="40px" style={{ objectFit: 'cover' }} />
+                        </div>
+                      )}
+                      <div style={{ flex: 1 }}>
+                        <span style={{ color: '#10b981', fontWeight: 'bold' }}>{color}</span>
+                        <div style={{ marginTop: '2px', color: '#fff', fontSize: '0.8rem' }}>
+                          {selectedSizes.map(([sz, qty]) => (
+                            <div key={sz} style={{ display: 'flex', justifyContent: 'space-between' }}>
+                              <span>Size {sz} (x{qty})</span>
+                              <span style={{ color: '#888' }}>GH₵{product.price * qty}</span>
+                            </div>
+                          ))}
+                        </div>
                       </div>
                     </div>
                   );
