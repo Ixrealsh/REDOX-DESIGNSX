@@ -75,21 +75,6 @@ export function ProductStory({ product }: ProductStoryProps) {
           </div>
         </div>
       </div>
-      <div className={styles.panel} data-story-panel>
-        <div className={styles.copy} data-story-copy>
-          <p className="eyebrow">Use case</p>
-          <h2>Quiet in shape. Heavy in presence.</h2>
-          <p>{product.story}</p>
-          <div className={styles.callouts}>
-            <span className={styles.callout}>Limited production run</span>
-            <span className={styles.callout}>No planned restock</span>
-            <span className={styles.callout}>Designed for daily rotation</span>
-          </div>
-        </div>
-        <div className={styles.media} data-story-image>
-          <Image alt={`${product.name} editorial styling`} fill sizes="(min-width: 860px) 45vw, 100vw" src="/assets/images/lookbook/underpass-editorial.png" />
-        </div>
-      </div>
     </section>
   );
 }

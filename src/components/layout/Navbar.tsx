@@ -12,7 +12,7 @@ const primaryLinks = [
   { href: '/shop', label: 'Shop' },
   { href: '/collections', label: 'Collections' },
   { href: '/drops', label: 'Drops' },
-  { href: '/lookbook', label: 'Lookbook' },
+  { href: '/track-order', label: 'Track Order' },
   { href: '/about', label: 'About' }
 ];
 
@@ -40,7 +40,7 @@ export function Navbar() {
         </button>
 
         <div className={styles.links}>
-          {primaryLinks.slice(0, 4).map((link) => (
+          {primaryLinks.slice(0, 5).map((link) => (
             <Link
               className={`${styles.navLink} ${pathname.startsWith(link.href) ? styles.navLinkActive : ''}`}
               href={link.href}
