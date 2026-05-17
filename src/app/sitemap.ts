@@ -12,7 +12,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
     '/lookbook',
     '/about',
     '/sustainability',
-    '/track-order',
+    '/size-guide',
     '/contact',
     '/search'
   ];
