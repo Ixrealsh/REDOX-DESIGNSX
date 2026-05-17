@@ -2,11 +2,10 @@
 
 import Image from 'next/image';
 import Link from 'next/link';
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { Badge } from '@/components/ui/Badge';
 import { HeartIcon } from '@/components/ui/Icons';
 import { formatCurrency } from '@/lib/format';
-import { useCartStore } from '@/store/cart.store';
 import { useWishlistStore } from '@/store/wishlist.store';
 import type { Product } from '@/types/product';
 import styles from './ProductCard.module.css';
@@ -17,23 +16,8 @@ interface ProductCardProps {
 }
 
 export function ProductCard({ product, priority = false }: ProductCardProps) {
-  const [sizesOpen, setSizesOpen] = useState(false);
-  const addItem = useCartStore((state) => state.addItem);
   const toggleWishlist = useWishlistStore((state) => state.toggleItem);
   const isWishlisted = useWishlistStore((state) => state.isWishlisted(product.id));
-  const uniqueSizes = useMemo(
-    () => Array.from(new Set(product.variants.map((variant) => variant.size))),
-    [product.variants]
-  );
-
-  const handleQuickAdd = (size: string) => {
-    const variant = product.variants.find((item) => item.size === size && item.inventory > 0);
-
-    if (variant) {
-      addItem(product, variant, 1);
-      setSizesOpen(false);
-    }
-  };
 
   return (
     <article className={styles.card}>
@@ -72,31 +56,7 @@ export function ProductCard({ product, priority = false }: ProductCardProps) {
         <HeartIcon />
       </button>
 
-      <div className={styles.quickAdd}>
-        <button className={styles.quickButton} onClick={() => setSizesOpen((open) => !open)} type="button">
-          Quick add
-        </button>
-        {sizesOpen ? (
-          <div aria-label={`Select size for ${product.name}`} className={styles.sizes} role="group">
-            {uniqueSizes.map((size) => {
-              const variant = product.variants.find((item) => item.size === size);
-              const disabled = !variant || variant.inventory <= 0 || product.badge === 'COMING SOON';
 
-              return (
-                <button
-                  className={styles.sizeButton}
-                  disabled={disabled}
-                  key={size}
-                  onClick={() => handleQuickAdd(size)}
-                  type="button"
-                >
-                  {size}
-                </button>
-              );
-            })}
-          </div>
-        ) : null}
-      </div>
 
       <div className={styles.meta}>
         <div>

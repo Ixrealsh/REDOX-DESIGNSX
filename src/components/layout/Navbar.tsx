@@ -51,8 +51,18 @@ export function Navbar() {
           ))}
         </div>
 
-        <Link aria-label="Redox Design home" className={styles.logo} href="/">
-          <span className={styles.logoMark}>R</span>
+        <Link aria-label="Redox Design home" className={styles.logo} href="/" style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+          <img 
+            src="/assets/icons/redoxlogo.jpg" 
+            alt="Redox Design" 
+            style={{ 
+              width: '32px', 
+              height: '32px', 
+              borderRadius: '50%', 
+              objectFit: 'cover', 
+              border: '1px solid var(--color-border)' 
+            }} 
+          />
           <span>Redox</span>
         </Link>
 

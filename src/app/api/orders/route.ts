@@ -15,7 +15,7 @@ const orderSchema = z.object({
   customerEmail: z.string().email().max(255),
   shippingAddress: z.string().min(5),
   shippingCity: z.string().min(2).max(255),
-  paymentMethod: z.enum(['COD', 'MOMO']),
+  paymentMethod: z.enum(['COD', 'MOMO', 'PAYSTACK']),
   momoNetwork: z.enum(['MTN', 'Telecel', 'AT']).optional(),
   momoNumber: z.string().max(100).optional()
 });

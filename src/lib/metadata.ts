@@ -30,6 +30,11 @@ export function buildMetadata({
     title: pageTitle,
     description: pageDescription,
     alternates: { canonical: url },
+    icons: {
+      icon: '/assets/icons/redoxlogo.jpg',
+      apple: '/assets/icons/redoxlogo.jpg',
+      shortcut: '/assets/icons/redoxlogo.jpg'
+    },
     openGraph: {
       title: pageTitle,
       description: pageDescription,
