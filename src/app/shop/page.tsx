@@ -5,7 +5,7 @@ import { buildMetadata } from '@/lib/metadata';
 
 export const metadata = buildMetadata({
   title: 'Shop',
-  description: 'Shop limited-run Redox Design hoodies, tees, cargos, outerwear, and accessories.',
+  description: 'Shop limited-run Redox Designsx hoodies, tees, cargos, outerwear, and accessories.',
   path: '/shop'
 });
 

@@ -7,7 +7,7 @@ export function HomeHero() {
   return (
     <section className={styles.hero}>
       <Image
-        alt="Redox Design dark streetwear campaign with models in black technical apparel"
+        alt="Redox Designsx dark streetwear campaign with models in black technical apparel"
         className={styles.heroImage}
         fill
         priority

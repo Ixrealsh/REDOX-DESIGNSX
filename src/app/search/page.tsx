@@ -10,7 +10,7 @@ interface SearchPageProps {
 
 export const metadata = buildMetadata({
   title: 'Search',
-  description: 'Search Redox Design products and collections.',
+  description: 'Search Redox Designsx products and collections.',
   path: '/search'
 });
 

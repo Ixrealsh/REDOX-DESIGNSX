@@ -5,7 +5,7 @@ export const siteMeta = {
   siteUrl: process.env.NEXT_PUBLIC_SITE_URL || 'https://redoxdesign.com',
   defaultTitle: 'Redox Designsx - Premium Streetwear and Contemporary Clothing',
   defaultDescription:
-    'Redox Design crafts limited-run streetwear for those who dress with intention. Explore collections, drops, and lookbooks.',
+    'Redox Designsx crafts limited-run streetwear for those who dress with intention. Explore collections, drops, and lookbooks.',
   defaultOgImage: '/assets/images/campaigns/redox-hero.png',
   twitterHandle: '@redoxdesign'
 };

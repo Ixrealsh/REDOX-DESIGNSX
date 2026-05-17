@@ -3,8 +3,8 @@ import { getDbProducts, getDbDrops, getDbCollections, getDbLookbooks, getDbWaitl
 import { AdminDashboard } from './AdminDashboard';
 
 export const metadata = {
-  title: 'Admin Console | Redox Design',
-  description: 'Manage Redox Design apparel catalog, releases, and waitlist signups.',
+  title: 'Admin Console | Redox Designsx',
+  description: 'Manage Redox Designsx apparel catalog, releases, and waitlist signups.',
   robots: {
     index: false,
     follow: false

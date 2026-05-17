@@ -4,7 +4,7 @@ import styles from '../pages.module.css';
 
 export const metadata = buildMetadata({
   title: 'About',
-  description: 'The Redox Design origin story, manifesto, and brand values.',
+  description: 'The Redox Designsx origin story, manifesto, and brand values.',
   path: '/about'
 });
 
@@ -24,7 +24,7 @@ export default function AboutPage() {
       <section className={styles.section}>
         <div className={`${styles.inner} ${styles.split}`}>
           <div className={styles.imageCard}>
-            <Image alt="Redox Design campaign models in dark apparel" fill sizes="(min-width: 1040px) 50vw, 100vw" src="/assets/images/campaigns/redox-hero.png" />
+            <Image alt="Redox Designsx campaign models in dark apparel" fill sizes="(min-width: 1040px) 50vw, 100vw" src="/assets/images/campaigns/redox-hero.png" />
           </div>
           <div className={styles.panel}>
             <h2>Chemical precision. Street tension.</h2>

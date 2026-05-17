@@ -3,7 +3,7 @@ import styles from '../pages.module.css';
 
 export const metadata = buildMetadata({
   title: 'Sustainability',
-  description: 'Redox Design material responsibility, limited production, and care philosophy.',
+  description: 'Redox Designsx material responsibility, limited production, and care philosophy.',
   path: '/sustainability'
 });
 
