@@ -1,9 +1,9 @@
 import type { Metadata } from 'next';
 
 export const siteMeta = {
-  siteName: 'Redox Design',
+  siteName: 'Redox Designsx',
   siteUrl: process.env.NEXT_PUBLIC_SITE_URL || 'https://redoxdesign.com',
-  defaultTitle: 'Redox Design - Premium Streetwear and Contemporary Clothing',
+  defaultTitle: 'Redox Designsx - Premium Streetwear and Contemporary Clothing',
   defaultDescription:
     'Redox Design crafts limited-run streetwear for those who dress with intention. Explore collections, drops, and lookbooks.',
   defaultOgImage: '/assets/images/campaigns/redox-hero.png',

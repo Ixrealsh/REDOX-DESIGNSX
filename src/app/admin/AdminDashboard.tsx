@@ -716,7 +716,7 @@ export function AdminDashboard({
       <header className={styles.adminHeader}>
         <div>
           <p className={styles.adminSubtitle}>Management Console</p>
-          <h1 className={styles.adminTitle}>Redox Design Admin</h1>
+          <h1 className={styles.adminTitle}>Redox Designsx Admin</h1>
         </div>
         
         {isDbConnected && (

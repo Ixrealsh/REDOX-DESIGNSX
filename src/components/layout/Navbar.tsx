@@ -51,19 +51,28 @@ export function Navbar() {
           ))}
         </div>
 
-        <Link aria-label="Redox Design home" className={styles.logo} href="/" style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+        <Link aria-label="Redox Designsx home" className={styles.logo} href="/">
           <img 
             src="/assets/icons/redoxlogo.jpg" 
-            alt="Redox Design" 
+            alt="Redox Designsx" 
             style={{ 
-              width: '32px', 
-              height: '32px', 
+              width: '42px', 
+              height: '42px', 
               borderRadius: '50%', 
               objectFit: 'cover', 
-              border: '1px solid var(--color-border)' 
-            }} 
+              border: '1.5px solid var(--color-border)',
+              display: 'block',
+              transition: 'border-color 0.2s, transform 0.2s'
+            }}
+            onMouseOver={(e) => {
+              e.currentTarget.style.borderColor = 'var(--color-red)';
+              e.currentTarget.style.transform = 'scale(1.05)';
+            }}
+            onMouseOut={(e) => {
+              e.currentTarget.style.borderColor = 'var(--color-border)';
+              e.currentTarget.style.transform = 'scale(1)';
+            }}
           />
-          <span>Redox</span>
         </Link>
 
         <div className={styles.actions}>

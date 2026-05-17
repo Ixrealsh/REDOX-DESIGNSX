@@ -358,6 +358,7 @@ export function ProductDetail({ product }: ProductDetailProps) {
               {product.colors.map((color) => {
                 const imageUrl = product.colorImages?.[color]?.[0] || product.image;
                 const isSelected = selectedColor === color;
+                const colorQty = Object.values(quantities[color] || {}).reduce((acc, curr) => acc + curr, 0);
                 return (
                   <div
                     className={`${styles.colorCard} ${isSelected ? styles.colorCardActive : ''}`}
@@ -370,6 +371,29 @@ export function ProductDetail({ product }: ProductDetailProps) {
                         src={imageUrl} 
                         alt={color} 
                       />
+                      {colorQty > 0 && (
+                        <div style={{
+                          position: 'absolute',
+                          top: '6px',
+                          right: '6px',
+                          background: 'var(--color-red)',
+                          color: '#fff',
+                          fontWeight: 'bold',
+                          fontSize: '0.7rem',
+                          width: '20px',
+                          height: '20px',
+                          borderRadius: '50%',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          zIndex: 10,
+                          boxShadow: '0 0 8px rgba(215, 38, 56, 0.6)',
+                          border: '1.5px solid #000',
+                          fontFamily: 'monospace'
+                        }}>
+                          {colorQty}
+                        </div>
+                      )}
                     </div>
                     <div className={styles.colorCardLabel}>
                       {color}

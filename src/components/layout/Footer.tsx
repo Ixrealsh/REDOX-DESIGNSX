@@ -39,7 +39,7 @@ export function Footer() {
           <Link className={styles.logo} href="/" style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
             <img 
               src="/assets/icons/redoxlogo.jpg" 
-              alt="Redox Design" 
+              alt="Redox Designsx" 
               style={{ 
                 width: '36px', 
                 height: '36px', 
@@ -48,7 +48,7 @@ export function Footer() {
                 border: '1px solid var(--color-border)' 
               }} 
             />
-            <span>Redox Design</span>
+            <span>Redox Designsx</span>
           </Link>
           <p className={styles.copy}>
             Chemical precision. Street tension. Limited apparel built for the people who dress
@@ -70,7 +70,7 @@ export function Footer() {
         ))}
       </div>
       <div className={styles.bottom}>
-        <span>2026 Redox Design</span>
+        <span>2026 Redox Designsx</span>
         <span>12 drops / 40,000+ units / zero restocks</span>
       </div>
     </footer>
