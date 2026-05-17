@@ -270,42 +270,39 @@ export function ProductDetail({ product }: ProductDetailProps) {
     const paystackKey = process.env.NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY;
 
     if (formData.paymentMethod === 'PAYSTACK') {
-      if (paystackKey && paystackKey !== 'your_paystack_public_key_here') {
-        try {
-          const paystack = await loadPaystackScript();
-          if (!paystack) {
-            throw new Error('Paystack secure payment library failed to load. Please verify your connection.');
-          }
+      if (!paystackKey || paystackKey === 'your_paystack_public_key_here') {
+        setError('Live checkout is currently disabled. Please configure your public key.');
+        setCheckoutLoading(false);
+        return;
+      }
 
-          const handler = paystack.setup({
-            key: paystackKey,
-            email: formData.email,
-            amount: totalPrice * 100, // minor units
-            currency: 'GHS',
-            ref: 'RDX-' + Math.floor(Math.random() * 1000000000 + 1),
-            callback: async (response: any) => {
-              await completeOrderSubmit(response.reference);
-            },
-            onClose: () => {
-              setCheckoutLoading(false);
-              setError('Paystack transaction was cancelled by the user.');
-            }
-          });
-
-          handler.openIframe();
-          return;
-        } catch (err: any) {
-          console.error(err);
-          setError(err.message || 'Paystack initialization failed. Please use another method.');
-          setCheckoutLoading(false);
-          return;
+      try {
+        const paystack = await loadPaystackScript();
+        if (!paystack) {
+          throw new Error('Paystack secure payment library failed to load. Please check your internet connection or disable ad-blockers.');
         }
-      } else {
-        // Safe Simulation Mode: Runs automatically to demo and verify checkout if keys are not ready!
-        setError('');
-        await new Promise((resolve) => setTimeout(resolve, 1500));
-        const demoRef = 'RDX-DEMO-' + Math.floor(Math.random() * 1000000000 + 1);
-        await completeOrderSubmit(demoRef);
+
+        const handler = paystack.setup({
+          key: paystackKey,
+          email: formData.email,
+          amount: totalPrice * 100, // minor units
+          currency: 'GHS',
+          ref: 'RDX-' + Math.floor(Math.random() * 1000000000 + 1),
+          callback: async (response: any) => {
+            await completeOrderSubmit(response.reference);
+          },
+          onClose: () => {
+            setCheckoutLoading(false);
+            setError('Paystack transaction was cancelled by the user.');
+          }
+        });
+
+        handler.openIframe();
+        return;
+      } catch (err: any) {
+        console.error(err);
+        setError(err.message || 'Paystack initialization failed. Please use another method.');
+        setCheckoutLoading(false);
         return;
       }
     }

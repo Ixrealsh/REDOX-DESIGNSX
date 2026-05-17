@@ -1,5 +1,5 @@
 /**
- * Dynamically loads the Paystack Pop secure inline script if not already present in the window.
+ * Dynamically loads the Paystack Pop secure inline script with cache-busting.
  * Returns a promise that resolves to the PaystackPop instance or null if it fails.
  */
 export function loadPaystackScript(): Promise<any> {
@@ -9,40 +9,36 @@ export function loadPaystackScript(): Promise<any> {
       return;
     }
 
+    // If already loaded in window, resolve instantly
     if ((window as any).PaystackPop) {
       resolve((window as any).PaystackPop);
       return;
     }
-
-    // Check if script is already in the document but not loaded yet
-    const existingScript = document.querySelector('script[src*="paystack.co"]');
-    if (existingScript) {
-      const checkInterval = setInterval(() => {
-        if ((window as any).PaystackPop) {
-          clearInterval(checkInterval);
-          resolve((window as any).PaystackPop);
-        }
-      }, 100);
-
-      // Timeout fallback after 6 seconds
-      setTimeout(() => {
-        clearInterval(checkInterval);
-        resolve((window as any).PaystackPop || null);
-      }, 6000);
+    if ((window as any).Paystack) {
+      resolve((window as any).Paystack);
       return;
     }
 
-    // Inject the script dynamically
+    // Inject fresh script tag with a cache-busting timestamp to bypass bad caches/CDN issues
     const script = document.createElement('script');
-    script.src = 'https://js.paystack.co/v1/inline.js';
+    script.src = `https://js.paystack.co/v1/inline.js?cb=${Date.now()}`;
     script.async = true;
+    
     script.onload = () => {
-      resolve((window as any).PaystackPop);
+      const instance = (window as any).PaystackPop || (window as any).Paystack;
+      if (instance) {
+        resolve(instance);
+      } else {
+        console.error('Paystack script loaded but window.PaystackPop is undefined.');
+        resolve(null);
+      }
     };
+
     script.onerror = () => {
-      console.error('Failed to load Paystack inline payment script.');
+      console.error('Network error loading Paystack inline script.');
       resolve(null);
     };
+
     document.head.appendChild(script);
   });
 }

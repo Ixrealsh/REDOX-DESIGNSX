@@ -93,10 +93,12 @@ export async function POST(request: Request) {
     const verifiedTotalPrice = dbProduct.price * inferredQty;
 
     // 2. SECURE PAYSTACK TRANSACTION REFERENCE VERIFICATION
-    const paystackSecret = process.env.PAYSTACK_SECRET_KEY;
-    
-    // Only run if we are in live/testing mode with actual secret credentials configured
-    if (orderData.paymentMethod === 'PAYSTACK' && paystackSecret && paystackSecret !== 'your_paystack_secret_key_here') {
+    if (orderData.paymentMethod === 'PAYSTACK') {
+      const paystackSecret = process.env.PAYSTACK_SECRET_KEY;
+      if (!paystackSecret || paystackSecret === 'your_paystack_secret_key_here') {
+        return NextResponse.json({ error: 'System Configuration Error: Live payment gateway secret is missing.' }, { status: 500 });
+      }
+
       const paymentRef = orderData.momoNumber; // Loaded from client callback reference
       if (!paymentRef) {
         return NextResponse.json({ error: 'Payment authorization reference is missing.' }, { status: 400 });

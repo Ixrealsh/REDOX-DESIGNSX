@@ -18,7 +18,7 @@ export function CartDrawer() {
   const removeItem = useCartStore((state) => state.removeItem);
   const updateQty = useCartStore((state) => state.updateQty);
   const clearCart = useCartStore((state) => state.clearCart);
-  
+
   const { totalItems, subtotal } = getCartTotals(items);
 
   // Checkout States
@@ -78,40 +78,38 @@ export function CartDrawer() {
 
     const paystackKey = process.env.NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY;
 
-    if (paystackKey && paystackKey !== 'your_paystack_public_key_here') {
-      try {
-        const paystack = await loadPaystackScript();
-        if (!paystack) {
-          throw new Error('Paystack secure payment library failed to load. Please verify your connection.');
-        }
+    if (!paystackKey || paystackKey === 'your_paystack_public_key_here') {
+      setError('Live checkout is currently disabled. Please configure your public key.');
+      setCheckoutLoading(false);
+      return;
+    }
 
-        const handler = paystack.setup({
-          key: paystackKey,
-          email: formData.email,
-          amount: subtotal * 100, // minor units
-          currency: 'GHS',
-          ref: 'RDX-CART-' + Math.floor(Math.random() * 1000000000 + 1),
-          callback: async (response: any) => {
-            await saveCartOrders(response.reference);
-          },
-          onClose: () => {
-            setCheckoutLoading(false);
-            setError('Paystack transaction was cancelled by the user.');
-          }
-        });
-
-        handler.openIframe();
-      } catch (err: any) {
-        console.error(err);
-        setError(err.message || 'Paystack initialization failed. Please try again.');
-        setCheckoutLoading(false);
+    try {
+      const paystack = await loadPaystackScript();
+      if (!paystack) {
+        throw new Error('Paystack secure payment library failed to load. Please check your internet connection or disable ad-blockers.');
       }
-    } else {
-      // Sandbox Simulation Mode
-      setError('');
-      await new Promise((resolve) => setTimeout(resolve, 1500));
-      const demoRef = 'RDX-DEMO-' + Math.floor(Math.random() * 1000000000 + 1);
-      await saveCartOrders(demoRef);
+
+      const handler = paystack.setup({
+        key: paystackKey,
+        email: formData.email,
+        amount: subtotal * 100, // minor units
+        currency: 'GHS',
+        ref: 'RDX-CART-' + Math.floor(Math.random() * 1000000000 + 1),
+        callback: async (response: any) => {
+          await saveCartOrders(response.reference);
+        },
+        onClose: () => {
+          setCheckoutLoading(false);
+          setError('Paystack transaction was cancelled by the user.');
+        }
+      });
+
+      handler.openIframe();
+    } catch (err: any) {
+      console.error(err);
+      setError(err.message || 'Paystack initialization failed. Please try again.');
+      setCheckoutLoading(false);
     }
   };
 
@@ -193,7 +191,7 @@ export function CartDrawer() {
             <p style={{ color: '#888', fontSize: '0.8rem', marginBottom: '24px', lineHeight: 1.5 }}>
               Your payment has been successfully captured and your order has been written to the Neon Postgres database.
             </p>
-            
+
             <div style={{ background: 'var(--color-surface-2)', border: '1px solid var(--color-border)', borderRadius: '8px', padding: '16px', width: '100%', marginBottom: '32px', textAlign: 'left' }}>
               <span style={{ color: '#666', fontSize: '0.7rem', display: 'block', marginBottom: '8px', letterSpacing: '0.05em', textTransform: 'uppercase' }}>
                 Your Tracking References:
@@ -390,7 +388,7 @@ export function CartDrawer() {
                   Proceed to Checkout
                 </Button>
                 <p className={styles.checkoutNote} style={{ letterSpacing: '0.04em', fontSize: '0.68rem' }}>
-                Secure payment gateway processed by Paystack.
+                  Secure payment gateway processed by Paystack.
                 </p>
               </div>
             )}
