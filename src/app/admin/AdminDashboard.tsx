@@ -1240,31 +1240,7 @@ export function AdminDashboard({
                   />
                 </div>
 
-                {/* Collection Selector */}
-                <div className={styles.field}>
-                  <label className={styles.fieldLabel}>Collection Release *</label>
-                  <select 
-                    className={styles.select}
-                    value={productForm.collectionSlug}
-                    onChange={(e) => {
-                      const slug = e.target.value;
-                      const nameMap: Record<string, string> = {
-                        'chemical-uniform': 'Chemical Uniform',
-                        'night-lab': 'Night Lab',
-                        'signal-red': 'Signal Red'
-                      };
-                      setProductForm((p) => ({
-                        ...p,
-                        collectionSlug: slug,
-                        collectionName: nameMap[slug] || 'General Catalog'
-                      }));
-                    }}
-                  >
-                    <option value="chemical-uniform">Chemical Uniform</option>
-                    <option value="night-lab">Night Lab</option>
-                    <option value="signal-red">Signal Red</option>
-                  </select>
-                </div>
+
 
                 {/* Image Upload Widget */}
                 <div className={`${styles.field} ${styles.formGridFull}`}>
@@ -1464,22 +1440,7 @@ export function AdminDashboard({
                   )}
                 </div>
 
-                {/* Product Badge */}
-                <div className={styles.field}>
-                  <label className={styles.fieldLabel}>Marketing Badge</label>
-                  <select 
-                    className={styles.select}
-                    value={productForm.badge}
-                    onChange={(e) => setProductForm((p) => ({ ...p, badge: e.target.value }))}
-                  >
-                    <option value="">None</option>
-                    <option value="NEW">NEW</option>
-                    <option value="SALE">SALE</option>
-                    <option value="LIMITED">LIMITED</option>
-                    <option value="COMING SOON">COMING SOON</option>
-                    <option value="SOLD OUT">SOLD OUT</option>
-                  </select>
-                </div>
+
 
                 {/* Description */}
                 <div className={`${styles.field} ${styles.formGridFull}`}>
