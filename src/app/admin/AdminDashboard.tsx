@@ -232,43 +232,40 @@ export function AdminDashboard({
         }
         triggerNotification('Image uploaded successfully to Cloudinary!', 'success');
       } else {
-        const sandboxImages = {
-          product: [
-            'https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?auto=format&fit=crop&q=80&w=800',
-            'https://images.unsplash.com/photo-1539109136881-3be0616acf4b?auto=format&fit=crop&q=80&w=800',
-            'https://images.unsplash.com/photo-1549298916-b41d501d3772?auto=format&fit=crop&q=80&w=800',
-            'https://images.unsplash.com/photo-1509631179647-0177331693ae?auto=format&fit=crop&q=80&w=800'
-          ],
-          drop: [
-            'https://images.unsplash.com/photo-1483985988355-763728e1935b?auto=format&fit=crop&q=80&w=1200',
-            'https://images.unsplash.com/photo-1529139574466-a303027c1d8b?auto=format&fit=crop&q=80&w=1200'
-          ],
-          collection: [
-            'https://images.unsplash.com/photo-1490481651871-ab68de25d43d?auto=format&fit=crop&q=80&w=1200',
-            'https://images.unsplash.com/photo-1469334031218-e382a71b716b?auto=format&fit=crop&q=80&w=1200'
-          ],
-          lookbook: [
-            'https://images.unsplash.com/photo-1509631179647-0177331693ae?auto=format&fit=crop&q=80&w=1200',
-            'https://images.unsplash.com/photo-1558769132-cb1aea458c5e?auto=format&fit=crop&q=80&w=1200'
-          ]
+        // Fallback: Read file locally as Base64 to preserve their EXACT selected file!
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          const base64data = reader.result as string;
+          if (targetField === 'product') {
+            setProductForm((prev) => ({ ...prev, image: base64data }));
+          } else if (targetField === 'drop') {
+            setDropForm((prev) => ({ ...prev, image: base64data }));
+          } else if (targetField === 'collection') {
+            setCollectionForm((prev) => ({ ...prev, image: base64data }));
+          } else if (targetField === 'lookbook') {
+            setLookbookForm((prev) => ({ ...prev, image: base64data }));
+          }
+          triggerNotification('Loaded your exact selected image locally!', 'success');
         };
-
-        const list = sandboxImages[targetField];
-        const randomImage = list[Math.floor(Math.random() * list.length)];
-
-        if (targetField === 'product') {
-          setProductForm((prev) => ({ ...prev, image: randomImage }));
-        } else if (targetField === 'drop') {
-          setDropForm((prev) => ({ ...prev, image: randomImage }));
-        } else if (targetField === 'collection') {
-          setCollectionForm((prev) => ({ ...prev, image: randomImage }));
-        } else if (targetField === 'lookbook') {
-          setLookbookForm((prev) => ({ ...prev, image: randomImage }));
-        }
-        triggerNotification('Sandbox active: Loaded high-end Unsplash streetwear image to preview layout!', 'success');
+        reader.readAsDataURL(file);
       }
     } catch (err: any) {
-      triggerNotification(err.message || 'Error uploading file.', 'error');
+      // Direct local file backup reader
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const base64data = reader.result as string;
+        if (targetField === 'product') {
+          setProductForm((prev) => ({ ...prev, image: base64data }));
+        } else if (targetField === 'drop') {
+          setDropForm((prev) => ({ ...prev, image: base64data }));
+        } else if (targetField === 'collection') {
+          setCollectionForm((prev) => ({ ...prev, image: base64data }));
+        } else if (targetField === 'lookbook') {
+          setLookbookForm((prev) => ({ ...prev, image: base64data }));
+        }
+        triggerNotification('Loaded your exact selected image locally!', 'success');
+      };
+      reader.readAsDataURL(file);
     } finally {
       setUploadingImageField(null);
       if (fileInputRef.current) fileInputRef.current.value = '';
@@ -280,9 +277,11 @@ export function AdminDashboard({
     const file = event.target.files?.[0];
     if (!file || activeVariantUploadIndex === null) return;
 
-    triggerNotification('Uploading variant image to Cloudinary...', 'success');
+    triggerNotification('Uploading variant image...', 'success');
     const formData = new FormData();
     formData.append('file', file);
+
+    const uploadIndex = activeVariantUploadIndex;
 
     try {
       const response = await fetch('/api/admin/upload', {
@@ -291,31 +290,47 @@ export function AdminDashboard({
       });
       const data = await response.json();
 
-      let imageUrl = '';
       if (response.ok && data.url) {
-        imageUrl = data.url;
+        setColorVariants(prev => {
+          const next = [...prev];
+          next[uploadIndex] = {
+            ...next[uploadIndex],
+            imageUrls: [...next[uploadIndex].imageUrls, data.url]
+          };
+          return next;
+        });
         triggerNotification('Variant image uploaded successfully!', 'success');
       } else {
-        const sandboxImages = [
-          'https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?auto=format&fit=crop&q=80&w=800',
-          'https://images.unsplash.com/photo-1539109136881-3be0616acf4b?auto=format&fit=crop&q=80&w=800',
-          'https://images.unsplash.com/photo-1549298916-b41d501d3772?auto=format&fit=crop&q=80&w=800',
-          'https://images.unsplash.com/photo-1509631179647-0177331693ae?auto=format&fit=crop&q=80&w=800'
-        ];
-        imageUrl = sandboxImages[Math.floor(Math.random() * sandboxImages.length)];
-        triggerNotification('Sandbox active: Loaded high-end Unsplash variant image!', 'success');
-      }
-
-      setColorVariants(prev => {
-        const next = [...prev];
-        next[activeVariantUploadIndex] = {
-          ...next[activeVariantUploadIndex],
-          imageUrls: [...next[activeVariantUploadIndex].imageUrls, imageUrl]
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          const base64data = reader.result as string;
+          setColorVariants(prev => {
+            const next = [...prev];
+            next[uploadIndex] = {
+              ...next[uploadIndex],
+              imageUrls: [...next[uploadIndex].imageUrls, base64data]
+            };
+            return next;
+          });
+          triggerNotification('Loaded your exact variant image locally!', 'success');
         };
-        return next;
-      });
+        reader.readAsDataURL(file);
+      }
     } catch (err: any) {
-      triggerNotification(err.message || 'Error uploading variant image.', 'error');
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const base64data = reader.result as string;
+        setColorVariants(prev => {
+          const next = [...prev];
+          next[uploadIndex] = {
+            ...next[uploadIndex],
+            imageUrls: [...next[uploadIndex].imageUrls, base64data]
+          };
+          return next;
+        });
+        triggerNotification('Loaded your exact variant image locally!', 'success');
+      };
+      reader.readAsDataURL(file);
     } finally {
       setActiveVariantUploadIndex(null);
       if (variantFileInputRef.current) variantFileInputRef.current.value = '';
