@@ -93,11 +93,13 @@ export function CartDrawer() {
       const handler = paystack.setup({
         key: paystackKey,
         email: formData.email,
-        amount: subtotal * 100, // minor units
+        amount: Math.round(subtotal * 100), // minor units (must be integer)
         currency: 'GHS',
-        ref: 'RDX-CART-' + Math.floor(Math.random() * 1000000000 + 1),
-        callback: async (response: any) => {
-          await saveCartOrders(response.reference);
+        reference: 'RDX-CART-' + Math.floor(Math.random() * 1000000000 + 1),
+        callback: (response: any) => {
+          saveCartOrders(response.reference).catch((err) => {
+            console.error('Failed to complete cart order post-payment:', err);
+          });
         },
         onClose: () => {
           setCheckoutLoading(false);

@@ -17,11 +17,12 @@ const nextConfig = {
   async headers() {
     const csp = [
       "default-src 'self'",
-      "script-src 'self' 'unsafe-eval' 'unsafe-inline'",
-      "style-src 'self' 'unsafe-inline'",
+      "script-src 'self' 'unsafe-eval' 'unsafe-inline' https://js.paystack.co",
+      "style-src 'self' 'unsafe-inline' https://paystack.com https://fonts.cdnfonts.com",
       "img-src 'self' data: blob: https://images.unsplash.com https://res.cloudinary.com",
-      "font-src 'self' data:",
-      "connect-src 'self' https://api.cloudinary.com",
+      "font-src 'self' data: https://fonts.cdnfonts.com",
+      "connect-src 'self' https://api.cloudinary.com https://api.paystack.co https://checkout.paystack.com https://api.mnotify.com",
+      "frame-src 'self' https://checkout.paystack.com https://js.paystack.co",
       "frame-ancestors 'none'",
       "base-uri 'self'",
       "form-action 'self'"

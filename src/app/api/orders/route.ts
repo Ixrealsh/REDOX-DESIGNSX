@@ -29,22 +29,40 @@ async function sendSmsNotification(order: any) {
     return;
   }
 
+  // Format customer phone
   let rawPhone = order.customerPhone || '';
   let cleanedPhone = rawPhone.replace(/\D/g, '');
-  
-  // Format to standard 233 Ghana international code
   if (cleanedPhone.startsWith('0') && cleanedPhone.length === 10) {
     cleanedPhone = '233' + cleanedPhone.substring(1);
   } else if (cleanedPhone.length === 9 && !cleanedPhone.startsWith('0')) {
     cleanedPhone = '233' + cleanedPhone;
   }
 
-  const messageText = `REDOX DESIGNSX\nOrder #RD-${order.id} verified!\n\nItem: ${order.productName}\nSpecs: ${order.selectedColor} - Size ${order.selectedSize}\nPrice: GH₵${order.price}\n\nTrack status: https://redox-designsx.vercel.app/track-order?ref=RD-${order.id}`;
+  // Format admin phone from environment
+  let rawAdminPhone = process.env.ADMIN_PHONE_NUMBER || '';
+  let cleanedAdminPhone = rawAdminPhone.replace(/\D/g, '');
+  if (cleanedAdminPhone.startsWith('0') && cleanedAdminPhone.length === 10) {
+    cleanedAdminPhone = '233' + cleanedAdminPhone.substring(1);
+  } else if (cleanedAdminPhone.length === 9 && !cleanedAdminPhone.startsWith('0')) {
+    cleanedAdminPhone = '233' + cleanedAdminPhone;
+  }
+
+  // Deduplicate recipients: if admin number equals customer number, send only once
+  const recipientSet = new Set<string>();
+  if (cleanedPhone) recipientSet.add(cleanedPhone);
+  if (cleanedAdminPhone) recipientSet.add(cleanedAdminPhone);
+
+  if (recipientSet.size === 0) {
+    console.warn('No recipients found for SMS notification.');
+    return;
+  }
+
+  const messageText = `REDOX DESIGNSX\nOrder #RD-${order.id} verified!\n\nItem: ${order.productName}\nSpecs: ${order.selectedColor} - Size ${order.selectedSize}\nPrice: GH₵${order.price}\n\nTrack status: https://redoxdesignx.com/track-order?ref=RD-${order.id}`;
 
   try {
     const url = `https://api.mnotify.com/api/sms/quick?key=${apiKey}`;
     const payload = {
-      recipient: [cleanedPhone],
+      recipient: Array.from(recipientSet),
       sender: senderId.substring(0, 11), // Max 11 chars required by mNotify
       message: messageText,
       is_schedule: false,

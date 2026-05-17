@@ -42,9 +42,6 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
       className={`${archivo.variable} ${barlow.variable} ${dmSans.variable} ${plexMono.variable}`}
       lang="en"
     >
-      <head>
-        <script src="https://js.paystack.co/v1/inline.js" defer></script>
-      </head>
       <body>
         <a className="skipLink" href="#main">
           Skip to main content
