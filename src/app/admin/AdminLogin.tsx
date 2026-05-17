@@ -2,7 +2,6 @@
 
 import { useState } from 'react';
 import Image from 'next/image';
-import { signInWithEmailAndPasswordRest } from '@/lib/firebase';
 
 export function AdminLogin() {
   const [email, setEmail] = useState('');
@@ -16,37 +15,26 @@ export function AdminLogin() {
     setError(null);
 
     try {
-      // 1. Perform Client-side Firebase REST sign-in
-      const firebaseUser = await signInWithEmailAndPasswordRest(email, password);
-      
-      // 2. Send retrieved idToken to local server route for admin email validation and secure session establishment
+      // Send credentials to local server API endpoint to prevent client-side connection/CORS failures
       const response = await fetch('/api/admin/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ idToken: firebaseUser.idToken })
+        body: JSON.stringify({ email, password })
       });
 
       const data = await response.json();
 
       if (response.ok && data.success) {
-        window.location.reload(); // Refresh the page to trigger page.tsx server-side auth check
+        window.location.reload(); // Refresh to trigger page.tsx server check
       } else {
-        if (response.status === 403 || response.status === 401) {
+        if (response.status === 403) {
           window.location.href = '/404';
           return;
         }
         setError(data.error || 'Access Denied. Unauthorized admin account.');
       }
     } catch (err: any) {
-      // Friendly translations for Firebase Auth Errors
-      const rawMsg = err.message || '';
-      if (rawMsg.includes('INVALID_PASSWORD') || rawMsg.includes('EMAIL_NOT_FOUND')) {
-        setError('Invalid admin email or password.');
-      } else if (rawMsg.includes('USER_DISABLED')) {
-        setError('This admin account has been disabled.');
-      } else {
-        setError(rawMsg || 'Authentication failed. Please try again.');
-      }
+      setError('Connection failed. Please try again.');
     } finally {
       setLoading(false);
     }
