@@ -288,8 +288,10 @@ export function ProductDetail({ product }: ProductDetailProps) {
           amount: Math.round(totalPrice * 100), // minor units (must be integer)
           currency: 'GHS',
           reference: 'RDX-' + Math.floor(Math.random() * 1000000000 + 1),
-          callback: async (response: any) => {
-            await completeOrderSubmit(response.reference);
+          callback: (response: any) => {
+            completeOrderSubmit(response.reference).catch((err) => {
+              console.error('Failed to complete order post-payment:', err);
+            });
           },
           onClose: () => {
             setCheckoutLoading(false);

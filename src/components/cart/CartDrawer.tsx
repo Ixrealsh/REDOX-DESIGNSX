@@ -185,30 +185,44 @@ export function CartDrawer() {
 
         {/* 1. SUCCESS STATE */}
         {checkoutSuccess ? (
-          <div style={{ padding: '24px', textAlign: 'center', height: '80%', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', fontFamily: 'monospace' }}>
-            <span style={{ fontSize: '3rem', display: 'block', marginBottom: '16px' }}>🛡️</span>
-            <h3 style={{ color: '#fff', fontSize: '1rem', letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: '8px' }}>
-              TRANSACTION VERIFIED
-            </h3>
-            <p style={{ color: '#888', fontSize: '0.8rem', marginBottom: '24px', lineHeight: 1.5 }}>
-              Your payment has been successfully captured and your order has been written to the Neon Postgres database.
+          <div style={{ padding: '24px', border: '1px solid rgba(16, 185, 129, 0.3)', borderRadius: 'var(--radius-lg)', background: 'rgba(16, 185, 129, 0.05)', backdropFilter: 'blur(12px)', textAlign: 'center', margin: '24px 16px', animation: 'fadeIn 360ms ease-out both' }}>
+            <div style={{ display: 'inline-grid', width: '64px', height: '64px', placeItems: 'center', marginBottom: '16px', border: '2px solid rgba(16, 185, 129, 0.4)', borderRadius: '50%', background: 'rgba(16, 185, 129, 0.1)' }}>
+              <svg viewBox="0 0 24 24" width="40" height="40" fill="none" stroke="#10b981" strokeWidth="2.5">
+                <polyline points="20 6 9 17 4 12" />
+              </svg>
+            </div>
+            <h2 style={{ margin: '0 0 8px', color: 'var(--color-white)', fontFamily: 'var(--font-heading), sans-serif', fontSize: 'var(--text-lg)', letterSpacing: '0.05em' }}>ORDER PLACED SUCCESSFULLY!</h2>
+            <p style={{ margin: '0 0 20px', color: 'var(--color-text-secondary)', fontSize: 'var(--text-sm)', lineHeight: 'var(--leading-relaxed)' }}>
+              Thank you for your order, <strong>{checkoutSuccess[0]?.customerName}</strong>! Your primary reference is{' '}
+              <span style={{ color: '#10b981', fontFamily: 'var(--font-mono), monospace', fontWeight: 700 }}>#RD-{checkoutSuccess[0]?.id}</span>.
             </p>
 
-            <div style={{ background: 'var(--color-surface-2)', border: '1px solid var(--color-border)', borderRadius: '8px', padding: '16px', width: '100%', marginBottom: '32px', textAlign: 'left' }}>
-              <span style={{ color: '#666', fontSize: '0.7rem', display: 'block', marginBottom: '8px', letterSpacing: '0.05em', textTransform: 'uppercase' }}>
-                Your Tracking References:
-              </span>
+            <div style={{ display: 'grid', gap: '8px', marginBottom: '20px', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', padding: '16px', background: 'rgba(0, 0, 0, 0.2)', textAlign: 'left', fontSize: 'var(--text-xs)' }}>
               {checkoutSuccess.map((order) => (
-                <div key={order.id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.78rem', padding: '4px 0', borderBottom: '1px solid rgba(255,255,255,0.03)' }}>
-                  <span style={{ color: '#fff' }}>{order.productName} ({order.selectedSize})</span>
-                  <strong style={{ color: '#10b981' }}>#RD-{order.id}</strong>
-                </div>
+                <p key={order.id} style={{ margin: 0, color: 'var(--color-text-secondary)' }}>
+                  <strong>Item:</strong> {order.productName} ({order.selectedSize}) <span style={{ float: 'right' }}>GH₵{order.price}</span>
+                </p>
               ))}
+              <div style={{ borderTop: '1px solid var(--color-border)', margin: '8px 0' }} />
+              <p style={{ margin: 0, color: 'var(--color-text-secondary)' }}><strong>Total:</strong> GH₵{checkoutSuccess.reduce((sum, o) => sum + o.price, 0)}</p>
+              <p style={{ margin: 0, color: 'var(--color-text-secondary)' }}><strong>Shipping to:</strong> {checkoutSuccess[0]?.shippingAddress}, {checkoutSuccess[0]?.shippingCity}</p>
+              <p style={{ margin: 0, color: 'var(--color-text-secondary)' }}><strong>Payment:</strong> Paystack Secure Checkout</p>
             </div>
 
-            <Button onClick={closeCart} fullWidth>
-              Return to Catalog
-            </Button>
+            <p style={{ color: 'var(--color-text-secondary)', fontSize: 'var(--text-xs)', lineHeight: 'var(--leading-relaxed)' }}>
+              Our sales team will contact you via <strong>{checkoutSuccess[0]?.customerPhone}</strong> shortly to finalize dispatch and shipping details!
+            </p>
+            <button 
+              onClick={() => {
+                setCheckoutSuccess(null);
+                closeCart();
+              }}
+              style={{ marginTop: '16px', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', background: 'transparent', color: 'var(--color-white)', padding: '8px 16px', fontSize: 'var(--text-xs)', cursor: 'pointer' }}
+              onMouseOver={(e) => e.currentTarget.style.borderColor = 'var(--color-white)'}
+              onMouseOut={(e) => e.currentTarget.style.borderColor = 'var(--color-border)'}
+            >
+              Continue Shopping
+            </button>
           </div>
         ) : showCheckout ? (
           /* 2. CHECKOUT STATE */
