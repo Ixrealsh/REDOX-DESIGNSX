@@ -6,7 +6,7 @@ import styles from '../pages.module.css';
 
 export const metadata = buildMetadata({
   title: 'Drops',
-  description: 'Upcoming and archived Redox Designsx apparel drops. Limited pieces, no restocks.',
+  description: 'Upcoming and archived REDOXDESIGNX apparel drops. Limited pieces, no restocks.',
   path: '/drops'
 });
 

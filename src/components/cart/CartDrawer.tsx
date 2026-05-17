@@ -119,7 +119,7 @@ export function CartDrawer() {
     try {
       const createdOrders: any[] = [];
 
-      // Save each item as a distinct traceable order in database
+      // Save each item as a distinct traceable order in database (skipping individual SMS sends)
       for (const item of items) {
         const response = await fetch('/api/orders', {
           method: 'POST',
@@ -137,7 +137,8 @@ export function CartDrawer() {
             shippingAddress: formData.address,
             shippingCity: formData.city,
             paymentMethod: 'PAYSTACK',
-            momoNumber: paymentRef
+            momoNumber: paymentRef,
+            skipSms: true
           })
         });
 
@@ -147,6 +148,18 @@ export function CartDrawer() {
         } else {
           throw new Error(data.error || 'Failed to place order record.');
         }
+      }
+
+      // After all cart items are successfully saved, trigger a single unified SMS summary to save mNotify credits!
+      if (createdOrders.length > 0) {
+        const orderIds = createdOrders.map(o => o.id);
+        fetch('/api/orders/sms-summary', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ orderIds })
+        }).catch((err) => {
+          console.error('Failed to trigger background SMS summary:', err);
+        });
       }
 
       setCheckoutSuccess(createdOrders);

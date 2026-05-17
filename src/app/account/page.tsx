@@ -4,7 +4,7 @@ import styles from '../pages.module.css';
 
 export const metadata = buildMetadata({
   title: 'Account',
-  description: 'Redox Designsx account dashboard for orders, profile, and wishlist.',
+  description: 'REDOXDESIGNX account dashboard for orders, profile, and wishlist.',
   path: '/account'
 });
 

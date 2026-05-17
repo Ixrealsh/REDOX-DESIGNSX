@@ -3,7 +3,7 @@ import { buildMetadata } from '@/lib/metadata';
 
 export const metadata = buildMetadata({
   title: 'Track Order',
-  description: 'Trace your Redox Designsx direct order shipping and delivery status live.',
+  description: 'Trace your REDOXDESIGNX direct order shipping and delivery status live.',
   path: '/track-order'
 });
 

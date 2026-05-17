@@ -4,7 +4,7 @@ import styles from '../../pages.module.css';
 
 export const metadata = buildMetadata({
   title: 'Wishlist',
-  description: 'Saved Redox Designsx apparel pieces.',
+  description: 'Saved REDOXDESIGNX apparel pieces.',
   path: '/account/wishlist'
 });
 

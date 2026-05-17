@@ -6,7 +6,7 @@ import styles from '../pages.module.css';
 
 export const metadata = buildMetadata({
   title: 'Lookbook',
-  description: 'Editorial Redox Designsx styling, campaign imagery, and product callouts.',
+  description: 'Editorial REDOXDESIGNX styling, campaign imagery, and product callouts.',
   path: '/lookbook'
 });
 

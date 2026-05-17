@@ -42,7 +42,7 @@ export default async function ProductPage({ params }: ProductPageProps) {
     image: [`${siteMeta.siteUrl}${product.image}`],
     description: product.description,
     sku: product.variants[0]?.sku,
-    brand: { '@type': 'Brand', name: 'Redox Designsx' },
+    brand: { '@type': 'Brand', name: 'REDOXDESIGNX' },
     aggregateRating: {
       '@type': 'AggregateRating',
       ratingValue: product.rating,

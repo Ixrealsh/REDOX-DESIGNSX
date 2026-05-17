@@ -423,3 +423,24 @@ export async function addDbOrder(o: Omit<Order, 'id' | 'createdAt'>): Promise<Or
     return newOrder;
   }
 }
+
+export async function deleteDbOrder(id: number): Promise<boolean> {
+  if (!isDbConfigured) {
+    const idx = sandboxOrders.findIndex((o) => o.id === id);
+    if (idx !== -1) {
+      sandboxOrders.splice(idx, 1);
+      return true;
+    }
+    return false;
+  }
+  try {
+    await sql`
+      DELETE FROM orders
+      WHERE id = ${id}
+    `;
+    return true;
+  } catch (error) {
+    console.error('Failed to delete order from Neon Postgres:', error);
+    throw error;
+  }
+}

@@ -3,7 +3,7 @@ import styles from '../pages.module.css';
 
 export const metadata = buildMetadata({
   title: 'Size Guide',
-  description: 'Redox Designsx apparel measurements, fit notes, and size tables.',
+  description: 'REDOXDESIGNX apparel measurements, fit notes, and size tables.',
   path: '/size-guide'
 });
 

@@ -51,10 +51,10 @@ export function Navbar() {
           ))}
         </div>
 
-        <Link aria-label="Redox Designsx home" className={styles.logo} href="/">
+        <Link aria-label="REDOXDESIGNX home" className={styles.logo} href="/">
           <img 
             src="/assets/icons/redoxlogo.jpg" 
-            alt="Redox Designsx" 
+            alt="REDOXDESIGNX" 
             style={{ 
               width: '42px', 
               height: '42px', 

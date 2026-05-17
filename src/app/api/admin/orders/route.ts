@@ -48,3 +48,25 @@ export async function POST(request: Request) {
     );
   }
 }
+
+export async function DELETE(request: Request) {
+  try {
+    const { searchParams } = new URL(request.url);
+    const orderId = searchParams.get('orderId');
+
+    if (!orderId) {
+      return NextResponse.json({ error: 'orderId is required.' }, { status: 400 });
+    }
+
+    const { deleteDbOrder } = require('@/lib/catalog-db');
+    await deleteDbOrder(Number(orderId));
+
+    return NextResponse.json({ success: true, message: 'Order deleted successfully!' });
+  } catch (error: any) {
+    console.error('API admin orders DELETE error:', error);
+    return NextResponse.json(
+      { error: error.message || 'Failed to delete order.' },
+      { status: 500 }
+    );
+  }
+}

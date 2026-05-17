@@ -4,7 +4,7 @@ import styles from '../../pages.module.css';
 
 export const metadata = buildMetadata({
   title: 'Orders',
-  description: 'Redox Designsx order history.',
+  description: 'REDOXDESIGNX order history.',
   path: '/account/orders'
 });
 

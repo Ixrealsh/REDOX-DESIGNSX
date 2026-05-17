@@ -17,7 +17,8 @@ const orderSchema = z.object({
   shippingCity: z.string().min(2).max(255),
   paymentMethod: z.enum(['COD', 'MOMO', 'PAYSTACK']),
   momoNetwork: z.enum(['MTN', 'Telecel', 'AT']).optional(),
-  momoNumber: z.string().max(100).optional()
+  momoNumber: z.string().max(100).optional(),
+  skipSms: z.boolean().optional()
 });
 
 async function sendSmsNotification(order: any) {
@@ -57,7 +58,10 @@ async function sendSmsNotification(order: any) {
     return;
   }
 
-  const messageText = `REDOX DESIGNSX\nOrder #RD-${order.id} verified!\n\nItem: ${order.productName}\nSpecs: ${order.selectedColor} - Size ${order.selectedSize}\nPrice: GH₵${order.price}\n\nTrack status: https://redoxdesignx.com/track-order?ref=RD-${order.id}`;
+  // Optimized single SMS message layout (Guaranteed under 160 characters to charge EXACTLY 1 credit per recipient!)
+  const trackingRef = `RD-${order.id}`;
+  const shortName = order.productName.length > 20 ? order.productName.substring(0, 17) + '...' : order.productName;
+  const messageText = `REDOXDESIGNX\nOrder #${trackingRef} confirmed!\n\n${shortName} (${order.selectedColor}/${order.selectedSize})\nPrice: GH₵${order.price}\n\nTrack: https://redoxdesignx.com/track-order?ref=${trackingRef}`;
 
   try {
     const url = `https://api.mnotify.com/api/sms/quick?key=${apiKey}`;
@@ -159,10 +163,12 @@ export async function POST(request: Request) {
       status: 'Pending'
     });
 
-    // Send instant background SMS notification
-    sendSmsNotification(order).catch((err) => {
-      console.error('Background SMS worker failed:', err);
-    });
+    // Send instant background SMS notification (unless skipped by cart checkout)
+    if (!orderData.skipSms) {
+      sendSmsNotification(order).catch((err) => {
+        console.error('Background SMS worker failed:', err);
+      });
+    }
 
     return NextResponse.json({ 
       success: true, 

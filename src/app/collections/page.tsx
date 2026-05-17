@@ -6,7 +6,7 @@ import styles from '../pages.module.css';
 
 export const metadata = buildMetadata({
   title: 'Collections',
-  description: 'Explore Redox Designsx apparel collections built as complete streetwear systems.',
+  description: 'Explore REDOXDESIGNX apparel collections built as complete streetwear systems.',
   path: '/collections'
 });
 

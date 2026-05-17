@@ -1,11 +1,11 @@
 import type { Metadata } from 'next';
 
 export const siteMeta = {
-  siteName: 'Redox Designsx',
+  siteName: 'REDOXDESIGNX',
   siteUrl: 'https://redoxdesignx.com',
-  defaultTitle: 'REDOX DESIGNSX | Premium Streetwear & Contemporary Blanks',
+  defaultTitle: 'REDOXDESIGNX | Premium Streetwear & Contemporary Blanks',
   defaultDescription:
-    'Chemical precision. Street tension. Redox Designsx crafts premium limited-run 230gsm heavyweight blank tees and contemporary apparel. Engineered with intention, zero restocks.',
+    'Chemical precision. Street tension. REDOXDESIGNX crafts premium limited-run 230gsm heavyweight blank tees and contemporary apparel. Engineered with intention, zero restocks.',
   defaultOgImage: 'https://redoxdesignx.com/assets/icons/redoxlogo.jpg',
   twitterHandle: '@redoxdesignsx'
 };
@@ -30,8 +30,8 @@ export function buildMetadata({
     title: pageTitle,
     description: pageDescription,
     keywords: [
-      'Redox Designsx',
-      'Redox Designs',
+      'REDOXDESIGNX',
+      'REDOXDESIGNXs',
       'Redox',
       'streetwear Ghana',
       'Accra clothing brand',

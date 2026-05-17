@@ -1,10 +1,14 @@
 import { isDbConfigured } from '@/lib/db';
 import { getDbProducts, getDbDrops, getDbCollections, getDbLookbooks, getDbWaitlist } from '@/lib/catalog-db';
 import { AdminDashboard } from './AdminDashboard';
+import { AdminLogin } from './AdminLogin';
+import { cookies } from 'next/headers';
+import { notFound } from 'next/navigation';
+import crypto from 'crypto';
 
 export const metadata = {
-  title: 'Admin Console | Redox Designsx',
-  description: 'Manage Redox Designsx apparel catalog, releases, and waitlist signups.',
+  title: 'Admin Console | REDOXDESIGNX',
+  description: 'Manage REDOXDESIGNX apparel catalog, releases, and waitlist signups.',
   robots: {
     index: false,
     follow: false
@@ -12,6 +16,23 @@ export const metadata = {
 };
 
 export default async function AdminPage() {
+  const cookieStore = cookies();
+  const sessionToken = cookieStore.get('admin_session')?.value;
+
+  const adminEmail = process.env.ADMIN_EMAIL || 'admin@redoxdesignx.com';
+  
+  const secret = 'redox-secret-key-129847192';
+  const expectedSignature = crypto.createHmac('sha256', secret).update(adminEmail).digest('hex');
+  const isAuthenticated = sessionToken === expectedSignature;
+
+  if (!sessionToken) {
+    return <AdminLogin />;
+  }
+
+  if (!isAuthenticated) {
+    notFound();
+  }
+
   const isDbConnected = isDbConfigured;
   
   const isCloudinaryConnected = Boolean(

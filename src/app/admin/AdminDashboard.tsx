@@ -169,6 +169,24 @@ export function AdminDashboard({
     }
   };
 
+  const handleDeleteOrder = async (orderId: number) => {
+    if (!window.confirm(`Are you absolutely sure you want to permanently delete order #RD-${orderId}?`)) return;
+    try {
+      const response = await fetch(`/api/admin/orders?orderId=${orderId}`, {
+        method: 'DELETE'
+      });
+      const data = await response.json();
+      if (response.ok) {
+        setOrders(prev => prev.filter(o => o.id !== orderId));
+        triggerNotification(`Order #RD-${orderId} deleted permanently!`, 'success');
+      } else {
+        throw new Error(data.error || 'Failed to delete order.');
+      }
+    } catch (err: any) {
+      triggerNotification(err.message || 'Error deleting order.', 'error');
+    }
+  };
+
   // Sync orders on dashboard mount
   useEffect(() => {
     refreshOrders();
@@ -711,23 +729,56 @@ export function AdminDashboard({
     setShowLookbookModal(true);
   };
 
+  const handleLogout = async () => {
+    try {
+      const response = await fetch('/api/admin/logout', {
+        method: 'POST'
+      });
+      if (response.ok) {
+        window.location.reload();
+      }
+    } catch (err) {
+      console.error('Logout error:', err);
+    }
+  };
+
   return (
     <div className={styles.adminContainer}>
       <header className={styles.adminHeader}>
         <div>
           <p className={styles.adminSubtitle}>Management Console</p>
-          <h1 className={styles.adminTitle}>Redox Designsx Admin</h1>
+          <h1 className={styles.adminTitle}>REDOXDESIGNX Admin</h1>
         </div>
         
-        {isDbConnected && (
+        <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+          {isDbConnected && (
+            <button 
+              className={styles.initButton}
+              onClick={handleInitDb}
+              disabled={isInitializing}
+            >
+              {isInitializing ? 'Re-seeding...' : 'Reset & Seed DB'}
+            </button>
+          )}
           <button 
-            className={styles.initButton}
-            onClick={handleInitDb}
-            disabled={isInitializing}
+            onClick={handleLogout}
+            style={{
+              background: 'transparent',
+              color: '#888',
+              border: '1px solid rgba(255,255,255,0.1)',
+              padding: '6px 16px',
+              fontSize: '0.75rem',
+              borderRadius: '4px',
+              cursor: 'pointer',
+              fontWeight: 'bold',
+              fontFamily: 'var(--font-mono), monospace',
+              textTransform: 'uppercase',
+              letterSpacing: '0.05em'
+            }}
           >
-            {isInitializing ? 'Re-seeding...' : 'Reset & Seed DB'}
+            Sign Out
           </button>
-        )}
+        </div>
       </header>
 
       {notification && (
@@ -1155,6 +1206,7 @@ export function AdminDashboard({
                     <th style={{ padding: 'var(--space-3)', color: '#aaa', fontWeight: 600 }}>Payment Info</th>
                     <th style={{ padding: 'var(--space-3)', color: '#aaa', fontWeight: 600 }}>Order Status</th>
                     <th style={{ padding: 'var(--space-3)', color: '#aaa', fontWeight: 600 }}>Date Placed</th>
+                    <th style={{ padding: 'var(--space-3)', color: '#aaa', fontWeight: 600 }}>Action</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1225,6 +1277,26 @@ export function AdminDashboard({
                         </select>
                       </td>
                       <td style={{ padding: 'var(--space-3)', color: '#777' }}>{new Date(o.createdAt).toLocaleString()}</td>
+                      <td style={{ padding: 'var(--space-3)' }}>
+                        <button
+                          onClick={() => handleDeleteOrder(o.id)}
+                          style={{
+                            background: 'rgba(239, 68, 68, 0.15)',
+                            color: '#ef4444',
+                            border: '1px solid rgba(239, 68, 68, 0.3)',
+                            padding: '6px 12px',
+                            fontSize: '0.75rem',
+                            borderRadius: '4px',
+                            cursor: 'pointer',
+                            fontWeight: 'bold',
+                            fontFamily: 'var(--font-mono), monospace',
+                            textTransform: 'uppercase',
+                            letterSpacing: '0.05em'
+                          }}
+                        >
+                          Delete
+                        </button>
+                      </td>
                     </tr>
                   ))}
                 </tbody>

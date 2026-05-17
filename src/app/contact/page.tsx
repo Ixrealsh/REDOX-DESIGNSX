@@ -5,7 +5,7 @@ import styles from '../pages.module.css';
 
 export const metadata = buildMetadata({
   title: 'Contact',
-  description: 'Contact Redox Designsx for orders, sizing, press, and wholesale.',
+  description: 'Contact REDOXDESIGNX for orders, sizing, press, and wholesale.',
   path: '/contact'
 });
 

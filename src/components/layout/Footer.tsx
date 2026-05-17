@@ -9,7 +9,7 @@ export function Footer() {
           <Link className={styles.logo} href="/" style={{ display: 'flex', alignItems: 'center', marginBottom: 0 }}>
             <img 
               src="/assets/icons/redoxlogo.jpg" 
-              alt="Redox Designsx" 
+              alt="REDOXDESIGNX" 
               style={{ 
                 width: '32px', 
                 height: '32px', 
@@ -20,7 +20,7 @@ export function Footer() {
             />
           </Link>
           <span style={{ fontSize: '0.72rem', letterSpacing: '0.06em', color: 'var(--color-text-secondary)', textTransform: 'uppercase', fontFamily: 'var(--font-mono), monospace' }}>
-            © 2026 REDOX DESIGNSX • ZERO RESTOCKS
+            © 2026 REDOXDESIGNX • ZERO RESTOCKS
           </span>
         </div>
 
@@ -31,6 +31,10 @@ export function Footer() {
           <Link className={styles.link} href="/track-order">Track Order</Link>
           <Link className={styles.link} href="/size-guide">Size Guide</Link>
           <Link className={styles.link} href="/contact">Contact</Link>
+          <span style={{ color: '#333' }}>|</span>
+          <a className={styles.link} href="https://wa.me/233558058348" target="_blank" rel="noopener noreferrer">WhatsApp</a>
+          <a className={styles.link} href="https://tiktok.com/@redoxdesignx" target="_blank" rel="noopener noreferrer">TikTok</a>
+          <a className={styles.link} href="https://instagram.com/redoxdesignx" target="_blank" rel="noopener noreferrer">Instagram</a>
         </div>
       </div>
     </footer>
