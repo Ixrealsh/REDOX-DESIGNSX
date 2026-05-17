@@ -8,6 +8,7 @@ export function TrackOrder() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [order, setOrder] = useState<any>(null);
+  const [lightboxOpen, setLightboxOpen] = useState(false);
 
   const handleTrackSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -165,33 +166,86 @@ export function TrackOrder() {
           paddingTop: '20px',
           borderTop: '1px solid rgba(255,255,255,0.06)'
         }}>
-          {/* Order Summary */}
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))',
-            gap: '16px',
-            marginBottom: '28px',
-            fontSize: '0.8rem',
-            background: 'rgba(255,255,255,0.02)',
-            padding: '12px',
-            borderRadius: '6px',
-            border: '1px solid rgba(255,255,255,0.03)'
-          }}>
-            <div>
-              <span style={{ color: '#666', display: 'block', fontSize: '0.7rem' }}>ORDER REFERENCE</span>
-              <strong style={{ color: '#fff' }}>#RD-{order.id}</strong>
-            </div>
-            <div>
-              <span style={{ color: '#666', display: 'block', fontSize: '0.7rem' }}>PRODUCT</span>
-              <strong style={{ color: '#fff' }}>{order.productName}</strong>
-            </div>
-            <div>
-              <span style={{ color: '#666', display: 'block', fontSize: '0.7rem' }}>SPECS / OPTIONS</span>
-              <strong style={{ color: '#10b981' }}>{order.selectedColor} — {order.selectedSize}</strong>
-            </div>
-            <div>
-              <span style={{ color: '#666', display: 'block', fontSize: '0.7rem' }}>STATUS</span>
-              <strong style={{ color: getStatusColor(order.status) }}>{order.status.toUpperCase()}</strong>
+          {/* Order Details & Image Row */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '20px', marginBottom: '28px', alignItems: 'center' }}>
+            {/* Image Box */}
+            {order.productImage && (
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>
+                <div 
+                  onClick={() => setLightboxOpen(true)}
+                  style={{ 
+                    position: 'relative', 
+                    width: '100%', 
+                    height: '240px', 
+                    borderRadius: '8px', 
+                    overflow: 'hidden', 
+                    border: '1px solid rgba(255,255,255,0.08)',
+                    background: 'rgba(255,255,255,0.01)',
+                    cursor: 'zoom-in',
+                    boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
+                    transition: 'transform 0.2s'
+                  }}
+                  onMouseOver={(e) => e.currentTarget.style.transform = 'scale(1.02)'}
+                  onMouseOut={(e) => e.currentTarget.style.transform = 'scale(1)'}
+                >
+                  <img 
+                    src={order.productImage} 
+                    alt={order.productName} 
+                    style={{ width: '100%', height: '100%', objectFit: 'cover' }} 
+                  />
+                  <div style={{
+                    position: 'absolute',
+                    bottom: '8px',
+                    right: '8px',
+                    background: 'rgba(0,0,0,0.78)',
+                    color: '#fff',
+                    fontSize: '0.62rem',
+                    padding: '4px 8px',
+                    borderRadius: '4px',
+                    letterSpacing: '0.05em',
+                    fontWeight: 'bold',
+                    fontFamily: 'monospace'
+                  }}>
+                    🔍 VIEW LARGER
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Order Details list */}
+            <div style={{
+              display: 'grid',
+              gap: '12px',
+              fontSize: '0.8rem',
+              background: 'rgba(255,255,255,0.02)',
+              padding: '16px',
+              borderRadius: '6px',
+              border: '1px solid rgba(255,255,255,0.03)'
+            }}>
+              <div>
+                <span style={{ color: '#666', display: 'block', fontSize: '0.7rem', letterSpacing: '0.05em' }}>ORDER REFERENCE</span>
+                <strong style={{ color: '#fff', fontSize: '0.9rem' }}>#RD-{order.id}</strong>
+              </div>
+              <div>
+                <span style={{ color: '#666', display: 'block', fontSize: '0.7rem', letterSpacing: '0.05em' }}>PRODUCT NAME</span>
+                <strong style={{ color: '#fff', fontSize: '0.88rem' }}>{order.productName}</strong>
+              </div>
+              <div>
+                <span style={{ color: '#666', display: 'block', fontSize: '0.7rem', letterSpacing: '0.05em' }}>COLOR / SPECS</span>
+                <strong style={{ color: '#10b981' }}>{order.selectedColor}</strong>
+              </div>
+              <div>
+                <span style={{ color: '#666', display: 'block', fontSize: '0.7rem', letterSpacing: '0.05em' }}>SIZE / QUANTITY</span>
+                <strong style={{ color: '#fff' }}>Size {order.selectedSize}</strong>
+              </div>
+              <div>
+                <span style={{ color: '#666', display: 'block', fontSize: '0.7rem', letterSpacing: '0.05em' }}>ORDER PRICE</span>
+                <strong style={{ color: '#fff' }}>GH₵{order.price}</strong>
+              </div>
+              <div>
+                <span style={{ color: '#666', display: 'block', fontSize: '0.7rem', letterSpacing: '0.05em' }}>SHIPMENT STATUS</span>
+                <strong style={{ color: getStatusColor(order.status) }}>{order.status.toUpperCase()}</strong>
+              </div>
             </div>
           </div>
 
@@ -260,6 +314,40 @@ export function TrackOrder() {
               </div>
             </div>
           )}
+        </div>
+      )}
+
+      {/* Lightbox full-screen modal */}
+      {lightboxOpen && order && (
+        <div 
+          onClick={() => setLightboxOpen(false)}
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: 'rgba(0, 0, 0, 0.96)',
+            zIndex: 99999,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            cursor: 'zoom-out',
+            animation: 'fadeIn 0.2s ease-out'
+          }}
+        >
+          <img 
+            src={order.productImage} 
+            alt={order.productName} 
+            style={{ 
+              maxWidth: '92vw', 
+              maxHeight: '92vh', 
+              borderRadius: '8px', 
+              objectFit: 'contain',
+              border: '1.5px solid rgba(255, 255, 255, 0.12)',
+              boxShadow: '0 24px 64px rgba(0, 0, 0, 0.95)'
+            }} 
+          />
         </div>
       )}
     </div>

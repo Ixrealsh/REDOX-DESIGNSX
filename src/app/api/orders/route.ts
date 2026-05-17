@@ -84,6 +84,16 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: 'No active order found with this reference.' }, { status: 404 });
     }
 
+    const { getDbProducts } = require('@/lib/catalog-db');
+    const products = await getDbProducts();
+    const product = products.find((p: any) => p.id === order.productId || p.slug === order.productSlug);
+    
+    // Parse color name by stripping out sizes or slash separators if any
+    const rawColor = order.selectedColor.split('/')[0].trim();
+    const productImage = product
+      ? (product.colorImages?.[rawColor]?.[0] || product.image)
+      : 'https://res.cloudinary.com/dti75gff0/image/upload/v1779032145/redox_designsx/redox_hero.png';
+
     return NextResponse.json({
       success: true,
       order: {
@@ -94,7 +104,8 @@ export async function GET(request: Request) {
         price: order.price,
         customerName: order.customerName,
         status: order.status || 'Pending',
-        createdAt: order.createdAt
+        createdAt: order.createdAt,
+        productImage
       }
     });
   } catch (error: any) {

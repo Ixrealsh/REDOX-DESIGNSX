@@ -22,7 +22,7 @@ interface CartStore {
   items: CartItem[];
   isOpen: boolean;
   hydrated: boolean;
-  addItem: (product: Product, variant: Variant, quantity?: number) => void;
+  addItem: (product: Product, variant: Variant, quantity?: number, selectedColorImage?: string) => void;
   removeItem: (variantId: string) => void;
   updateQty: (variantId: string, quantity: number) => void;
   clearCart: () => void;
@@ -37,7 +37,7 @@ export const useCartStore = create<CartStore>()(
       items: [],
       isOpen: false,
       hydrated: false,
-      addItem: (product, variant, quantity = 1) =>
+      addItem: (product, variant, quantity = 1, selectedColorImage) =>
         set((state) => {
           const existing = state.items.find((item) => item.variantId === variant.id);
 
@@ -60,7 +60,7 @@ export const useCartStore = create<CartStore>()(
                 productId: product.id,
                 productSlug: product.slug,
                 name: product.name,
-                image: product.image,
+                image: selectedColorImage || product.image,
                 price: product.price,
                 variantId: variant.id,
                 size: variant.size,

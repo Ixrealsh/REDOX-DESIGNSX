@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import { Archivo_Black, Barlow_Condensed, DM_Sans, IBM_Plex_Mono } from 'next/font/google';
+import Script from 'next/script';
 import { Footer } from '@/components/layout/Footer';
 import { Navbar } from '@/components/layout/Navbar';
 import { CartDrawer } from '@/components/cart/CartDrawer';
@@ -50,6 +51,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
         <main id="main">{children}</main>
         <Footer />
         <CartDrawer />
+        <Script src="https://js.paystack.co/v1/inline.js" strategy="lazyOnload" />
       </body>
     </html>
   );

@@ -1,77 +1,37 @@
 import Link from 'next/link';
 import styles from './Footer.module.css';
 
-const columns = [
-  {
-    title: 'Shop',
-    links: [
-      { href: '/shop', label: 'All Products' },
-      { href: '/collections', label: 'Collections' },
-      { href: '/drops', label: 'Drops' },
-      { href: '/size-guide', label: 'Size Guide' }
-    ]
-  },
-  {
-    title: 'Brand',
-    links: [
-      { href: '/about', label: 'About' },
-      { href: '/lookbook', label: 'Lookbook' },
-      { href: '/sustainability', label: 'Sustainability' },
-      { href: '/contact', label: 'Contact' }
-    ]
-  },
-  {
-    title: 'Social',
-    links: [
-      { href: 'https://instagram.com', label: 'Instagram' },
-      { href: 'https://tiktok.com', label: 'TikTok' },
-      { href: 'https://x.com', label: 'X' },
-      { href: 'https://pinterest.com', label: 'Pinterest' }
-    ]
-  }
-];
-
 export function Footer() {
   return (
-    <footer className={styles.footer}>
-      <div className={styles.inner}>
-        <div className={styles.brand}>
-          <Link className={styles.logo} href="/" style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+    <footer className={styles.footer} style={{ background: '#050505', borderTop: '1px solid var(--color-border)', padding: '32px var(--section-x)' }}>
+      <div className={styles.inner} style={{ display: 'flex', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '20px', width: 'min(100%, var(--container-max))', margin: '0 auto' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <Link className={styles.logo} href="/" style={{ display: 'flex', alignItems: 'center', marginBottom: 0 }}>
             <img 
               src="/assets/icons/redoxlogo.jpg" 
               alt="Redox Designsx" 
               style={{ 
-                width: '36px', 
-                height: '36px', 
+                width: '32px', 
+                height: '32px', 
                 borderRadius: '50%', 
                 objectFit: 'cover', 
                 border: '1px solid var(--color-border)' 
               }} 
             />
-            <span>Redox Designsx</span>
           </Link>
-          <p className={styles.copy}>
-            Chemical precision. Street tension. Limited apparel built for the people who dress
-            with intention, not noise.
-          </p>
+          <span style={{ fontSize: '0.72rem', letterSpacing: '0.06em', color: 'var(--color-text-secondary)', textTransform: 'uppercase', fontFamily: 'var(--font-mono), monospace' }}>
+            © 2026 REDOX DESIGNSX • ZERO RESTOCKS
+          </span>
         </div>
 
-        {columns.map((column) => (
-          <div key={column.title}>
-            <h2 className={styles.columnTitle}>{column.title}</h2>
-            <div className={styles.links}>
-              {column.links.map((link) => (
-                <Link className={styles.link} href={link.href} key={link.label}>
-                  {link.label}
-                </Link>
-              ))}
-            </div>
-          </div>
-        ))}
-      </div>
-      <div className={styles.bottom}>
-        <span>2026 Redox Designsx</span>
-        <span>12 drops / 40,000+ units / zero restocks</span>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '24px', alignItems: 'center', fontFamily: 'var(--font-mono), monospace', fontSize: '0.72rem', textTransform: 'uppercase' }}>
+          <Link className={styles.link} href="/shop">Shop</Link>
+          <Link className={styles.link} href="/collections">Collections</Link>
+          <Link className={styles.link} href="/drops">Drops</Link>
+          <Link className={styles.link} href="/track-order">Track Order</Link>
+          <Link className={styles.link} href="/size-guide">Size Guide</Link>
+          <Link className={styles.link} href="/contact">Contact</Link>
+        </div>
       </div>
     </footer>
   );

@@ -204,7 +204,8 @@ export function ProductDetail({ product }: ProductDetailProps) {
             (v) => v.size === size && v.color === color && v.inventory > 0
           );
           if (variant) {
-            addItem(product, variant, qty);
+            const colorImg = product.colorImages?.[color]?.[0] || product.image;
+            addItem(product, variant, qty, colorImg);
           }
         }
       });
@@ -554,43 +555,34 @@ export function ProductDetail({ product }: ProductDetailProps) {
               </div>
 
               <div style={{ display: 'grid', gap: '12px' }}>
-                {Object.entries(quantities).map(([color, sizesObj]) => {
+                {Object.entries(quantities).flatMap(([color, sizesObj]) => {
                   const selectedSizes = Object.entries(sizesObj).filter(([_, qty]) => qty > 0);
-                  if (selectedSizes.length === 0) return null;
-                  
-                  // Get color hex dynamically if configured
-                  const colorHexMap: Record<string, string> = {
-                    'Obsidian Black': '#090909',
-                    'Oxide Bone': '#f5f3ee',
-                    'Signal Red': '#d72638',
-                    'Graphite': '#2b2c2d'
-                  };
-                  const swatchColor = colorHexMap[color] || '#555555';
+                  return selectedSizes.map(([sz, qty]) => {
+                    const colorHexMap: Record<string, string> = {
+                      'Obsidian Black': '#090909',
+                      'Oxide Bone': '#f5f3ee',
+                      'Signal Red': '#d72638',
+                      'Graphite': '#2b2c2d'
+                    };
+                    const swatchColor = colorHexMap[color] || '#555555';
 
-                  return (
-                    <div key={color} style={{ borderBottom: '1px solid rgba(255, 255, 255, 0.05)', paddingBottom: '10px' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
-                        <span style={{ 
-                          display: 'inline-block', 
-                          width: '10px', 
-                          height: '10px', 
-                          borderRadius: '50%', 
-                          background: swatchColor, 
-                          border: '1px solid rgba(255, 255, 255, 0.2)' 
-                        }}></span>
-                        <span style={{ color: '#fff', fontWeight: 600, fontSize: '0.85rem' }}>{color}</span>
+                    return (
+                      <div key={`${color}-${sz}`} style={{ borderBottom: '1px solid rgba(255, 255, 255, 0.05)', paddingBottom: '10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <span style={{ 
+                            display: 'inline-block', 
+                            width: '10px', 
+                            height: '10px', 
+                            borderRadius: '50%', 
+                            background: swatchColor, 
+                            border: '1px solid rgba(255, 255, 255, 0.2)' 
+                          }}></span>
+                          <span style={{ color: '#fff', fontWeight: 600, fontSize: '0.85rem' }}>{color} / Size {sz} <span style={{ color: 'var(--color-text-secondary)', fontSize: '0.78rem', fontWeight: 400, marginLeft: '6px' }}>(x{qty})</span></span>
+                        </div>
+                        <span style={{ color: '#fff', fontSize: '0.8rem', fontFamily: 'var(--font-mono), monospace' }}>GH₵{product.price * qty}</span>
                       </div>
-                      
-                      <div style={{ paddingLeft: '18px', display: 'grid', gap: '4px', color: 'var(--color-text-secondary)' }}>
-                        {selectedSizes.map(([sz, qty]) => (
-                          <div key={sz} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem' }}>
-                            <span>Size {sz} (x{qty})</span>
-                            <span style={{ color: '#fff' }}>GH₵{product.price * qty}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  );
+                    );
+                  });
                 })}
               </div>
 
