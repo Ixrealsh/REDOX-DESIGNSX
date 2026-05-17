@@ -18,28 +18,74 @@ interface ProductDetailProps {
 
 export function ProductDetail({ product }: ProductDetailProps) {
   const [selectedColor, setSelectedColor] = useState(product.colors[0] || '');
-  const [quantities, setQuantities] = useState<Record<string, number>>({});
+  const [quantities, setQuantities] = useState<Record<string, Record<string, number>>>({});
   const [activeImage, setActiveImage] = useState(product.image);
   const [error, setError] = useState('');
   const [shaking, setShaking] = useState(false);
   const [stickyOpen, setStickyOpen] = useState(false);
 
-  // Sync quantities clear on color change
+  // Restore previous color and quantities selections on mount to survive page refreshes
   useEffect(() => {
-    setQuantities({});
-    setError('');
-  }, [selectedColor]);
+    try {
+      const savedColor = localStorage.getItem(`redox_sel_color_${product.id}`);
+      if (savedColor && product.colors.includes(savedColor)) {
+        setSelectedColor(savedColor);
+      }
+      const savedQuantities = localStorage.getItem(`redox_sel_qty_${product.id}`);
+      if (savedQuantities) {
+        setQuantities(JSON.parse(savedQuantities));
+      }
+    } catch (e) {
+      console.error('Failed to load persisted product choices', e);
+    }
+  }, [product.id, product.colors]);
+
+  // Persist selected color to localStorage
+  useEffect(() => {
+    if (selectedColor) {
+      localStorage.setItem(`redox_sel_color_${product.id}`, selectedColor);
+    }
+  }, [selectedColor, product.id]);
+
+  // Persist selected quantities map to localStorage
+  useEffect(() => {
+    if (Object.keys(quantities).length > 0) {
+      localStorage.setItem(`redox_sel_qty_${product.id}`, JSON.stringify(quantities));
+    }
+  }, [quantities, product.id]);
 
   // Derived selections
   const selectedSize = useMemo(() => {
-    return Object.entries(quantities)
-      .filter(([_, qty]) => qty > 0)
-      .map(([size, qty]) => `${size} (x${qty})`)
-      .join(', ');
+    const selections: string[] = [];
+    Object.entries(quantities).forEach(([color, sizes]) => {
+      Object.entries(sizes).forEach(([size, qty]) => {
+        if (qty > 0) {
+          selections.push(`${color} / ${size} (x${qty})`);
+        }
+      });
+    });
+    return selections.join(', ');
   }, [quantities]);
 
+  const selectedColorString = useMemo(() => {
+    const activeColors: string[] = [];
+    Object.entries(quantities).forEach(([color, sizes]) => {
+      const hasQty = Object.values(sizes).some(qty => qty > 0);
+      if (hasQty) {
+        activeColors.push(color);
+      }
+    });
+    return activeColors.join(', ') || selectedColor;
+  }, [quantities, selectedColor]);
+
   const totalQuantity = useMemo(() => {
-    return Object.values(quantities).reduce((sum, q) => sum + q, 0);
+    let sum = 0;
+    Object.values(quantities).forEach((sizes) => {
+      Object.values(sizes).forEach((qty) => {
+        sum += qty;
+      });
+    });
+    return sum;
   }, [quantities]);
 
   const totalPrice = useMemo(() => {
@@ -149,19 +195,22 @@ export function ProductDetail({ product }: ProductDetailProps) {
     }
     setError('');
     
-    // Add all sizes with quantities > 0
-    Object.entries(quantities).forEach(([size, qty]) => {
-      if (qty > 0) {
-        const variant = product.variants.find(
-          (v) => v.size === size && v.color === selectedColor && v.inventory > 0
-        );
-        if (variant) {
-          addItem(product, variant, qty);
+    // Add all sizes across all colors configured with quantity > 0
+    Object.entries(quantities).forEach(([color, sizes]) => {
+      Object.entries(sizes).forEach(([size, qty]) => {
+        if (qty > 0) {
+          const variant = product.variants.find(
+            (v) => v.size === size && v.color === color && v.inventory > 0
+          );
+          if (variant) {
+            addItem(product, variant, qty);
+          }
         }
-      }
+      });
     });
     
     setQuantities({});
+    localStorage.removeItem(`redox_sel_qty_${product.id}`);
     openCart();
   };
 
@@ -183,7 +232,7 @@ export function ProductDetail({ product }: ProductDetailProps) {
           productId: product.id,
           productName: product.name,
           productSlug: product.slug,
-          selectedColor,
+          selectedColor: selectedColorString,
           selectedSize,
           price: totalPrice,
           customerName: formData.fullName,
@@ -203,6 +252,8 @@ export function ProductDetail({ product }: ProductDetailProps) {
       }
 
       setCheckoutSuccess(resData.order);
+      setQuantities({});
+      localStorage.removeItem(`redox_sel_qty_${product.id}`);
       setShowCheckout(false);
     } catch (err: any) {
       console.error(err);
@@ -299,7 +350,7 @@ export function ProductDetail({ product }: ProductDetailProps) {
                   .filter((variant) => variant.color === selectedColor)
                   .map((variant) => {
                     const size = variant.size;
-                    const qty = quantities[size] || 0;
+                    const qty = quantities[selectedColor]?.[size] || 0;
                     const inStock = variant.inventory > 0;
 
                     return (
@@ -330,7 +381,10 @@ export function ProductDetail({ product }: ProductDetailProps) {
                               onClick={() => {
                                 setQuantities(q => ({
                                   ...q,
-                                  [size]: Math.max(0, (q[size] || 0) - 1)
+                                  [selectedColor]: {
+                                    ...(q[selectedColor] || {}),
+                                    [size]: Math.max(0, (q[selectedColor]?.[size] || 0) - 1)
+                                  }
                                 }));
                               }}
                               style={{
@@ -358,7 +412,10 @@ export function ProductDetail({ product }: ProductDetailProps) {
                               onClick={() => {
                                 setQuantities(q => ({
                                   ...q,
-                                  [size]: Math.min(variant.inventory, (q[size] || 0) + 1)
+                                  [selectedColor]: {
+                                    ...(q[selectedColor] || {}),
+                                    [size]: Math.min(variant.inventory, (q[selectedColor]?.[size] || 0) + 1)
+                                  }
                                 }));
                               }}
                               style={{

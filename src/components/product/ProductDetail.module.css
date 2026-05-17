@@ -23,7 +23,7 @@
 }
 
 .mainImage img {
-  object-fit: cover;
+  object-fit: contain;
   transform-origin: var(--zoom-x, 50%) var(--zoom-y, 50%);
   transition: transform var(--duration-normal) var(--ease-out);
 }
@@ -48,7 +48,7 @@
 }
 
 .thumb img {
-  object-fit: cover;
+  object-fit: contain;
 }
 
 .panel {
