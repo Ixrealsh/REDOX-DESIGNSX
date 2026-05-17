@@ -1,3 +1,5 @@
+@import url('https://fonts.cdnfonts.com/css/overused-grotesk');
+
 :root {
   --color-red: #d72638;
   --color-red-dark: #a51c2b;
@@ -26,9 +28,9 @@
   --gradient-overlay: linear-gradient(180deg, transparent 35%, rgba(8, 8, 8, 0.96) 100%);
   --gradient-red-sweep: linear-gradient(90deg, var(--color-red) 0%, #ff5767 100%);
   --gradient-shimmer: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.04), transparent);
-  --font-display: var(--font-archivo);
-  --font-heading: var(--font-barlow);
-  --font-body: var(--font-dm-sans);
+  --font-display: 'Overused Grotesk', var(--font-archivo), sans-serif;
+  --font-heading: 'Overused Grotesk', var(--font-barlow), sans-serif;
+  --font-body: 'Overused Grotesk', var(--font-dm-sans), sans-serif;
   --font-mono: var(--font-plex-mono);
   --text-xs: clamp(0.65rem, 1vw, 0.7rem);
   --text-sm: clamp(0.8rem, 1.2vw, 0.875rem);

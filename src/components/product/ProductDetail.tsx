@@ -316,11 +316,7 @@ export function ProductDetail({ product }: ProductDetailProps) {
     <>
       <section className={styles.pdp}>
         <div className={styles.gallery} ref={imageRef}>
-          <div
-            className={styles.mainImage}
-            onMouseMove={handleMouseMove}
-            style={{ transformOrigin: 'var(--zoom-x, 50%) var(--zoom-y, 50%)' }}
-          >
+          <div className={styles.mainImage}>
             <Image alt={product.imageAlt} fill priority sizes="(min-width: 980px) 58vw, 100vw" src={activeImage} />
           </div>
           <div className={styles.thumbs}>
@@ -522,27 +518,47 @@ export function ProductDetail({ product }: ProductDetailProps) {
             {error && !showCheckout && <p className={styles.error}>{error}</p>}
           </div>
 
-          {/* Dynamic Selection Summary Strip */}
+          {/* Extremely visual Selection Summary Breakdown Card */}
           {totalQuantity > 0 && !checkoutSuccess && (
-            <div 
-              style={{ 
-                background: 'rgba(215, 38, 56, 0.08)', 
-                border: '1px solid rgba(215, 38, 56, 0.25)',
-                borderRadius: 'var(--radius-md)',
-                padding: 'var(--space-3) var(--space-4)',
-                marginBottom: 'var(--space-4)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                color: '#fff',
-                fontSize: '0.875rem'
-              }}
-            >
-              <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
-                <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: 'var(--color-red)' }}></span>
-                <strong>{totalQuantity} x Items Selected</strong>
+            <div style={{
+              background: '#090909',
+              border: '1px solid rgba(255, 255, 255, 0.08)',
+              borderRadius: '8px',
+              padding: '16px',
+              marginBottom: '20px',
+              fontFamily: 'monospace',
+              fontSize: '0.85rem'
+            }}>
+              <div style={{ color: '#888', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '10px', fontSize: '0.75rem', fontWeight: 'bold' }}>
+                🛒 CURRENT SELECTION BAG
               </div>
-              <span style={{ fontWeight: 800, color: 'var(--color-red)' }}>{formatCurrency(totalPrice)}</span>
+              <div style={{ display: 'grid', gap: '8px' }}>
+                {Object.entries(quantities).map(([color, sizesObj]) => {
+                  const selectedSizes = Object.entries(sizesObj).filter(([_, qty]) => qty > 0);
+                  if (selectedSizes.length === 0) return null;
+                  return (
+                    <div key={color} style={{ borderBottom: '1px dashed rgba(255,255,255,0.05)', paddingBottom: '8px' }}>
+                      <span style={{ color: '#10b981', fontWeight: 'bold' }}>{color}</span>
+                      <div style={{ paddingLeft: '12px', marginTop: '4px', color: '#fff' }}>
+                        {selectedSizes.map(([sz, qty]) => (
+                          <div key={sz} style={{ display: 'flex', justifyContent: 'space-between' }}>
+                            <span>Size {sz} (x{qty})</span>
+                            <span style={{ color: '#888' }}>GH₵{product.price * qty}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px solid rgba(255,255,255,0.1)', paddingTop: '10px', marginTop: '10px', fontWeight: 'bold' }}>
+                <span style={{ color: '#fff' }}>Total Quantity</span>
+                <span style={{ color: '#fff' }}>{totalQuantity} {totalQuantity === 1 ? 'piece' : 'pieces'}</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold', fontSize: '1rem', color: '#10b981', marginTop: '4px' }}>
+                <span>Subtotal</span>
+                <span>GH₵{totalPrice}</span>
+              </div>
             </div>
           )}
 
