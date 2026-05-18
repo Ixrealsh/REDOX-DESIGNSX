@@ -346,7 +346,6 @@ export function ProductDetail({ product }: ProductDetailProps) {
               <span className={styles.comparePrice}>{formatCurrency(product.compareAtPrice)}</span>
             ) : null}
           </div>
-          <p className={styles.description}>{product.description}</p>
 
           {/* Color Selector Grid */}
           <div className={styles.optionGroup}>
@@ -897,23 +896,12 @@ export function ProductDetail({ product }: ProductDetailProps) {
           )}
 
           <div className={styles.details}>
-            <div className={styles.detailBlock}>
-              <h2>Story</h2>
-              <p>{product.story}</p>
-            </div>
-            <div className={styles.detailBlock}>
-              <h2>Details</h2>
-              <ul>
-                {product.details.map((detail) => (
-                  <li key={detail}>{detail}</li>
-                ))}
-              </ul>
-            </div>
-            <div className={styles.detailBlock}>
-              <h2>Fit and material</h2>
-              <p>{product.fit}</p>
-              <p>{product.material}</p>
-            </div>
+            {product.material && (
+              <div className={styles.detailBlock}>
+                <h2>Material</h2>
+                <p>{product.material}</p>
+              </div>
+            )}
           </div>
         </div>
       </section>

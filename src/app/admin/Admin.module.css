@@ -723,4 +723,31 @@
     width: 100%;
     justify-content: center;
   }
+
+  .grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: var(--space-3) !important;
+  }
+  
+  .cardContent {
+    padding: var(--space-3) !important;
+  }
+  
+  .cardTitle {
+    font-size: var(--text-sm) !important;
+    margin-bottom: var(--space-2) !important;
+  }
+  
+  .cardFooter {
+    padding-top: var(--space-2) !important;
+  }
+  
+  .cardPrice {
+    font-size: var(--text-sm) !important;
+  }
+  
+  .editButton {
+    padding: 4px 8px !important;
+    font-size: 0.65rem !important;
+  }
 }

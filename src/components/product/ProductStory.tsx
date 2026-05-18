@@ -68,18 +68,12 @@ export function ProductStory({ product }: ProductStoryProps) {
           <p className="eyebrow">Construction</p>
           <h2>Cold-washed. Preshrunk. Built to hold.</h2>
           <p>{product.material} shaped through Redox pattern discipline and reinforced where the garment takes stress.</p>
-          <div className={styles.callouts}>
-            {product.details.slice(0, 3).map((detail) => (
-              <span className={styles.callout} key={detail}>{detail}</span>
-            ))}
-          </div>
         </div>
       </div>
       <div className={styles.panel} data-story-panel>
         <div className={styles.copy} data-story-copy>
           <p className="eyebrow">Use case</p>
           <h2>Quiet in shape. Heavy in presence.</h2>
-          <p>{product.story}</p>
           <div className={styles.callouts}>
             <span className={styles.callout}>Limited production run</span>
             <span className={styles.callout}>No planned restock</span>

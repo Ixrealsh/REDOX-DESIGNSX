@@ -9,11 +9,7 @@ import { useWishlistStore } from '@/store/wishlist.store';
 import styles from './Navbar.module.css';
 
 const primaryLinks = [
-  { href: '/shop', label: 'Shop' },
-  { href: '/collections', label: 'Collections' },
-  { href: '/drops', label: 'Drops' },
-  { href: '/lookbook', label: 'Lookbook' },
-  { href: '/track-order', label: 'Track Order' }
+  { href: '/admin', label: 'Admin' }
 ];
 
 export function Navbar() {
