@@ -346,6 +346,9 @@ export function ProductDetail({ product }: ProductDetailProps) {
               <span className={styles.comparePrice}>{formatCurrency(product.compareAtPrice)}</span>
             ) : null}
           </div>
+          {product.description && (
+            <p className={styles.description}>{product.description}</p>
+          )}
 
           {/* Color Selector Grid */}
           <div className={styles.optionGroup}>

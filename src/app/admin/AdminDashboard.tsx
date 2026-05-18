@@ -1347,6 +1347,16 @@ export function AdminDashboard({
                 </div>
 
 
+                {/* Description */}
+                <div className={`${styles.field} ${styles.formGridFull}`}>
+                  <label className={styles.fieldLabel}>Short Overview Description</label>
+                  <textarea 
+                    className={styles.textarea}
+                    placeholder="A boxy, heavy utility piece styled for daily wear..."
+                    value={productForm.description}
+                    onChange={(e) => setProductForm((p) => ({ ...p, description: e.target.value }))}
+                  />
+                </div>
 
                 {/* Materials & Fit */}
                 <div className={`${styles.field} ${styles.formGridFull}`}>
