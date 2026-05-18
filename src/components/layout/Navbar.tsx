@@ -8,9 +8,7 @@ import { getCartTotals, useCartStore } from '@/store/cart.store';
 import { useWishlistStore } from '@/store/wishlist.store';
 import styles from './Navbar.module.css';
 
-const primaryLinks = [
-  { href: '/admin', label: 'Admin' }
-];
+const primaryLinks: { href: string; label: string }[] = [];
 
 export function Navbar() {
   const pathname = usePathname();
