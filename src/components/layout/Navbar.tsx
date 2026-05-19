@@ -70,7 +70,7 @@ export function Navbar() {
               e.currentTarget.style.transform = 'scale(1)';
             }}
           />
-          <span className={styles.logoText}>REDOXDESIGN</span>
+          <span className={styles.logoText}>REDOXDESIGNX</span>
         </Link>
 
         <div className={styles.actions}>

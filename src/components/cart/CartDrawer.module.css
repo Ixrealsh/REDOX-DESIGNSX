@@ -53,8 +53,7 @@
 }
 
 .closeButton,
-.removeButton,
-.qtyButton {
+.removeButton {
   display: inline-grid;
   width: 42px;
   height: 42px;
@@ -69,8 +68,7 @@
 }
 
 .closeButton:hover,
-.removeButton:hover,
-.qtyButton:hover {
+.removeButton:hover {
   border-color: var(--color-red);
   color: var(--color-white);
 }
@@ -142,27 +140,60 @@
   text-transform: uppercase;
 }
 
+.itemBottom {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: var(--space-4);
+}
+
 .price {
-  margin: var(--space-3) 0 0;
+  margin: 0;
   font-family: var(--font-mono), monospace;
   font-weight: 700;
+  font-size: var(--text-md);
+  color: var(--color-white);
 }
 
 .quantity {
   display: inline-flex;
   align-items: center;
-  gap: var(--space-2);
-  margin-top: var(--space-3);
+  justify-content: space-between;
+  width: 96px;
+  height: 36px;
+  padding: 0 4px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-full);
+  background: var(--color-surface);
 }
 
 .qtyButton {
-  width: 34px;
-  height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-full);
+  color: var(--color-text-secondary);
+  transition:
+    background-color var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out);
+  cursor: pointer;
+}
+
+.qtyButton:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--color-white);
 }
 
 .qtyValue {
-  min-width: 24px;
   font-family: var(--font-mono), monospace;
+  font-size: var(--text-sm);
+  color: var(--color-white);
+  font-weight: 600;
+  min-width: 24px;
   text-align: center;
 }
 

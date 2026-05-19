@@ -381,25 +381,27 @@ export function CartDrawer() {
                           <TrashIcon />
                         </button>
                       </div>
-                      <p className={styles.price}>{formatCurrency(item.price)}</p>
-                      <div aria-label={`Quantity for ${item.name}`} className={styles.quantity}>
-                        <button
-                          aria-label="Decrease quantity"
-                          className={styles.qtyButton}
-                          onClick={() => updateQty(item.variantId, item.quantity - 1)}
-                          type="button"
-                        >
-                          <MinusIcon />
-                        </button>
-                        <span className={styles.qtyValue}>{item.quantity}</span>
-                        <button
-                          aria-label="Increase quantity"
-                          className={styles.qtyButton}
-                          onClick={() => updateQty(item.variantId, item.quantity + 1)}
-                          type="button"
-                        >
-                          <PlusIcon />
-                        </button>
+                      <div className={styles.itemBottom}>
+                        <p className={styles.price}>{formatCurrency(item.price)}</p>
+                        <div aria-label={`Quantity for ${item.name}`} className={styles.quantity}>
+                          <button
+                            aria-label="Decrease quantity"
+                            className={styles.qtyButton}
+                            onClick={() => updateQty(item.variantId, item.quantity - 1)}
+                            type="button"
+                          >
+                            <MinusIcon />
+                          </button>
+                          <span className={styles.qtyValue}>{item.quantity}</span>
+                          <button
+                            aria-label="Increase quantity"
+                            className={styles.qtyButton}
+                            onClick={() => updateQty(item.variantId, item.quantity + 1)}
+                            type="button"
+                          >
+                            <PlusIcon />
+                          </button>
+                        </div>
                       </div>
                     </div>
                   </article>
