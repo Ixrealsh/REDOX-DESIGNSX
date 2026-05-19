@@ -8,7 +8,10 @@ import { getCartTotals, useCartStore } from '@/store/cart.store';
 import { useWishlistStore } from '@/store/wishlist.store';
 import styles from './Navbar.module.css';
 
-const primaryLinks: { href: string; label: string }[] = [];
+const primaryLinks: { href: string; label: string }[] = [
+  { href: '/shop', label: 'Shop' },
+  { href: '/track-order', label: 'Track Order' },
+];
 
 export function Navbar() {
   const pathname = usePathname();
@@ -50,8 +53,8 @@ export function Navbar() {
             src="/assets/icons/redoxlogo.jpg" 
             alt="REDOXDESIGNX" 
             style={{ 
-              width: '42px', 
-              height: '42px', 
+              width: 'clamp(32px, 8vw, 42px)', 
+              height: 'clamp(32px, 8vw, 42px)', 
               borderRadius: '50%', 
               objectFit: 'cover', 
               border: '1.5px solid var(--color-border)',
@@ -67,6 +70,7 @@ export function Navbar() {
               e.currentTarget.style.transform = 'scale(1)';
             }}
           />
+          <span className={styles.logoText}>REDOXDESIGN</span>
         </Link>
 
         <div className={styles.actions}>
