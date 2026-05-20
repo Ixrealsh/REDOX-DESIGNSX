@@ -49,7 +49,7 @@ export async function POST(request: Request) {
 
     if (!hasSellableVariant) {
       return NextResponse.json(
-        { error: 'Add at least one in-stock size with a quantity of 1 or more.' },
+        { error: 'Add at least one in-stock size before saving.' },
         { status: 400 }
       );
     }

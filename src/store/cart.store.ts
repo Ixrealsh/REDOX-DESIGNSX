@@ -4,7 +4,7 @@ import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 import type { Product, Variant } from '@/types/product';
 import { clamp, FREE_SHIPPING_THRESHOLD } from '@/lib/format';
-import { getVariantStockLimit } from '@/lib/inventory';
+import { getVariantStockLimit, UNTRACKED_STOCK_LIMIT } from '@/lib/inventory';
 
 export interface CartItem {
   productId: string;
@@ -82,7 +82,7 @@ export const useCartStore = create<CartStore>()(
         set((state) => ({
           items: state.items.map((item) =>
             item.variantId === variantId
-              ? { ...item, quantity: clamp(quantity, 1, item.stockLimit || 1) }
+              ? { ...item, quantity: clamp(quantity, 1, item.stockLimit || UNTRACKED_STOCK_LIMIT) }
               : item
           )
         })),
