@@ -496,6 +496,24 @@ export function AdminDashboard({
       return;
     }
 
+    for (const variant of colorVariants) {
+      const color = variant.colorName.trim();
+      if (!color) continue;
+
+      for (const sizeRow of variant.sizes) {
+        const size = sizeRow.size.trim();
+        if (!size) continue;
+
+        if (sizeRow.stockStatus !== 'out_of_stock') {
+          const rawStock = Number(sizeRow.stockQuantity);
+          if (sizeRow.stockQuantity.trim() === '' || !Number.isFinite(rawStock) || rawStock < 1) {
+            triggerNotification(`Enter stock quantity for ${color} / ${size}.`, 'error');
+            return;
+          }
+        }
+      }
+    }
+
     const finalVariants = colorVariants.flatMap((variant) => {
       const color = variant.colorName.trim();
       if (!color) return [];
@@ -506,18 +524,16 @@ export function AdminDashboard({
           if (!size) return null;
 
           const rawStock = Number(sizeRow.stockQuantity);
-          const parsedStock =
-            sizeRow.stockQuantity.trim() === '' || !Number.isFinite(rawStock)
-              ? null
-              : Math.max(0, Math.floor(rawStock));
           const stockStatus: AdminStockStatus =
-            sizeRow.stockStatus === 'out_of_stock' || parsedStock === 0 ? 'out_of_stock' : 'in_stock';
+            sizeRow.stockStatus === 'out_of_stock' ? 'out_of_stock' : 'in_stock';
+          const parsedStock =
+            stockStatus === 'out_of_stock' ? 0 : Math.max(1, Math.floor(rawStock));
 
           return {
             id: `${finalId}-${slugify(color)}-${slugify(size)}`,
             size,
             color,
-            inventory: stockStatus === 'out_of_stock' ? 0 : parsedStock,
+            inventory: parsedStock,
             stockStatus,
             sku: `RD-${finalId.toUpperCase()}-${slugify(color).toUpperCase()}-${size.toUpperCase()}`
           };
@@ -1061,12 +1077,20 @@ export function AdminDashboard({
                       {stock.isSoldOut ? 'Out of stock' : 'In stock'}
                     </span>
                     <span className={styles.stockPill}>{p.variants.length} size variants</span>
-                    {!stock.isSoldOut && !stock.hasUnlimitedStock && (
+                    {!stock.isSoldOut && (
                       <span className={styles.stockPill}>{stock.totalKnownStock} pieces</span>
                     )}
                   </div>
                   <div className={styles.cardFooter}>
                     <span className={styles.cardPrice}>{formatCurrency(p.price)}</span>
+                    <a
+                      className={styles.editButton}
+                      href={`/products/${p.slug}`}
+                      rel="noopener noreferrer"
+                      target="_blank"
+                    >
+                      View live
+                    </a>
                     <button className={styles.editButton} onClick={() => openEditProduct(p)}>
                       Edit / Update
                     </button>
@@ -1453,7 +1477,8 @@ export function AdminDashboard({
                                     aria-label="Optional stock amount"
                                     className={styles.input}
                                     min="0"
-                                    placeholder="Qty optional"
+                                    placeholder="Qty"
+                                    required={sizeRow.stockStatus === 'in_stock'}
                                     type="number"
                                     value={sizeRow.stockQuantity}
                                     onChange={(e) => updateVariantSize(index, sizeIndex, { stockQuantity: e.target.value })}

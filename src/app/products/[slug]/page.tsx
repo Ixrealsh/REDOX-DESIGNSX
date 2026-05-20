@@ -1,16 +1,14 @@
 import { notFound } from 'next/navigation';
 import { ProductDetail } from '@/components/product/ProductDetail';
-import { getDbProduct, getDbProducts } from '@/lib/catalog-db';
+import { getDbProduct } from '@/lib/catalog-db';
 import { getProductStockSummary } from '@/lib/inventory';
 import { buildMetadata, siteMeta } from '@/lib/metadata';
 
+// Always resolve products from the database so admin-created items are available immediately.
+export const dynamic = 'force-dynamic';
+
 interface ProductPageProps {
   params: { slug: string };
-}
-
-export async function generateStaticParams() {
-  const products = await getDbProducts();
-  return products.map((product) => ({ slug: product.slug }));
 }
 
 export async function generateMetadata({ params }: ProductPageProps) {

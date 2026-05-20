@@ -1,42 +1,33 @@
 import type { Product, Variant } from '@/types/product';
 
-export const DEFAULT_STOCK_LIMIT = 99;
-
 export function isVariantInStock(variant: Variant) {
   if (variant.stockStatus === 'out_of_stock') return false;
-  if (variant.inventory === 0) return false;
-  return true;
+  if (typeof variant.inventory !== 'number' || !Number.isFinite(variant.inventory)) return false;
+  return variant.inventory > 0;
 }
 
-export function getVariantStockLimit(variant: Variant, fallback = DEFAULT_STOCK_LIMIT) {
+export function getVariantStockLimit(variant: Variant) {
   if (!isVariantInStock(variant)) return 0;
-  if (typeof variant.inventory === 'number' && Number.isFinite(variant.inventory) && variant.inventory > 0) {
-    return variant.inventory;
-  }
-  return fallback;
+  return Math.max(1, Math.floor(variant.inventory as number));
 }
 
 export function getVariantStockLabel(variant: Variant) {
   if (!isVariantInStock(variant)) return 'Sold out';
-  if (typeof variant.inventory === 'number' && Number.isFinite(variant.inventory) && variant.inventory > 0) {
-    if (variant.inventory <= 3) return `Only ${variant.inventory} left`;
-    return `${variant.inventory} in stock`;
-  }
-  return 'In stock';
+  const inventory = Math.floor(variant.inventory as number);
+  if (inventory <= 3) return `Only ${inventory} left`;
+  return `${inventory} in stock`;
 }
 
 export function getProductStockSummary(product: Product) {
   const variants = product.variants || [];
   const available = variants.filter(isVariantInStock);
-  const finiteInventory = available
-    .map((variant) => variant.inventory)
-    .filter((inventory): inventory is number => typeof inventory === 'number' && Number.isFinite(inventory) && inventory > 0);
+  const finiteInventory = available.map((variant) => Math.floor(variant.inventory as number));
 
   return {
     availableCount: available.length,
     isSoldOut: available.length === 0,
     totalKnownStock: finiteInventory.reduce((sum, inventory) => sum + inventory, 0),
-    hasUnlimitedStock: available.some((variant) => variant.inventory == null)
+    hasUnlimitedStock: false
   };
 }
 
@@ -45,10 +36,14 @@ export function normalizeVariantStock(variant: Variant): Variant {
     typeof variant.inventory === 'number' && Number.isFinite(variant.inventory)
       ? Math.max(0, Math.floor(variant.inventory))
       : null;
+  const stockStatus =
+    variant.stockStatus === 'out_of_stock' || inventory === 0 || inventory == null
+      ? 'out_of_stock'
+      : 'in_stock';
 
   return {
     ...variant,
     inventory,
-    stockStatus: variant.stockStatus || (inventory === 0 ? 'out_of_stock' : 'in_stock')
+    stockStatus
   };
 }

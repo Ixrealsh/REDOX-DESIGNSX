@@ -3,7 +3,7 @@ import { revalidatePath } from 'next/cache';
 import { isDbConfigured } from '@/lib/db';
 import { deleteDbProduct, getDbProducts, saveDbProduct } from '@/lib/catalog-db';
 import { requireAdminSession } from '@/lib/admin-auth';
-import { normalizeVariantStock } from '@/lib/inventory';
+import { isVariantInStock, normalizeVariantStock } from '@/lib/inventory';
 import type { Product } from '@/types/product';
 
 export async function GET() {
@@ -44,6 +44,16 @@ export async function POST(request: Request) {
       );
     }
 
+    const normalizedVariants = Array.isArray(body.variants) ? body.variants.map(normalizeVariantStock) : [];
+    const hasSellableVariant = normalizedVariants.some(isVariantInStock);
+
+    if (!hasSellableVariant) {
+      return NextResponse.json(
+        { error: 'Add at least one in-stock size with a quantity of 1 or more.' },
+        { status: 400 }
+      );
+    }
+
     const product: Product = {
       id: String(body.id),
       slug: String(body.slug),
@@ -59,7 +69,7 @@ export async function POST(request: Request) {
       imageAlt: String(body.imageAlt || body.name),
       colors: Array.isArray(body.colors) ? body.colors : ['Obsidian Black'],
       colorHex: typeof body.colorHex === 'object' && body.colorHex ? body.colorHex : { 'Obsidian Black': '#090909' },
-      variants: Array.isArray(body.variants) ? body.variants.map(normalizeVariantStock) : [],
+      variants: normalizedVariants,
       description: String(body.description || ''),
       story: String(body.story || ''),
       details: Array.isArray(body.details) ? body.details : [],

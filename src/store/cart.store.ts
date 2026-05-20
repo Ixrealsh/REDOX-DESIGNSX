@@ -82,7 +82,7 @@ export const useCartStore = create<CartStore>()(
         set((state) => ({
           items: state.items.map((item) =>
             item.variantId === variantId
-              ? { ...item, quantity: clamp(quantity, 1, item.stockLimit || 99) }
+              ? { ...item, quantity: clamp(quantity, 1, item.stockLimit || 1) }
               : item
           )
         })),

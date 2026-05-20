@@ -1,6 +1,9 @@
-import { ShopGrid } from '@/components/commerce/ShopGrid';
-import { getDbProducts, getDbCollections } from '@/lib/catalog-db';
+import { ProductCard } from '@/components/product/ProductCard';
+import { getDbProducts } from '@/lib/catalog-db';
 import { buildMetadata } from '@/lib/metadata';
+import styles from '../pages.module.css';
+
+export const dynamic = 'force-dynamic';
 
 export const metadata = buildMetadata({
   title: 'Shop',
@@ -10,20 +13,22 @@ export const metadata = buildMetadata({
 
 export default async function ShopPage() {
   const products = await getDbProducts();
-  const collections = await getDbCollections();
 
   return (
-    <>
-      <header className="pageHeader">
-        <div className="pageHeaderInner">
-          <p className="eyebrow">All products</p>
-          <h1 className="pageTitle">The current uniform.</h1>
-          <p className="pageLead">
-            Filter the system by category, collection, or price. Every release is finite.
-          </p>
-        </div>
-      </header>
-      <ShopGrid collections={collections} products={products} />
-    </>
+    <main className={styles.homePage}>
+      <section className={styles.catalogSection}>
+        {products.length > 0 ? (
+          <div className={styles.landingGrid}>
+            {products.map((product, index) => (
+              <ProductCard key={product.id} priority={index < 4} product={product} />
+            ))}
+          </div>
+        ) : (
+          <div style={{ textAlign: 'center', padding: '120px 24px' }}>
+            <p style={{ color: '#666', fontSize: '0.825rem' }}>No products available yet.</p>
+          </div>
+        )}
+      </section>
+    </main>
   );
 }

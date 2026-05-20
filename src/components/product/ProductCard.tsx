@@ -68,7 +68,7 @@ export function ProductCard({ product, priority = false }: ProductCardProps) {
           </Link>
           <p className={styles.collection}>{product.collectionName}</p>
           <p className={stock.isSoldOut ? styles.stockOut : styles.stock}>
-            {stock.isSoldOut ? 'Out of stock' : stock.hasUnlimitedStock ? 'In stock' : `${stock.totalKnownStock} available`}
+            {stock.isSoldOut ? 'Out of stock' : `${stock.totalKnownStock} available`}
           </p>
         </div>
         <div className={styles.priceWrap}>
