@@ -6,6 +6,7 @@ import { useMemo } from 'react';
 import { Badge } from '@/components/ui/Badge';
 import { HeartIcon } from '@/components/ui/Icons';
 import { formatCurrency } from '@/lib/format';
+import { getProductStockSummary } from '@/lib/inventory';
 import { useWishlistStore } from '@/store/wishlist.store';
 import type { Product } from '@/types/product';
 import styles from './ProductCard.module.css';
@@ -18,6 +19,8 @@ interface ProductCardProps {
 export function ProductCard({ product, priority = false }: ProductCardProps) {
   const toggleWishlist = useWishlistStore((state) => state.toggleItem);
   const isWishlisted = useWishlistStore((state) => state.isWishlisted(product.id));
+  const stock = useMemo(() => getProductStockSummary(product), [product]);
+  const badgeLabel: Product['badge'] = stock.isSoldOut ? 'SOLD OUT' : product.badge;
 
   return (
     <article className={styles.card}>
@@ -40,9 +43,9 @@ export function ProductCard({ product, priority = false }: ProductCardProps) {
         />
       </Link>
 
-      {product.badge ? (
+      {badgeLabel ? (
         <span className={styles.badge}>
-          <Badge label={product.badge} />
+          <Badge label={badgeLabel} />
         </span>
       ) : null}
 
@@ -64,6 +67,9 @@ export function ProductCard({ product, priority = false }: ProductCardProps) {
             <h3 className={styles.name}>{product.name}</h3>
           </Link>
           <p className={styles.collection}>{product.collectionName}</p>
+          <p className={stock.isSoldOut ? styles.stockOut : styles.stock}>
+            {stock.isSoldOut ? 'Out of stock' : stock.hasUnlimitedStock ? 'In stock' : `${stock.totalKnownStock} available`}
+          </p>
         </div>
         <div className={styles.priceWrap}>
           <span className={product.compareAtPrice ? styles.salePrice : styles.price}>

@@ -1,9 +1,15 @@
 import { NextResponse } from 'next/server';
+import { revalidatePath } from 'next/cache';
 import { isDbConfigured } from '@/lib/db';
-import { getDbProducts, saveDbProduct } from '@/lib/catalog-db';
+import { deleteDbProduct, getDbProducts, saveDbProduct } from '@/lib/catalog-db';
+import { requireAdminSession } from '@/lib/admin-auth';
+import { normalizeVariantStock } from '@/lib/inventory';
 import type { Product } from '@/types/product';
 
 export async function GET() {
+  const authError = requireAdminSession();
+  if (authError) return authError;
+
   try {
     const products = await getDbProducts();
     return NextResponse.json({ success: true, products });
@@ -17,6 +23,9 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  const authError = requireAdminSession();
+  if (authError) return authError;
+
   if (!isDbConfigured) {
     return NextResponse.json(
       { error: 'Database is not configured yet. Set DATABASE_URL in your .env file.' },
@@ -50,7 +59,7 @@ export async function POST(request: Request) {
       imageAlt: String(body.imageAlt || body.name),
       colors: Array.isArray(body.colors) ? body.colors : ['Obsidian Black'],
       colorHex: typeof body.colorHex === 'object' && body.colorHex ? body.colorHex : { 'Obsidian Black': '#090909' },
-      variants: Array.isArray(body.variants) ? body.variants : [],
+      variants: Array.isArray(body.variants) ? body.variants.map(normalizeVariantStock) : [],
       description: String(body.description || ''),
       story: String(body.story || ''),
       details: Array.isArray(body.details) ? body.details : [],
@@ -67,6 +76,10 @@ export async function POST(request: Request) {
       throw new Error('Database insert operation failed');
     }
 
+    revalidatePath('/');
+    revalidatePath('/shop');
+    revalidatePath(`/products/${product.slug}`);
+
     return NextResponse.json({
       success: true,
       message: 'Product saved successfully to Neon DB!',
@@ -76,6 +89,38 @@ export async function POST(request: Request) {
     console.error('API products POST error:', error);
     return NextResponse.json(
       { error: error.message || 'Failed to save product.' },
+      { status: 500 }
+    );
+  }
+}
+
+export async function DELETE(request: Request) {
+  const authError = requireAdminSession();
+  if (authError) return authError;
+
+  if (!isDbConfigured) {
+    return NextResponse.json(
+      { error: 'Database is not configured yet. Set DATABASE_URL in your .env file.' },
+      { status: 400 }
+    );
+  }
+
+  try {
+    const { searchParams } = new URL(request.url);
+    const productId = searchParams.get('productId');
+
+    if (!productId) {
+      return NextResponse.json({ error: 'productId is required.' }, { status: 400 });
+    }
+
+    await deleteDbProduct(productId);
+    revalidatePath('/');
+    revalidatePath('/shop');
+    return NextResponse.json({ success: true, message: 'Product deleted successfully.' });
+  } catch (error: any) {
+    console.error('API products DELETE error:', error);
+    return NextResponse.json(
+      { error: error.message || 'Failed to delete product.' },
       { status: 500 }
     );
   }

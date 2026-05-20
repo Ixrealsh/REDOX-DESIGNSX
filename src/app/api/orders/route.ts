@@ -1,7 +1,17 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { rateLimit, requestKey } from '@/lib/rate-limit';
-import { addDbOrder, getDbProduct } from '@/lib/catalog-db';
+import { addDbOrder, applyDbProductStockDelta, getDbProduct } from '@/lib/catalog-db';
+import { getVariantStockLimit, isVariantInStock } from '@/lib/inventory';
+
+const orderItemSchema = z.object({
+  productId: z.string().optional(),
+  productSlug: z.string().optional(),
+  variantId: z.string().optional(),
+  color: z.string().min(1).max(100),
+  size: z.string().min(1).max(50),
+  quantity: z.number().int().min(1).max(99)
+});
 
 const orderSchema = z.object({
   productId: z.string().min(1),
@@ -18,6 +28,7 @@ const orderSchema = z.object({
   paymentMethod: z.enum(['COD', 'MOMO', 'PAYSTACK']),
   momoNetwork: z.enum(['MTN', 'Telecel', 'AT']).optional(),
   momoNumber: z.string().max(100).optional(),
+  items: z.array(orderItemSchema).min(1).max(25).optional(),
   skipSms: z.boolean().optional()
 });
 
@@ -110,9 +121,58 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Product manifest not found in database.' }, { status: 404 });
     }
 
-    // Infer order quantity based on unit price
-    const inferredQty = Math.max(1, Math.round(orderData.price / dbProduct.price));
-    const verifiedTotalPrice = dbProduct.price * inferredQty;
+    const requestedItems = (orderData.items?.length
+      ? orderData.items
+      : [{
+          productId: orderData.productId,
+          productSlug: orderData.productSlug,
+          color: orderData.selectedColor.split(',')[0]?.trim() || orderData.selectedColor,
+          size: orderData.selectedSize,
+          quantity: Math.max(1, Math.round(orderData.price / dbProduct.price))
+        }]
+    ).map((item) => ({
+      ...item,
+      quantity: Math.max(1, Math.floor(Number(item.quantity) || 1))
+    }));
+
+    let verifiedItems: { color: string; size: string; quantity: number }[];
+    try {
+      verifiedItems = requestedItems.map((item) => {
+        if (item.productSlug && item.productSlug !== dbProduct.slug) {
+          throw new Error('Order item does not match the selected product.');
+        }
+
+        const variant = dbProduct.variants.find(
+          (candidate) => candidate.color === item.color && candidate.size === item.size
+        );
+
+        if (!variant) {
+          throw new Error(`${item.color} / ${item.size} is not available for this product.`);
+        }
+
+        if (!isVariantInStock(variant)) {
+          throw new Error(`${item.color} / ${item.size} is sold out.`);
+        }
+
+        const stockLimit = getVariantStockLimit(variant);
+        if (item.quantity > stockLimit) {
+          throw new Error(`Only ${stockLimit} left for ${item.color} / ${item.size}.`);
+        }
+
+        return {
+          color: item.color,
+          size: item.size,
+          quantity: item.quantity
+        };
+      });
+    } catch (error: any) {
+      return NextResponse.json({ error: error.message || 'Requested stock is unavailable.' }, { status: 400 });
+    }
+
+    const verifiedTotalPrice = verifiedItems.reduce(
+      (total, item) => total + dbProduct.price * item.quantity,
+      0
+    );
 
     // 2. SECURE PAYSTACK TRANSACTION REFERENCE VERIFICATION
     if (orderData.paymentMethod === 'PAYSTACK') {
@@ -154,8 +214,21 @@ export async function POST(request: Request) {
     }
 
     // 3. OVERWRITE WITH AUTHORITATIVE DATA BEFORE WRITE
-    // Force write the actual verified price to Neon Postgres to bypass any local client edits
+    // Force write actual verified product data to bypass local client edits.
     orderData.price = verifiedTotalPrice;
+    orderData.productId = dbProduct.id;
+    orderData.productName = dbProduct.name;
+    orderData.productSlug = dbProduct.slug;
+    orderData.selectedColor = Array.from(new Set(verifiedItems.map((item) => item.color))).join(', ');
+    orderData.selectedSize = verifiedItems
+      .map((item) => `${item.color} / ${item.size}${item.quantity > 1 ? ` (x${item.quantity})` : ''}`)
+      .join(', ');
+
+    try {
+      await applyDbProductStockDelta(dbProduct.slug, verifiedItems);
+    } catch (error: any) {
+      return NextResponse.json({ error: error.message || 'Requested stock is unavailable.' }, { status: 400 });
+    }
     
     // Save order in database (or fallback sandbox orders list)
     const order = await addDbOrder({

@@ -384,6 +384,109 @@
   border-color: rgba(255, 255, 255, 0.3);
 }
 
+.dangerButton {
+  background: rgba(239, 68, 68, 0.08);
+  border: 1px solid rgba(239, 68, 68, 0.22);
+  color: #ef4444;
+  padding: 6px 12px;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-family: var(--font-mono), monospace;
+  font-weight: 700;
+  cursor: pointer;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  transition: all var(--duration-fast) var(--ease-out);
+}
+
+.dangerButton:hover {
+  background: rgba(239, 68, 68, 0.16);
+  border-color: rgba(239, 68, 68, 0.44);
+  color: #ff6b6b;
+}
+
+.stockPills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin: 0 0 var(--space-4);
+}
+
+.stockPill,
+.stockPillDanger {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  border: 1px solid rgba(16, 185, 129, 0.22);
+  border-radius: 4px;
+  background: rgba(16, 185, 129, 0.08);
+  color: #10b981;
+  padding: 0 8px;
+  font-family: var(--font-mono), monospace;
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.stockPillDanger {
+  border-color: rgba(239, 68, 68, 0.24);
+  background: rgba(239, 68, 68, 0.08);
+  color: #ef4444;
+}
+
+.cardActions {
+  display: inline-flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+
+.variantInventory {
+  display: grid;
+  gap: var(--space-3);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.22);
+  padding: var(--space-3);
+}
+
+.variantInventoryHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.variantInventoryHeader strong {
+  display: block;
+  color: var(--color-white);
+  font-size: var(--text-sm);
+}
+
+.variantInventoryHeader span {
+  display: block;
+  color: var(--color-text-muted);
+  font-size: 0.75rem;
+}
+
+.sizeRows {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.sizeRow {
+  display: grid;
+  grid-template-columns: minmax(76px, 0.75fr) minmax(132px, 1fr) minmax(112px, 0.85fr) auto;
+  gap: var(--space-2);
+  align-items: center;
+}
+
+.sizeRow .input,
+.sizeRow .select {
+  min-height: 38px;
+  padding: 8px 10px;
+}
+
 /* --- Glassmorphic Overlay & Modals --- */
 .modalOverlay {
   position: fixed;
@@ -749,5 +852,14 @@
   .editButton {
     padding: 4px 8px !important;
     font-size: 0.65rem !important;
+  }
+
+  .sizeRow {
+    grid-template-columns: 1fr;
+  }
+
+  .variantInventoryHeader {
+    align-items: flex-start;
+    flex-direction: column;
   }
 }

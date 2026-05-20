@@ -1,8 +1,12 @@
 import { NextResponse } from 'next/server';
 import { isDbConfigured, sql } from '@/lib/db';
 import { products, drops, collections, lookbooks } from '@/data/catalog';
+import { requireAdminSession } from '@/lib/admin-auth';
 
 export async function POST() {
+  const authError = requireAdminSession();
+  if (authError) return authError;
+
   if (!isDbConfigured) {
     return NextResponse.json(
       { error: 'Database is not configured yet. Set DATABASE_URL in your .env file.' },

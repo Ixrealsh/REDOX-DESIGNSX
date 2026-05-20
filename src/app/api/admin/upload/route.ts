@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { v2 as cloudinary } from 'cloudinary';
+import { requireAdminSession } from '@/lib/admin-auth';
 
 // Check if credentials exist before configuring
 const cloudName = process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME;
@@ -24,6 +25,9 @@ if (isCloudinaryConfigured) {
 }
 
 export async function POST(request: Request) {
+  const authError = requireAdminSession();
+  if (authError) return authError;
+
   if (!isCloudinaryConfigured) {
     return NextResponse.json(
       { error: 'Cloudinary credentials are not configured in your .env file.' },
@@ -37,6 +41,14 @@ export async function POST(request: Request) {
 
     if (!file) {
       return NextResponse.json({ error: 'No file was provided.' }, { status: 400 });
+    }
+
+    if (!file.type.startsWith('image/')) {
+      return NextResponse.json({ error: 'Only image uploads are allowed.' }, { status: 400 });
+    }
+
+    if (file.size > 8 * 1024 * 1024) {
+      return NextResponse.json({ error: 'Image is too large. Upload an image under 8MB.' }, { status: 400 });
     }
 
     // Convert file to standard Buffer for server-side streaming

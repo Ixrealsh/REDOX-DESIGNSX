@@ -1,7 +1,13 @@
 import { NextResponse } from 'next/server';
-import crypto from 'crypto';
+import { createAdminSignature, getAdminEmail } from '@/lib/admin-auth';
+import { rateLimit, requestKey } from '@/lib/rate-limit';
 
 export async function POST(request: Request) {
+  const limit = rateLimit(`admin-login:${requestKey(request)}`, 5, 60_000);
+  if (!limit.allowed) {
+    return NextResponse.json({ error: 'Too many sign in attempts. Please wait one minute.' }, { status: 429 });
+  }
+
   try {
     const body = await request.json().catch(() => null);
     const { email, password } = body || {};
@@ -10,7 +16,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Email and password are required.' }, { status: 400 });
     }
 
-    const adminEmail = process.env.ADMIN_EMAIL || 'admin@redoxdesignx.com';
+    const adminEmail = getAdminEmail();
 
     // 1. Strictly verify that the email matches the authorized admin email in .env
     if (email.trim().toLowerCase() !== adminEmail.trim().toLowerCase()) {
@@ -18,7 +24,7 @@ export async function POST(request: Request) {
     }
 
     // 2. Perform Server-side Firebase REST authentication
-    const apiKey = "AIzaSyD4rIJfGT9SLfYQ1nbTMDmVIqoSsXHKSpg";
+    const apiKey = process.env.FIREBASE_API_KEY || process.env.NEXT_PUBLIC_FIREBASE_API_KEY || "AIzaSyD4rIJfGT9SLfYQ1nbTMDmVIqoSsXHKSpg";
     const signInUrl = `https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${apiKey}`;
     
     const signInRes = await fetch(signInUrl, {
@@ -42,8 +48,7 @@ export async function POST(request: Request) {
     }
 
     // 3. Create a secure cryptographic signature of the admin email using a fixed secret
-    const secret = 'redox-secret-key-129847192';
-    const signature = crypto.createHmac('sha256', secret).update(adminEmail).digest('hex');
+    const signature = createAdminSignature(adminEmail);
     
     const response = NextResponse.json({ success: true, message: 'Authenticated successfully!' });
     

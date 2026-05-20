@@ -1,7 +1,13 @@
 import { NextResponse } from 'next/server';
 import { getDbOrders } from '@/lib/catalog-db';
+import { requireAdminSession } from '@/lib/admin-auth';
+
+const allowedOrderStatuses = new Set(['Pending', 'Processing', 'Shipped', 'Delivered', 'Cancelled']);
 
 export async function GET() {
+  const authError = requireAdminSession();
+  if (authError) return authError;
+
   try {
     const orders = await getDbOrders();
     return NextResponse.json({ success: true, orders });
@@ -15,12 +21,19 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  const authError = requireAdminSession();
+  if (authError) return authError;
+
   try {
     const body = await request.json().catch(() => null);
     const { orderId, status } = body || {};
 
     if (!orderId || !status) {
       return NextResponse.json({ error: 'orderId and status are required.' }, { status: 400 });
+    }
+
+    if (!allowedOrderStatuses.has(String(status))) {
+      return NextResponse.json({ error: 'Unsupported order status.' }, { status: 400 });
     }
 
     const { isDbConfigured, sql } = require('@/lib/db');
@@ -50,6 +63,9 @@ export async function POST(request: Request) {
 }
 
 export async function DELETE(request: Request) {
+  const authError = requireAdminSession();
+  if (authError) return authError;
+
   try {
     const { searchParams } = new URL(request.url);
     const orderId = searchParams.get('orderId');

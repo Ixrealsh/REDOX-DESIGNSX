@@ -12,6 +12,7 @@ import { useWishlistStore } from '@/store/wishlist.store';
 import { useCartStore } from '@/store/cart.store';
 import type { Product } from '@/types/product';
 import { loadPaystackScript } from '@/lib/paystack';
+import { getVariantStockLabel, getVariantStockLimit, isVariantInStock } from '@/lib/inventory';
 import styles from './ProductDetail.module.css';
 
 interface ProductDetailProps {
@@ -93,6 +94,32 @@ export function ProductDetail({ product }: ProductDetailProps) {
   const totalPrice = useMemo(() => {
     return totalQuantity * product.price;
   }, [totalQuantity, product.price]);
+
+  const selectedItems = useMemo(() => {
+    return Object.entries(quantities).flatMap(([color, sizes]) =>
+      Object.entries(sizes)
+        .filter(([, qty]) => qty > 0)
+        .map(([size, qty]) => {
+          const variant = product.variants.find((candidate) => candidate.color === color && candidate.size === size);
+          return variant
+            ? {
+                productId: product.id,
+                productSlug: product.slug,
+                variantId: variant.id,
+                color,
+                size,
+                quantity: qty
+              }
+            : null;
+        })
+        .filter((item): item is NonNullable<typeof item> => Boolean(item))
+    );
+  }, [product.id, product.slug, product.variants, quantities]);
+
+  const activeColorVariants = useMemo(
+    () => product.variants.filter((variant) => variant.color === selectedColor),
+    [product.variants, selectedColor]
+  );
   
   // Checkout flow states
   const [showCheckout, setShowCheckout] = useState(false);
@@ -137,13 +164,13 @@ export function ProductDetail({ product }: ProductDetailProps) {
   const selectedVariant = useMemo(
     () =>
       product.variants.find(
-        (variant) => variant.size === selectedSize && variant.color === selectedColor && variant.inventory > 0
+        (variant) => variant.size === selectedSize && variant.color === selectedColor && isVariantInStock(variant)
       ) ||
-      product.variants.find((variant) => variant.size === selectedSize && variant.inventory > 0),
+      product.variants.find((variant) => variant.size === selectedSize && isVariantInStock(variant)),
     [product.variants, selectedColor, selectedSize]
   );
 
-  const lowStockMessage = selectedVariant && selectedVariant.inventory <= 3
+  const lowStockMessage = selectedVariant && typeof selectedVariant.inventory === 'number' && selectedVariant.inventory <= 3
     ? `Only ${selectedVariant.inventory} left in ${selectedVariant.size}`
     : '';
 
@@ -202,7 +229,7 @@ export function ProductDetail({ product }: ProductDetailProps) {
       Object.entries(sizes).forEach(([size, qty]) => {
         if (qty > 0) {
           const variant = product.variants.find(
-            (v) => v.size === size && v.color === color && v.inventory > 0
+            (v) => v.size === size && v.color === color && isVariantInStock(v)
           );
           if (variant) {
             const colorImg = product.colorImages?.[color]?.[0] || product.image;
@@ -236,7 +263,8 @@ export function ProductDetail({ product }: ProductDetailProps) {
           shippingCity: formData.city,
           paymentMethod: formData.paymentMethod,
           momoNetwork: formData.paymentMethod === 'MOMO' ? formData.momoNetwork : undefined,
-          momoNumber: formData.paymentMethod === 'MOMO' ? formData.momoNumber : (formData.paymentMethod === 'PAYSTACK' ? paymentRef : undefined)
+          momoNumber: formData.paymentMethod === 'MOMO' ? formData.momoNumber : (formData.paymentMethod === 'PAYSTACK' ? paymentRef : undefined),
+          items: selectedItems
         })
       });
 
@@ -259,7 +287,7 @@ export function ProductDetail({ product }: ProductDetailProps) {
 
   const handleOrderSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedSize) {
+    if (selectedItems.length === 0) {
       setError('Please select at least one size with quantity.');
       return;
     }
@@ -420,12 +448,12 @@ export function ProductDetail({ product }: ProductDetailProps) {
               </p>
             ) : (
               <div style={{ display: 'grid', gap: 'var(--space-3)', marginTop: 'var(--space-2)' }}>
-                {product.variants
-                  .filter((variant) => variant.color === selectedColor)
+                {activeColorVariants
                   .map((variant) => {
                     const size = variant.size;
                     const qty = quantities[selectedColor]?.[size] || 0;
-                    const inStock = variant.inventory > 0;
+                    const stockLimit = getVariantStockLimit(variant);
+                    const inStock = isVariantInStock(variant);
 
                     return (
                       <div 
@@ -444,7 +472,7 @@ export function ProductDetail({ product }: ProductDetailProps) {
                         <div style={{ display: 'flex', flexDirection: 'column' }}>
                           <span style={{ fontWeight: 700, fontSize: '0.9rem', color: '#fff' }}>Size {size}</span>
                           <span style={{ fontSize: '0.75rem', color: '#888', marginTop: 2 }}>
-                            {formatCurrency(product.price)} • {inStock ? `In Stock` : 'Sold Out'}
+                            {formatCurrency(product.price)} - {getVariantStockLabel(variant)}
                           </span>
                         </div>
                         
@@ -488,7 +516,7 @@ export function ProductDetail({ product }: ProductDetailProps) {
                                   ...q,
                                   [selectedColor]: {
                                     ...(q[selectedColor] || {}),
-                                    [size]: Math.min(variant.inventory, (q[selectedColor]?.[size] || 0) + 1)
+                                    [size]: Math.min(stockLimit, (q[selectedColor]?.[size] || 0) + 1)
                                   }
                                 }));
                               }}
@@ -748,7 +776,7 @@ export function ProductDetail({ product }: ProductDetailProps) {
           {showCheckout && !checkoutSuccess && (
             <div className={styles.directCheckout} ref={checkoutRef}>
               <div className={styles.checkoutHeader}>
-                DIRECT SECURE CHECKOUT — {formatCurrency(product.price)}
+                DIRECT SECURE CHECKOUT - {formatCurrency(totalPrice)}
               </div>
               
               <form onSubmit={handleOrderSubmit} className={styles.checkoutForm}>
@@ -858,7 +886,7 @@ export function ProductDetail({ product }: ProductDetailProps) {
                   disabled={checkoutLoading}
                   className={styles.placeOrderButton}
                 >
-                  {checkoutLoading ? 'Processing Secure Order...' : `Confirm & Place Order — ${formatCurrency(product.price)}`}
+                  {checkoutLoading ? 'Processing Secure Order...' : `Confirm & Place Order - ${formatCurrency(totalPrice)}`}
                 </button>
               </form>
             </div>

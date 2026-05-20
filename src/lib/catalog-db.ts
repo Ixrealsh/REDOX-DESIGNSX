@@ -5,6 +5,7 @@ import {
   collections as mockCollections,
   lookbooks as mockLookbooks
 } from '@/data/catalog';
+import { isVariantInStock, normalizeVariantStock } from '@/lib/inventory';
 import type { Product, Drop, Collection, LookbookIssue, Order } from '@/types/product';
 
 export interface WaitlistSignup {
@@ -18,6 +19,8 @@ export interface WaitlistSignup {
 // Product Row Mapping
 // ----------------------------------------------------
 function mapProductRow(row: any): Product {
+  const variants = typeof row.variants === 'string' ? JSON.parse(row.variants) : row.variants;
+
   return {
     id: row.id,
     slug: row.slug,
@@ -32,7 +35,7 @@ function mapProductRow(row: any): Product {
     imageAlt: row.image_alt,
     colors: row.colors,
     colorHex: typeof row.color_hex === 'string' ? JSON.parse(row.color_hex) : row.color_hex,
-    variants: typeof row.variants === 'string' ? JSON.parse(row.variants) : row.variants,
+    variants: Array.isArray(variants) ? variants.map(normalizeVariantStock) : [],
     description: row.description,
     story: row.story,
     details: row.details,
@@ -122,17 +125,22 @@ export async function getDbCollectionProducts(collectionSlug: string): Promise<P
 export async function saveDbProduct(p: Product): Promise<boolean> {
   if (!isDbConfigured) return false;
   try {
+    const normalizedProduct = {
+      ...p,
+      variants: (p.variants || []).map(normalizeVariantStock)
+    };
+
     await sql`
       INSERT INTO products (
         id, slug, name, collection_slug, collection_name, category, price, badge, 
         image, secondary_image, image_alt, colors, color_hex, variants, 
         description, story, details, care, material, fit, rating, review_count, color_images
       ) VALUES (
-        ${p.id}, ${p.slug}, ${p.name}, ${p.collectionSlug}, ${p.collectionName}, ${p.category}, 
-        ${p.price}, ${p.badge || null}, ${p.image}, ${p.secondaryImage || null}, ${p.imageAlt}, 
-        ${p.colors}, ${JSON.stringify(p.colorHex)}, ${JSON.stringify(p.variants)}, 
-        ${p.description}, ${p.story}, ${p.details}, ${p.care}, ${p.material}, ${p.fit}, 
-        ${p.rating}, ${p.reviewCount}, ${JSON.stringify(p.colorImages || {})}
+        ${normalizedProduct.id}, ${normalizedProduct.slug}, ${normalizedProduct.name}, ${normalizedProduct.collectionSlug}, ${normalizedProduct.collectionName}, ${normalizedProduct.category}, 
+        ${normalizedProduct.price}, ${normalizedProduct.badge || null}, ${normalizedProduct.image}, ${normalizedProduct.secondaryImage || null}, ${normalizedProduct.imageAlt}, 
+        ${normalizedProduct.colors}, ${JSON.stringify(normalizedProduct.colorHex)}, ${JSON.stringify(normalizedProduct.variants)}, 
+        ${normalizedProduct.description}, ${normalizedProduct.story}, ${normalizedProduct.details}, ${normalizedProduct.care}, ${normalizedProduct.material}, ${normalizedProduct.fit}, 
+        ${normalizedProduct.rating}, ${normalizedProduct.reviewCount}, ${JSON.stringify(normalizedProduct.colorImages || {})}
       )
       ON CONFLICT (id) DO UPDATE SET
         slug = EXCLUDED.slug,
@@ -163,6 +171,79 @@ export async function saveDbProduct(p: Product): Promise<boolean> {
     console.error('Failed to save product to Neon Postgres:', error);
     throw error;
   }
+}
+
+export async function deleteDbProduct(productId: string): Promise<boolean> {
+  if (!isDbConfigured) return false;
+  try {
+    await sql`
+      DELETE FROM products
+      WHERE id = ${productId} OR slug = ${productId}
+    `;
+    return true;
+  } catch (error) {
+    console.error('Failed to delete product from Neon Postgres:', error);
+    throw error;
+  }
+}
+
+export interface StockSelection {
+  color: string;
+  size: string;
+  quantity: number;
+}
+
+export async function applyDbProductStockDelta(slug: string, selections: StockSelection[]): Promise<Product | undefined> {
+  const product = await getDbProduct(slug);
+  if (!product) return undefined;
+
+  const normalizedSelections = selections.map((selection) => ({
+    ...selection,
+    quantity: Math.max(1, Math.floor(Number(selection.quantity) || 1))
+  }));
+
+  for (const selection of normalizedSelections) {
+    const variant = product.variants.find(
+      (candidate) => candidate.color === selection.color && candidate.size === selection.size
+    );
+
+    if (!variant || !isVariantInStock(variant)) {
+      throw new Error(`${selection.color} / ${selection.size} is out of stock.`);
+    }
+
+    if (typeof variant.inventory === 'number' && variant.inventory < selection.quantity) {
+      throw new Error(`Only ${variant.inventory} left for ${selection.color} / ${selection.size}.`);
+    }
+  }
+
+  const nextProduct: Product = {
+    ...product,
+    variants: product.variants.map((variant) => {
+      const orderedQuantity = normalizedSelections
+        .filter((selection) => selection.color === variant.color && selection.size === variant.size)
+        .reduce((sum, selection) => sum + selection.quantity, 0);
+
+      if (!orderedQuantity || typeof variant.inventory !== 'number') {
+        return variant;
+      }
+
+      const nextInventory = Math.max(variant.inventory - orderedQuantity, 0);
+      return {
+        ...variant,
+        inventory: nextInventory,
+        stockStatus: nextInventory === 0 ? 'out_of_stock' : 'in_stock'
+      };
+    })
+  };
+
+  if (isDbConfigured) {
+    await saveDbProduct(nextProduct);
+  } else {
+    const index = mockProducts.findIndex((candidate) => candidate.slug === slug || candidate.id === product.id);
+    if (index > -1) mockProducts[index] = nextProduct;
+  }
+
+  return nextProduct;
 }
 
 // ----------------------------------------------------

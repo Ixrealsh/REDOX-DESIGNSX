@@ -1,6 +1,7 @@
 import { notFound } from 'next/navigation';
 import { ProductDetail } from '@/components/product/ProductDetail';
 import { getDbProduct, getDbProducts } from '@/lib/catalog-db';
+import { getProductStockSummary } from '@/lib/inventory';
 import { buildMetadata, siteMeta } from '@/lib/metadata';
 
 interface ProductPageProps {
@@ -34,11 +35,14 @@ export default async function ProductPage({ params }: ProductPageProps) {
     notFound();
   }
 
+  const stock = getProductStockSummary(product);
+  const productImage = product.image.startsWith('http') ? product.image : `${siteMeta.siteUrl}${product.image}`;
+
   const structuredData = {
     '@context': 'https://schema.org',
     '@type': 'Product',
     name: product.name,
-    image: [`${siteMeta.siteUrl}${product.image}`],
+    image: [productImage],
     description: product.description,
     sku: product.variants[0]?.sku,
     brand: { '@type': 'Brand', name: 'REDOXDESIGNX' },
@@ -51,7 +55,11 @@ export default async function ProductPage({ params }: ProductPageProps) {
       '@type': 'Offer',
       priceCurrency: 'GHS',
       price: product.price,
-      availability: product.badge === 'COMING SOON' ? 'https://schema.org/PreOrder' : 'https://schema.org/InStock',
+      availability: product.badge === 'COMING SOON'
+        ? 'https://schema.org/PreOrder'
+        : stock.isSoldOut
+          ? 'https://schema.org/OutOfStock'
+          : 'https://schema.org/InStock',
       url: `${siteMeta.siteUrl}/products/${product.slug}`
     }
   };

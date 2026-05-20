@@ -4,7 +4,8 @@ export interface Variant {
   id: string;
   size: string;
   color: string;
-  inventory: number;
+  inventory?: number | null;
+  stockStatus?: 'in_stock' | 'out_of_stock';
   sku: string;
 }
 

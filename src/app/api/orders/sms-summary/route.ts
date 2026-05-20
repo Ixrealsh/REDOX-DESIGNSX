@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getDbOrders } from '@/lib/catalog-db';
+import { rateLimit, requestKey } from '@/lib/rate-limit';
 
 async function sendUnifiedSms(orders: any[]) {
   const apiKey = process.env.MNOTIFY_API_KEY;
@@ -80,6 +81,11 @@ async function sendUnifiedSms(orders: any[]) {
 }
 
 export async function POST(request: Request) {
+  const limit = rateLimit(`sms-summary:${requestKey(request)}`, 4, 60_000);
+  if (!limit.allowed) {
+    return NextResponse.json({ error: 'Too many SMS summary requests. Please wait.' }, { status: 429 });
+  }
+
   try {
     const body = await request.json().catch(() => null);
     const { orderIds } = body || {};

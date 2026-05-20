@@ -4,6 +4,7 @@ import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 import type { Product, Variant } from '@/types/product';
 import { clamp, FREE_SHIPPING_THRESHOLD } from '@/lib/format';
+import { getVariantStockLimit } from '@/lib/inventory';
 
 export interface CartItem {
   productId: string;
@@ -16,6 +17,7 @@ export interface CartItem {
   color: string;
   sku: string;
   quantity: number;
+  stockLimit?: number;
 }
 
 interface CartStore {
@@ -40,6 +42,7 @@ export const useCartStore = create<CartStore>()(
       addItem: (product, variant, quantity = 1, selectedColorImage) =>
         set((state) => {
           const compositeId = `${variant.id}-${variant.color}`;
+          const stockLimit = getVariantStockLimit(variant);
           const existing = state.items.find((item) => item.variantId === compositeId);
 
           if (existing) {
@@ -47,7 +50,7 @@ export const useCartStore = create<CartStore>()(
               isOpen: true,
               items: state.items.map((item) =>
                 item.variantId === compositeId
-                  ? { ...item, quantity: clamp(item.quantity + quantity, 1, 99) }
+                  ? { ...item, stockLimit, quantity: clamp(item.quantity + quantity, 1, stockLimit) }
                   : item
               )
             };
@@ -67,7 +70,8 @@ export const useCartStore = create<CartStore>()(
                 size: variant.size,
                 color: variant.color,
                 sku: variant.sku,
-                quantity
+                quantity: clamp(quantity, 1, stockLimit),
+                stockLimit
               }
             ]
           };
@@ -78,7 +82,7 @@ export const useCartStore = create<CartStore>()(
         set((state) => ({
           items: state.items.map((item) =>
             item.variantId === variantId
-              ? { ...item, quantity: clamp(quantity, 1, 99) }
+              ? { ...item, quantity: clamp(quantity, 1, item.stockLimit || 99) }
               : item
           )
         })),

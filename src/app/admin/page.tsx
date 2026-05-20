@@ -4,7 +4,7 @@ import { AdminDashboard } from './AdminDashboard';
 import { AdminLogin } from './AdminLogin';
 import { cookies } from 'next/headers';
 import { notFound } from 'next/navigation';
-import crypto from 'crypto';
+import { isAdminSessionValid } from '@/lib/admin-auth';
 
 export const metadata = {
   title: 'Admin Console | REDOXDESIGNX',
@@ -19,17 +19,11 @@ export default async function AdminPage() {
   const cookieStore = cookies();
   const sessionToken = cookieStore.get('admin_session')?.value;
 
-  const adminEmail = process.env.ADMIN_EMAIL || 'admin@redoxdesignx.com';
-  
-  const secret = 'redox-secret-key-129847192';
-  const expectedSignature = crypto.createHmac('sha256', secret).update(adminEmail).digest('hex');
-  const isAuthenticated = sessionToken === expectedSignature;
-
   if (!sessionToken) {
     return <AdminLogin />;
   }
 
-  if (!isAuthenticated) {
+  if (!isAdminSessionValid(sessionToken)) {
     notFound();
   }
 

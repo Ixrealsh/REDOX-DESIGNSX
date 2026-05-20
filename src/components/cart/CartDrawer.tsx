@@ -138,6 +138,14 @@ export function CartDrawer() {
             shippingCity: formData.city,
             paymentMethod: 'PAYSTACK',
             momoNumber: paymentRef,
+            items: [{
+              productId: item.productId,
+              productSlug: item.productSlug,
+              variantId: item.variantId,
+              color: item.color,
+              size: item.size,
+              quantity: item.quantity
+            }],
             skipSms: true
           })
         });
@@ -396,6 +404,7 @@ export function CartDrawer() {
                           <button
                             aria-label="Increase quantity"
                             className={styles.qtyButton}
+                            disabled={Boolean(item.stockLimit && item.quantity >= item.stockLimit)}
                             onClick={() => updateQty(item.variantId, item.quantity + 1)}
                             type="button"
                           >

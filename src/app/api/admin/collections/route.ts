@@ -1,9 +1,13 @@
 import { NextResponse } from 'next/server';
 import { isDbConfigured } from '@/lib/db';
 import { getDbCollections, saveDbCollection } from '@/lib/catalog-db';
+import { requireAdminSession } from '@/lib/admin-auth';
 import type { Collection } from '@/types/product';
 
 export async function GET() {
+  const authError = requireAdminSession();
+  if (authError) return authError;
+
   try {
     const collections = await getDbCollections();
     return NextResponse.json({ success: true, collections });
@@ -17,6 +21,9 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  const authError = requireAdminSession();
+  if (authError) return authError;
+
   if (!isDbConfigured) {
     return NextResponse.json(
       { error: 'Database is not configured yet. Set DATABASE_URL in your .env file.' },

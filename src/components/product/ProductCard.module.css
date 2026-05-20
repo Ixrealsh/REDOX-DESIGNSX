@@ -84,6 +84,20 @@
   text-transform: uppercase;
 }
 
+.stock,
+.stockOut {
+  margin: 6px 0 0;
+  color: var(--color-success);
+  font-family: var(--font-mono), monospace;
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.stockOut {
+  color: var(--color-error);
+}
+
 .priceWrap {
   display: grid;
   justify-items: end;

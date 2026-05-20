@@ -2,8 +2,10 @@
 
 import { useState, useRef, useEffect } from 'react';
 import Image from 'next/image';
-import type { Product, Drop, Collection, LookbookIssue, ProductCategory, Order } from '@/types/product';
+import type { Product, Drop, Collection, LookbookIssue, Order } from '@/types/product';
 import type { WaitlistSignup } from '@/lib/catalog-db';
+import { formatCurrency } from '@/lib/format';
+import { getProductStockSummary } from '@/lib/inventory';
 import styles from './Admin.module.css';
 
 interface AdminDashboardProps {
@@ -14,6 +16,34 @@ interface AdminDashboardProps {
   initialCollections: Collection[];
   initialLookbooks: LookbookIssue[];
   initialWaitlist: WaitlistSignup[];
+}
+
+type AdminStockStatus = 'in_stock' | 'out_of_stock';
+
+interface AdminSizeStock {
+  size: string;
+  stockStatus: AdminStockStatus;
+  stockQuantity: string;
+}
+
+interface AdminColorVariant {
+  colorName: string;
+  imageUrls: string[];
+  sizes: AdminSizeStock[];
+}
+
+const defaultSizes = ['S', 'M', 'L', 'XL', 'XXL'];
+
+function createSizeRows(sizes = defaultSizes): AdminSizeStock[] {
+  return sizes.map((size) => ({
+    size,
+    stockStatus: 'in_stock',
+    stockQuantity: ''
+  }));
+}
+
+function slugify(value: string) {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
 }
 
 export function AdminDashboard({
@@ -75,7 +105,7 @@ export function AdminDashboard({
   });
 
   // Dynamic Color Variant state
-  const [colorVariants, setColorVariants] = useState<{ colorName: string; imageUrls: string[] }[]>([]);
+  const [colorVariants, setColorVariants] = useState<AdminColorVariant[]>([]);
   const [activeVariantUploadIndex, setActiveVariantUploadIndex] = useState<number | null>(null);
   const variantFileInputRef = useRef<HTMLInputElement>(null);
 
@@ -184,6 +214,32 @@ export function AdminDashboard({
       }
     } catch (err: any) {
       triggerNotification(err.message || 'Error deleting order.', 'error');
+    }
+  };
+
+  const handleDeleteProduct = async (product: Product) => {
+    if (!window.confirm(`Permanently delete "${product.name}" from the product catalog?`)) return;
+
+    if (!isDbConnected) {
+      setProducts((prev) => prev.filter((item) => item.id !== product.id));
+      triggerNotification('Sandbox Mode: Product deleted from the local catalog.', 'success');
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/admin/products?productId=${encodeURIComponent(product.id)}`, {
+        method: 'DELETE'
+      });
+      const data = await response.json();
+
+      if (response.ok) {
+        setProducts((prev) => prev.filter((item) => item.id !== product.id));
+        triggerNotification('Product deleted successfully from Neon database.', 'success');
+      } else {
+        throw new Error(data.error || 'Failed to delete product.');
+      }
+    } catch (err: any) {
+      triggerNotification(err.message || 'Error deleting product.', 'error');
     }
   };
 
@@ -374,13 +430,45 @@ export function AdminDashboard({
     }
   };
 
+  const updateColorVariant = (index: number, patch: Partial<AdminColorVariant>) => {
+    setColorVariants((prev) => {
+      const next = [...prev];
+      next[index] = { ...next[index], ...patch };
+      return next;
+    });
+  };
+
+  const updateVariantSize = (variantIndex: number, sizeIndex: number, patch: Partial<AdminSizeStock>) => {
+    setColorVariants((prev) => {
+      const next = [...prev];
+      const sizes = [...next[variantIndex].sizes];
+      sizes[sizeIndex] = { ...sizes[sizeIndex], ...patch };
+      next[variantIndex] = { ...next[variantIndex], sizes };
+      return next;
+    });
+  };
+
+  const addSizeToVariant = (variantIndex: number) => {
+    setColorVariants((prev) => {
+      const next = [...prev];
+      next[variantIndex] = {
+        ...next[variantIndex],
+        sizes: [
+          ...next[variantIndex].sizes,
+          { size: '', stockStatus: 'in_stock', stockQuantity: '' }
+        ]
+      };
+      return next;
+    });
+  };
+
   // Save Product to Neon DB
   const handleProductSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
     // Auto-generate slug and ID if empty
     const finalId = productForm.id || 'prod-' + Math.random().toString(36).substring(2, 8);
-    const finalSlug = productForm.slug || productForm.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+    const finalSlug = productForm.slug || slugify(productForm.name);
 
     // Build color lists and images from visual colorVariants
     const finalColors = colorVariants.map(v => v.colorName.trim()).filter(Boolean);
@@ -403,17 +491,44 @@ export function AdminDashboard({
       finalColorHex[color] = colorHexMap[color] || '#555555';
     });
 
-    const parsedSizes = productForm.sizes.split(',').map((s) => s.trim()).filter(Boolean);
+    if (finalColors.length === 0) {
+      triggerNotification('Add at least one color/product variant before saving.', 'error');
+      return;
+    }
 
-    const finalVariants = finalColors.flatMap((color) => 
-      parsedSizes.map((size) => ({
-        id: `${finalId}-${color.toLowerCase().replace(/\s+/g, '-')}-${size.toLowerCase()}`,
-        size,
-        color,
-        inventory: 10,
-        sku: `RD-${finalId.toUpperCase()}-${size}`
-      }))
-    );
+    const finalVariants = colorVariants.flatMap((variant) => {
+      const color = variant.colorName.trim();
+      if (!color) return [];
+
+      return variant.sizes
+        .map((sizeRow) => {
+          const size = sizeRow.size.trim();
+          if (!size) return null;
+
+          const rawStock = Number(sizeRow.stockQuantity);
+          const parsedStock =
+            sizeRow.stockQuantity.trim() === '' || !Number.isFinite(rawStock)
+              ? null
+              : Math.max(0, Math.floor(rawStock));
+          const stockStatus: AdminStockStatus =
+            sizeRow.stockStatus === 'out_of_stock' || parsedStock === 0 ? 'out_of_stock' : 'in_stock';
+
+          return {
+            id: `${finalId}-${slugify(color)}-${slugify(size)}`,
+            size,
+            color,
+            inventory: stockStatus === 'out_of_stock' ? 0 : parsedStock,
+            stockStatus,
+            sku: `RD-${finalId.toUpperCase()}-${slugify(color).toUpperCase()}-${size.toUpperCase()}`
+          };
+        })
+        .filter((variant): variant is NonNullable<typeof variant> => Boolean(variant));
+    });
+
+    if (finalVariants.length === 0) {
+      triggerNotification('Add at least one available size to a color variant before saving.', 'error');
+      return;
+    }
 
     const payload: Product = {
       ...productForm,
@@ -680,10 +795,26 @@ export function AdminDashboard({
       care: p.care.join('\n')
     });
 
-    const variantsList = p.colors.map(color => ({
-      colorName: color,
-      imageUrls: p.colorImages?.[color] || []
-    }));
+    const variantsList = p.colors.map((color) => {
+      const sizeRows = p.variants
+        .filter((variant) => variant.color === color)
+        .map((variant) => ({
+          size: variant.size,
+          stockStatus: (variant.stockStatus === 'out_of_stock' || variant.inventory === 0
+            ? 'out_of_stock'
+            : 'in_stock') as AdminStockStatus,
+          stockQuantity:
+            typeof variant.inventory === 'number' && Number.isFinite(variant.inventory) && variant.inventory > 0
+              ? String(variant.inventory)
+              : ''
+        }));
+
+      return {
+        colorName: color,
+        imageUrls: p.colorImages?.[color] || [],
+        sizes: sizeRows.length > 0 ? sizeRows : createSizeRows()
+      };
+    });
     setColorVariants(variantsList);
 
     setShowProductModal(true);
@@ -896,8 +1027,8 @@ export function AdminDashboard({
                   care: 'Machine wash cold\nHang dry\nIron low'
                 });
                 setColorVariants([
-                  { colorName: 'Obsidian Black', imageUrls: [] },
-                  { colorName: 'Oxide Bone', imageUrls: [] }
+                  { colorName: 'Obsidian Black', imageUrls: [], sizes: createSizeRows() },
+                  { colorName: 'Oxide Bone', imageUrls: [], sizes: createSizeRows() }
                 ]);
                 setShowProductModal(true);
               }}
@@ -907,7 +1038,10 @@ export function AdminDashboard({
           </div>
 
           <div className={styles.grid}>
-            {products.map((p) => (
+            {products.map((p) => {
+              const stock = getProductStockSummary(p);
+
+              return (
               <article className={styles.card} key={p.id}>
                 {p.badge && <span className={styles.cardBadge}>{p.badge}</span>}
                 <div className={styles.cardImageContainer}>
@@ -922,15 +1056,28 @@ export function AdminDashboard({
                 <div className={styles.cardContent}>
                   <p className={styles.cardCategory}>{p.category} / {p.collectionName}</p>
                   <h3 className={styles.cardTitle}>{p.name}</h3>
+                  <div className={styles.stockPills}>
+                    <span className={stock.isSoldOut ? styles.stockPillDanger : styles.stockPill}>
+                      {stock.isSoldOut ? 'Out of stock' : 'In stock'}
+                    </span>
+                    <span className={styles.stockPill}>{p.variants.length} size variants</span>
+                    {!stock.isSoldOut && !stock.hasUnlimitedStock && (
+                      <span className={styles.stockPill}>{stock.totalKnownStock} pieces</span>
+                    )}
+                  </div>
                   <div className={styles.cardFooter}>
-                    <span className={styles.cardPrice}>GH₵{p.price}</span>
+                    <span className={styles.cardPrice}>{formatCurrency(p.price)}</span>
                     <button className={styles.editButton} onClick={() => openEditProduct(p)}>
                       Edit / Update
+                    </button>
+                    <button className={styles.dangerButton} onClick={() => handleDeleteProduct(p)}>
+                      Delete
                     </button>
                   </div>
                 </div>
               </article>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}
@@ -1188,9 +1335,9 @@ export function AdminDashboard({
                   )}
                 </div>
 
-                {/* Available Sizes */}
+                {/* Default Sizes */}
                 <div className={styles.field}>
-                  <label className={styles.fieldLabel}>Available Sizes (Comma separated)</label>
+                  <label className={styles.fieldLabel}>Default Sizes for New Color Variants</label>
                   <input 
                     type="text" 
                     className={styles.input}
@@ -1208,7 +1355,10 @@ export function AdminDashboard({
                       type="button"
                       className={styles.saveButton}
                       style={{ height: '32px', padding: '0 var(--space-3)', fontSize: '0.75rem', margin: 0 }}
-                      onClick={() => setColorVariants(prev => [...prev, { colorName: 'New Color', imageUrls: [] }])}
+                      onClick={() => {
+                        const baseSizes = productForm.sizes.split(',').map((size) => size.trim()).filter(Boolean);
+                        setColorVariants(prev => [...prev, { colorName: 'New Color', imageUrls: [], sizes: createSizeRows(baseSizes.length ? baseSizes : undefined) }]);
+                      }}
                     >
                       + Add Color Image Variant
                     </button>
@@ -1266,6 +1416,60 @@ export function AdminDashboard({
                             >
                               Remove Variant
                             </button>
+                          </div>
+
+                          <div className={styles.variantInventory}>
+                            <div className={styles.variantInventoryHeader}>
+                              <div>
+                                <strong>Sizes for {variant.colorName || `variant ${index + 1}`}</strong>
+                                <span>Only these sizes appear when this color is selected.</span>
+                              </div>
+                              <button type="button" className={styles.editButton} onClick={() => addSizeToVariant(index)}>
+                                + Add Size
+                              </button>
+                            </div>
+
+                            <div className={styles.sizeRows}>
+                              {variant.sizes.map((sizeRow, sizeIndex) => (
+                                <div className={styles.sizeRow} key={`${index}-${sizeIndex}`}>
+                                  <input
+                                    aria-label="Size name"
+                                    className={styles.input}
+                                    placeholder="Size"
+                                    required
+                                    value={sizeRow.size}
+                                    onChange={(e) => updateVariantSize(index, sizeIndex, { size: e.target.value })}
+                                  />
+                                  <select
+                                    aria-label="Stock status"
+                                    className={styles.select}
+                                    value={sizeRow.stockStatus}
+                                    onChange={(e) => updateVariantSize(index, sizeIndex, { stockStatus: e.target.value as AdminStockStatus })}
+                                  >
+                                    <option value="in_stock">In stock</option>
+                                    <option value="out_of_stock">Out of stock</option>
+                                  </select>
+                                  <input
+                                    aria-label="Optional stock amount"
+                                    className={styles.input}
+                                    min="0"
+                                    placeholder="Qty optional"
+                                    type="number"
+                                    value={sizeRow.stockQuantity}
+                                    onChange={(e) => updateVariantSize(index, sizeIndex, { stockQuantity: e.target.value })}
+                                  />
+                                  <button
+                                    type="button"
+                                    className={styles.dangerButton}
+                                    onClick={() => updateColorVariant(index, {
+                                      sizes: variant.sizes.filter((_, i) => i !== sizeIndex)
+                                    })}
+                                  >
+                                    Remove
+                                  </button>
+                                </div>
+                              ))}
+                            </div>
                           </div>
 
                           {/* Images grid for this variant */}

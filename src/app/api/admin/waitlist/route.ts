@@ -1,7 +1,11 @@
 import { NextResponse } from 'next/server';
 import { getDbWaitlist } from '@/lib/catalog-db';
+import { requireAdminSession } from '@/lib/admin-auth';
 
 export async function GET() {
+  const authError = requireAdminSession();
+  if (authError) return authError;
+
   try {
     const waitlist = await getDbWaitlist();
     return NextResponse.json({ success: true, waitlist });
