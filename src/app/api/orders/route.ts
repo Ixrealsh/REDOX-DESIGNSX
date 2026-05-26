@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { rateLimit, requestKey } from '@/lib/rate-limit';
 import { addDbOrder, applyDbProductStockDelta, getDbProduct } from '@/lib/catalog-db';
 import { getVariantStockLimit, isVariantInStock } from '@/lib/inventory';
+import { calcOrderTotal } from '@/lib/format';
 
 const orderItemSchema = z.object({
   productId: z.string().optional(),
@@ -205,10 +206,12 @@ export async function POST(request: Request) {
       }
 
       // Check if the amount paid to Paystack matches our verified database price (in kobo/pesewas)
+      // The amount includes the 2% service charge applied at checkout
       const amountPaidGhs = verifyData.data.amount / 100;
-      if (amountPaidGhs < verifiedTotalPrice) {
+      const expectedTotal = calcOrderTotal(verifiedTotalPrice);
+      if (amountPaidGhs < expectedTotal) {
         return NextResponse.json({
-          error: `Security breach: The amount captured (GH₵${amountPaidGhs}) does not match the product total price (GH₵${verifiedTotalPrice}).`
+          error: `Security breach: The amount captured (GH₵${amountPaidGhs}) does not match the expected total (GH₵${expectedTotal}).`
         }, { status: 400 });
       }
     }

@@ -19,7 +19,7 @@ export function CartDrawer() {
   const updateQty = useCartStore((state) => state.updateQty);
   const clearCart = useCartStore((state) => state.clearCart);
 
-  const { totalItems, subtotal } = getCartTotals(items);
+  const { totalItems, subtotal, serviceCharge, orderTotal } = getCartTotals(items);
 
   // Checkout States
   const [showCheckout, setShowCheckout] = useState(false);
@@ -93,7 +93,7 @@ export function CartDrawer() {
       const handler = paystack.setup({
         key: paystackKey,
         email: formData.email,
-        amount: Math.round(subtotal * 100), // minor units (must be integer)
+        amount: Math.round(orderTotal * 100), // minor units (must be integer) — includes 2% service charge
         currency: 'GHS',
         reference: 'RDX-CART-' + Math.floor(Math.random() * 1000000000 + 1),
         callback: (response: any) => {
@@ -330,15 +330,25 @@ export function CartDrawer() {
               </div>
 
               {/* Order total info */}
-              <div style={{ marginTop: '16px', borderTop: '1px dashed rgba(255,255,255,0.08)', paddingTop: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', fontFamily: 'monospace' }}>
-                <span style={{ fontSize: '0.8rem', color: '#888' }}>TOTAL SECURED AMOUNT:</span>
-                <strong style={{ fontSize: '1.2rem', color: 'var(--color-red)' }}>GH₵{subtotal}</strong>
+              <div style={{ marginTop: '16px', borderTop: '1px dashed rgba(255,255,255,0.08)', paddingTop: '16px', display: 'grid', gap: '10px', fontFamily: 'monospace' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+                  <span style={{ fontSize: '0.75rem', color: '#888' }}>Subtotal:</span>
+                  <span style={{ fontSize: '0.9rem', color: '#ccc' }}>{formatCurrency(subtotal)}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+                  <span style={{ fontSize: '0.75rem', color: '#888' }}>Service charge (2%):</span>
+                  <span style={{ fontSize: '0.9rem', color: '#ccc' }}>{formatCurrency(serviceCharge)}</span>
+                </div>
+                <div style={{ borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: '10px', display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+                  <span style={{ fontSize: '0.8rem', color: '#888', textTransform: 'uppercase', letterSpacing: '0.05em' }}>TOTAL:</span>
+                  <strong style={{ fontSize: '1.2rem', color: 'var(--color-red)' }}>{formatCurrency(orderTotal)}</strong>
+                </div>
               </div>
             </form>
 
             <div className={styles.footer} style={{ background: '#080808', borderTop: '1px solid var(--color-border)', padding: '20px' }}>
               <Button type="button" fullWidth onClick={handleCheckoutSubmit} disabled={checkoutLoading}>
-                {checkoutLoading ? 'Verifying Gateway...' : `Pay GH₵${subtotal} via Paystack`}
+                {checkoutLoading ? 'Verifying Gateway...' : `Pay ${formatCurrency(orderTotal)} via Paystack`}
               </Button>
               <button
                 type="button"
@@ -420,10 +430,20 @@ export function CartDrawer() {
 
             {items.length > 0 && (
               <div className={styles.footer}>
-                <p className={styles.subtotal}>
-                  <span>Subtotal</span>
-                  <strong>{formatCurrency(subtotal)}</strong>
-                </p>
+                <div style={{ display: 'grid', gap: '6px', marginBottom: '12px' }}>
+                  <p className={styles.subtotal}>
+                    <span>Subtotal</span>
+                    <strong>{formatCurrency(subtotal)}</strong>
+                  </p>
+                  <p className={styles.subtotal} style={{ fontSize: '0.72rem', color: 'var(--color-text-secondary)' }}>
+                    <span>Service charge (2%)</span>
+                    <span>{formatCurrency(serviceCharge)}</span>
+                  </p>
+                  <p className={styles.subtotal} style={{ borderTop: '1px solid var(--color-border)', paddingTop: '8px' }}>
+                    <span>Total</span>
+                    <strong>{formatCurrency(orderTotal)}</strong>
+                  </p>
+                </div>
                 <Button disabled={items.length === 0} fullWidth onClick={() => setShowCheckout(true)}>
                   Proceed to Checkout
                 </Button>

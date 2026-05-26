@@ -3,7 +3,7 @@
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 import type { Product, Variant } from '@/types/product';
-import { clamp, FREE_SHIPPING_THRESHOLD } from '@/lib/format';
+import { calcOrderTotal, calcServiceCharge, clamp, FREE_SHIPPING_THRESHOLD } from '@/lib/format';
 import { getVariantStockLimit, UNTRACKED_STOCK_LIMIT } from '@/lib/inventory';
 
 export interface CartItem {
@@ -105,12 +105,16 @@ export const useCartStore = create<CartStore>()(
 export function getCartTotals(items: CartItem[]) {
   const totalItems = items.reduce((sum, item) => sum + item.quantity, 0);
   const subtotal = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
+  const serviceCharge = calcServiceCharge(subtotal);
+  const orderTotal = calcOrderTotal(subtotal);
   const freeShippingProgress = clamp((subtotal / FREE_SHIPPING_THRESHOLD) * 100, 0, 100);
   const remainingForFreeShipping = Math.max(FREE_SHIPPING_THRESHOLD - subtotal, 0);
 
   return {
     totalItems,
     subtotal,
+    serviceCharge,
+    orderTotal,
     freeShippingProgress,
     remainingForFreeShipping
   };
