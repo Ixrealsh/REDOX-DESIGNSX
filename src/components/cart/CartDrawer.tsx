@@ -248,67 +248,67 @@ export function CartDrawer() {
         ) : showCheckout ? (
           /* 2. CHECKOUT STATE */
           <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100% - 76px)', overflow: 'hidden' }}>
-            <form onSubmit={handleCheckoutSubmit} style={{ flex: 1, overflowY: 'auto', padding: '24px', display: 'grid', gap: '16px', contentVisibility: 'auto' }}>
+            <form onSubmit={handleCheckoutSubmit} className={styles.checkoutForm}>
               {error && (
-                <div style={{ color: '#ef4444', fontSize: '0.75rem', padding: '10px', background: 'rgba(239, 68, 68, 0.08)', border: '1px solid rgba(239, 68, 68, 0.15)', borderRadius: '4px', fontFamily: 'monospace' }}>
-                  ✕ {error}
+                <div className={styles.checkoutError}>
+                  <span>✕</span> {error}
                 </div>
               )}
 
-              <div style={{ display: 'grid', gap: '4px', fontFamily: 'monospace' }}>
-                <label style={{ color: '#888', fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>FULL NAME *</label>
+              <div className={styles.fieldGroup}>
+                <label className={styles.fieldLabel}>Full Name *</label>
                 <input
                   required
                   type="text"
                   placeholder="e.g. Musli Sabur"
                   value={formData.fullName}
                   onChange={(e) => setFormData({ ...formData, fullName: e.target.value })}
-                  style={{ width: '100%', height: '40px', background: 'var(--color-surface-2)', border: '1px solid var(--color-border)', borderRadius: '4px', color: '#fff', padding: '0 12px', fontSize: '0.8rem', outline: 'none' }}
+                  className={styles.fieldInput}
                 />
               </div>
 
-              <div style={{ display: 'grid', gap: '4px', fontFamily: 'monospace' }}>
-                <label style={{ color: '#888', fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>PHONE NUMBER *</label>
+              <div className={styles.fieldGroup}>
+                <label className={styles.fieldLabel}>Phone Number *</label>
                 <input
                   required
                   type="tel"
                   placeholder="e.g. +233 24 XXX XXXX"
                   value={formData.phone}
                   onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                  style={{ width: '100%', height: '40px', background: 'var(--color-surface-2)', border: '1px solid var(--color-border)', borderRadius: '4px', color: '#fff', padding: '0 12px', fontSize: '0.8rem', outline: 'none' }}
+                  className={styles.fieldInput}
                 />
               </div>
 
-              <div style={{ display: 'grid', gap: '4px', fontFamily: 'monospace' }}>
-                <label style={{ color: '#888', fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>EMAIL ADDRESS *</label>
+              <div className={styles.fieldGroup}>
+                <label className={styles.fieldLabel}>Email Address *</label>
                 <input
                   required
                   type="email"
                   placeholder="e.g. info@redox.com"
                   value={formData.email}
                   onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                  style={{ width: '100%', height: '40px', background: 'var(--color-surface-2)', border: '1px solid var(--color-border)', borderRadius: '4px', color: '#fff', padding: '0 12px', fontSize: '0.8rem', outline: 'none' }}
+                  className={styles.fieldInput}
                 />
               </div>
 
-              <div style={{ display: 'grid', gap: '4px', fontFamily: 'monospace' }}>
-                <label style={{ color: '#888', fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>DELIVERY ADDRESS *</label>
+              <div className={styles.fieldGroup}>
+                <label className={styles.fieldLabel}>Delivery Address *</label>
                 <input
                   required
                   type="text"
                   placeholder="e.g. House No. 44, Spintex Road"
                   value={formData.address}
                   onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-                  style={{ width: '100%', height: '40px', background: 'var(--color-surface-2)', border: '1px solid var(--color-border)', borderRadius: '4px', color: '#fff', padding: '0 12px', fontSize: '0.8rem', outline: 'none' }}
+                  className={styles.fieldInput}
                 />
               </div>
 
-              <div style={{ display: 'grid', gap: '4px', fontFamily: 'monospace' }}>
-                <label style={{ color: '#888', fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>CITY / REGION *</label>
+              <div className={styles.fieldGroup}>
+                <label className={styles.fieldLabel}>City / Region *</label>
                 <select
                   value={formData.city}
                   onChange={(e) => setFormData({ ...formData, city: e.target.value })}
-                  style={{ width: '100%', height: '40px', background: 'var(--color-surface-2)', border: '1px solid var(--color-border)', borderRadius: '4px', color: '#fff', padding: '0 12px', fontSize: '0.8rem', outline: 'none' }}
+                  className={styles.fieldSelect}
                 >
                   <option value="Greater Accra">Greater Accra Region</option>
                   <option value="Ashanti">Ashanti Region</option>
@@ -329,33 +329,28 @@ export function CartDrawer() {
                 </select>
               </div>
 
-              {/* Order total info */}
-              <div style={{ marginTop: '16px', borderTop: '1px dashed rgba(255,255,255,0.08)', paddingTop: '16px', display: 'grid', gap: '10px', fontFamily: 'monospace' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-                  <span style={{ fontSize: '0.75rem', color: '#888' }}>Subtotal:</span>
-                  <span style={{ fontSize: '0.9rem', color: '#ccc' }}>{formatCurrency(subtotal)}</span>
+              <div className={styles.orderSummary}>
+                <div className={styles.orderRow}>
+                  <span className={styles.orderRowLabel}>Subtotal</span>
+                  <span className={styles.orderRowValue}>{formatCurrency(subtotal)}</span>
                 </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-                  <span style={{ fontSize: '0.75rem', color: '#888' }}>Service charge (2%):</span>
-                  <span style={{ fontSize: '0.9rem', color: '#ccc' }}>{formatCurrency(serviceCharge)}</span>
+                <div className={styles.orderRow}>
+                  <span className={styles.orderRowLabel}>Service charge (2%)</span>
+                  <span className={styles.orderRowValue}>{formatCurrency(serviceCharge)}</span>
                 </div>
-                <div style={{ borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: '10px', display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-                  <span style={{ fontSize: '0.8rem', color: '#888', textTransform: 'uppercase', letterSpacing: '0.05em' }}>TOTAL:</span>
-                  <strong style={{ fontSize: '1.2rem', color: 'var(--color-red)' }}>{formatCurrency(orderTotal)}</strong>
+                <div className={styles.orderRowTotal}>
+                  <span className={styles.orderRowTotalLabel}>Order Total</span>
+                  <span className={styles.orderRowTotalValue}>{formatCurrency(orderTotal)}</span>
                 </div>
               </div>
             </form>
 
-            <div className={styles.footer} style={{ background: '#080808', borderTop: '1px solid var(--color-border)', padding: '20px' }}>
+            <div className={styles.checkoutFooter}>
               <Button type="button" fullWidth onClick={handleCheckoutSubmit} disabled={checkoutLoading}>
                 {checkoutLoading ? 'Verifying Gateway...' : `Pay ${formatCurrency(orderTotal)} via Paystack`}
               </Button>
-              <button
-                type="button"
-                onClick={() => setShowCheckout(false)}
-                style={{ width: '100%', height: '40px', background: 'transparent', border: 'none', color: '#666', fontSize: '0.72rem', letterSpacing: '0.08em', textTransform: 'uppercase', cursor: 'pointer', marginTop: '8px', fontFamily: 'monospace' }}
-              >
-                Back to Bag
+              <button type="button" onClick={() => setShowCheckout(false)} className={styles.backButton}>
+                ← Back to Bag
               </button>
             </div>
           </div>
