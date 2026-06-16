@@ -7,7 +7,7 @@ import type { CSSProperties, MouseEvent } from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Button } from '@/components/ui/Button';
 import { HeartIcon, RulerIcon, ShareIcon, StarIcon } from '@/components/ui/Icons';
-import { formatCurrency } from '@/lib/format';
+import { calcOrderTotal, calcServiceCharge, formatCurrency } from '@/lib/format';
 import { useWishlistStore } from '@/store/wishlist.store';
 import { useCartStore } from '@/store/cart.store';
 import type { Product } from '@/types/product';
@@ -313,7 +313,7 @@ export function ProductDetail({ product }: ProductDetailProps) {
         const handler = paystack.setup({
           key: paystackKey,
           email: formData.email,
-          amount: Math.round(totalPrice * 100), // minor units (must be integer)
+          amount: Math.round(calcOrderTotal(totalPrice) * 100), // pesewas — includes 2% service charge
           currency: 'GHS',
           reference: 'RDX-' + Math.floor(Math.random() * 1000000000 + 1),
           callback: (response: any) => {
@@ -630,25 +630,22 @@ export function ProductDetail({ product }: ProductDetailProps) {
                 <span>{totalQuantity} {totalQuantity === 1 ? 'piece' : 'pieces'}</span>
               </div>
 
-              {/* Estimated Invoice Subtotal */}
-              <div style={{ 
-                display: 'flex', 
-                justifyContent: 'space-between', 
-                alignItems: 'baseline', 
-                marginTop: '6px', 
-                borderTop: '1px dashed rgba(255, 255, 255, 0.08)', 
-                paddingTop: '10px' 
-              }}>
-                <span style={{ fontSize: '0.85rem', fontWeight: 700, color: '#fff' }}>ESTIMATED SUBTOTAL</span>
-                <span style={{ 
-                  fontSize: '1.18rem', 
-                  fontWeight: 700, 
-                  color: 'var(--color-red)', 
-                  letterSpacing: '0.02em', 
-                  textShadow: '0 0 10px rgba(215, 38, 56, 0.25)' 
-                }}>
-                  GH₵{totalPrice}
-                </span>
+              {/* Invoice breakdown */}
+              <div style={{ marginTop: '6px', borderTop: '1px dashed rgba(255, 255, 255, 0.08)', paddingTop: '10px', display: 'grid', gap: '6px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.78rem', color: 'var(--color-text-muted)' }}>
+                  <span>SUBTOTAL</span>
+                  <span>{formatCurrency(totalPrice)}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.78rem', color: 'var(--color-text-muted)' }}>
+                  <span>SERVICE CHARGE (2%)</span>
+                  <span>{formatCurrency(calcServiceCharge(totalPrice))}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: '8px', marginTop: '2px' }}>
+                  <span style={{ fontSize: '0.82rem', fontWeight: 700, color: '#fff' }}>ORDER TOTAL</span>
+                  <span style={{ fontSize: '1.18rem', fontWeight: 700, color: 'var(--color-red)', letterSpacing: '0.02em', textShadow: '0 0 10px rgba(215, 38, 56, 0.25)' }}>
+                    {formatCurrency(calcOrderTotal(totalPrice))}
+                  </span>
+                </div>
               </div>
 
               {/* Sleek Streetwear Barcode */}
@@ -776,7 +773,7 @@ export function ProductDetail({ product }: ProductDetailProps) {
           {showCheckout && !checkoutSuccess && (
             <div className={styles.directCheckout} ref={checkoutRef}>
               <div className={styles.checkoutHeader}>
-                DIRECT SECURE CHECKOUT - {formatCurrency(totalPrice)}
+                SECURE CHECKOUT — {formatCurrency(calcOrderTotal(totalPrice))}
               </div>
               
               <form onSubmit={handleOrderSubmit} className={styles.checkoutForm}>
@@ -886,7 +883,7 @@ export function ProductDetail({ product }: ProductDetailProps) {
                   disabled={checkoutLoading}
                   className={styles.placeOrderButton}
                 >
-                  {checkoutLoading ? 'Processing Secure Order...' : `Confirm & Place Order - ${formatCurrency(totalPrice)}`}
+                  {checkoutLoading ? 'Processing Secure Order...' : `Confirm & Pay ${formatCurrency(calcOrderTotal(totalPrice))}`}
                 </button>
               </form>
             </div>
