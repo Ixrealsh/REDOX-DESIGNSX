@@ -1,5 +1,6 @@
 'use client';
 
+import Image from 'next/image';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
@@ -74,10 +75,12 @@ export function Navbar() {
 
           {/* Center: logo */}
           <Link aria-label="REDOXDESIGNX home" className={styles.logo} href="/">
-            <img
+            <Image
               alt="REDOXDESIGNX"
               className={styles.logoImg}
+              height={38}
               src="/assets/icons/redoxlogo.jpg"
+              width={38}
             />
             <span className={styles.logoText}>REDOXDESIGNX</span>
           </Link>

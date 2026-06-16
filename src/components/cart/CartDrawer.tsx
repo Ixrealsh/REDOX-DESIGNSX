@@ -227,7 +227,7 @@ export function CartDrawer() {
                   <p className={styles.receiptSubtext}>
                     Thank you, <strong>{checkoutSuccess[0]?.customerName}</strong>. Your reference is{' '}
                     <span className={styles.receiptRef}>#{checkoutSuccess[0]?.id ? `RD-${checkoutSuccess[0].id}` : '—'}</span>.
-                    You'll receive an SMS confirmation shortly.
+                    You&apos;ll receive an SMS confirmation shortly.
                   </p>
                 </div>
 
