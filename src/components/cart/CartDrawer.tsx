@@ -21,7 +21,6 @@ export function CartDrawer() {
 
   const { totalItems, subtotal, serviceCharge, orderTotal } = getCartTotals(items);
 
-  // Checkout States
   const [showCheckout, setShowCheckout] = useState(false);
   const [checkoutLoading, setCheckoutLoading] = useState(false);
   const [error, setError] = useState('');
@@ -35,7 +34,7 @@ export function CartDrawer() {
     city: 'Greater Accra'
   });
 
-  // Reset checkout states on close or open
+  // Reset states when drawer closes
   useEffect(() => {
     if (!isOpen) {
       setShowCheckout(false);
@@ -44,32 +43,23 @@ export function CartDrawer() {
     }
   }, [isOpen]);
 
+  // Lock scroll + Esc key
   useEffect(() => {
-    if (!isOpen) {
-      return undefined;
-    }
-
-    const previousOverflow = document.body.style.overflow;
+    if (!isOpen) return;
+    const prev = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
-
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        closeCart();
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') closeCart(); };
+    window.addEventListener('keydown', onKey);
     return () => {
-      document.body.style.overflow = previousOverflow;
-      window.removeEventListener('keydown', handleKeyDown);
+      document.body.style.overflow = prev;
+      window.removeEventListener('keydown', onKey);
     };
-  }, [closeCart, isOpen]);
+  }, [isOpen, closeCart]);
 
   const handleCheckoutSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.fullName || !formData.phone || !formData.email || !formData.address) {
-      setError('Please fill in all required shipping fields.');
+      setError('Please fill in all required fields before continuing.');
       return;
     }
 
@@ -77,9 +67,8 @@ export function CartDrawer() {
     setError('');
 
     const paystackKey = process.env.NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY;
-
     if (!paystackKey || paystackKey === 'your_paystack_public_key_here') {
-      setError('Live checkout is currently disabled. Please configure your public key.');
+      setError('Checkout is currently unavailable. Missing payment configuration.');
       setCheckoutLoading(false);
       return;
     }
@@ -87,41 +76,39 @@ export function CartDrawer() {
     try {
       const paystack = await loadPaystackScript();
       if (!paystack) {
-        throw new Error('Paystack secure payment library failed to load. Please check your internet connection or disable ad-blockers.');
+        throw new Error('Could not load secure payment gateway. Check your connection or disable ad-blockers.');
       }
 
       const handler = paystack.setup({
         key: paystackKey,
         email: formData.email,
-        amount: Math.round(orderTotal * 100), // minor units (must be integer) — includes 2% service charge
+        amount: Math.round(orderTotal * 100), // pesewas — includes 2% service charge
         currency: 'GHS',
-        reference: 'RDX-CART-' + Math.floor(Math.random() * 1000000000 + 1),
+        reference: 'RDX-CART-' + Math.floor(Math.random() * 1_000_000_000 + 1),
         callback: (response: any) => {
           saveCartOrders(response.reference).catch((err) => {
-            console.error('Failed to complete cart order post-payment:', err);
+            console.error('Post-payment order save failed:', err);
           });
         },
         onClose: () => {
           setCheckoutLoading(false);
-          setError('Paystack transaction was cancelled by the user.');
+          setError('Payment was cancelled. You can try again anytime.');
         }
       });
 
       handler.openIframe();
     } catch (err: any) {
-      console.error(err);
-      setError(err.message || 'Paystack initialization failed. Please try again.');
+      setError(err.message || 'Payment initialization failed. Please try again.');
       setCheckoutLoading(false);
     }
   };
 
   const saveCartOrders = async (paymentRef: string) => {
     try {
-      const createdOrders: any[] = [];
+      const created: any[] = [];
 
-      // Save each item as a distinct traceable order in database (skipping individual SMS sends)
       for (const item of items) {
-        const response = await fetch('/api/orders', {
+        const res = await fetch('/api/orders', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -150,35 +137,47 @@ export function CartDrawer() {
           })
         });
 
-        const data = await response.json();
-        if (response.ok) {
-          createdOrders.push(data.order);
-        } else {
-          throw new Error(data.error || 'Failed to place order record.');
-        }
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Failed to record order.');
+        created.push(data.order);
       }
 
-      // After all cart items are successfully saved, trigger a single unified SMS summary to save mNotify credits!
-      if (createdOrders.length > 0) {
-        const orderIds = createdOrders.map(o => o.id);
+      // Single consolidated SMS after all orders are saved
+      if (created.length > 0) {
         fetch('/api/orders/sms-summary', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ orderIds })
-        }).catch((err) => {
-          console.error('Failed to trigger background SMS summary:', err);
-        });
+          body: JSON.stringify({ orderIds: created.map((o) => o.id) })
+        }).catch((err) => console.error('SMS summary failed:', err));
       }
 
-      setCheckoutSuccess(createdOrders);
+      setCheckoutSuccess(created);
       clearCart();
     } catch (err: any) {
-      console.error(err);
-      setError(err.message || 'Payment processed but failed to record order details. Please contact support.');
+      setError(err.message || 'Payment succeeded but order recording failed. Contact support with your payment reference.');
     } finally {
       setCheckoutLoading(false);
     }
   };
+
+  const field = (
+    key: keyof typeof formData,
+    label: string,
+    type: string,
+    placeholder: string
+  ) => (
+    <div className={styles.fieldGroup}>
+      <label className={styles.fieldLabel}>{label}</label>
+      <input
+        className={styles.fieldInput}
+        onChange={(e) => setFormData({ ...formData, [key]: e.target.value })}
+        placeholder={placeholder}
+        required
+        type={type}
+        value={formData[key]}
+      />
+    </div>
+  );
 
   return (
     <>
@@ -189,180 +188,228 @@ export function CartDrawer() {
         tabIndex={isOpen ? 0 : -1}
         type="button"
       />
+
       <aside
         aria-label="Shopping cart"
         aria-modal="true"
         className={`${styles.drawer} ${isOpen ? styles.drawerOpen : ''}`}
         role="dialog"
       >
+        {/* ── Header ─────────────────────────────────── */}
         <div className={styles.header}>
           <h2 className={styles.title}>
-            {checkoutSuccess ? 'Manifest Verified' : showCheckout ? 'Secure Checkout' : `Bag / ${totalItems}`}
+            {checkoutSuccess
+              ? 'Order Confirmed'
+              : showCheckout
+              ? 'Checkout'
+              : `Bag · ${totalItems}`}
           </h2>
-          <button aria-label="Close cart" className={styles.closeButton} onClick={closeCart} type="button">
+          <button aria-label="Close" className={styles.closeButton} onClick={closeCart} type="button">
             <XIcon />
           </button>
         </div>
 
-        {/* 1. SUCCESS STATE */}
+        {/* ══════════════════════════════════════════
+            1. SUCCESS — RECEIPT
+        ══════════════════════════════════════════ */}
         {checkoutSuccess ? (
-          <div style={{ padding: '24px', border: '1px solid rgba(16, 185, 129, 0.3)', borderRadius: 'var(--radius-lg)', background: 'rgba(16, 185, 129, 0.05)', backdropFilter: 'blur(12px)', textAlign: 'center', margin: '24px 16px', animation: 'fadeIn 360ms ease-out both' }}>
-            <div style={{ display: 'inline-grid', width: '64px', height: '64px', placeItems: 'center', marginBottom: '16px', border: '2px solid rgba(16, 185, 129, 0.4)', borderRadius: '50%', background: 'rgba(16, 185, 129, 0.1)' }}>
-              <svg viewBox="0 0 24 24" width="40" height="40" fill="none" stroke="#10b981" strokeWidth="2.5">
-                <polyline points="20 6 9 17 4 12" />
-              </svg>
-            </div>
-            <h2 style={{ margin: '0 0 8px', color: 'var(--color-white)', fontFamily: 'var(--font-heading), sans-serif', fontSize: 'var(--text-lg)', letterSpacing: '0.05em' }}>ORDER PLACED SUCCESSFULLY!</h2>
-            <p style={{ margin: '0 0 20px', color: 'var(--color-text-secondary)', fontSize: 'var(--text-sm)', lineHeight: 'var(--leading-relaxed)' }}>
-              Thank you for your order, <strong>{checkoutSuccess[0]?.customerName}</strong>! Your primary reference is{' '}
-              <span style={{ color: '#10b981', fontFamily: 'var(--font-mono), monospace', fontWeight: 700 }}>#RD-{checkoutSuccess[0]?.id}</span>.
-            </p>
+          <>
+            <div className={styles.receipt}>
+              <div className={styles.receiptInner}>
+                {/* Check + heading */}
+                <div className={styles.receiptCheck}>
+                  <div className={styles.receiptCheckIcon}>
+                    <svg fill="none" height="36" stroke="#10b981" strokeWidth="2.5" viewBox="0 0 24 24" width="36">
+                      <polyline points="20 6 9 17 4 12" />
+                    </svg>
+                  </div>
+                  <h2 className={styles.receiptHeading}>Order Placed!</h2>
+                  <p className={styles.receiptSubtext}>
+                    Thank you, <strong>{checkoutSuccess[0]?.customerName}</strong>. Your reference is{' '}
+                    <span className={styles.receiptRef}>#{checkoutSuccess[0]?.id ? `RD-${checkoutSuccess[0].id}` : '—'}</span>.
+                    You'll receive an SMS confirmation shortly.
+                  </p>
+                </div>
 
-            <div style={{ display: 'grid', gap: '8px', marginBottom: '20px', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', padding: '16px', background: 'rgba(0, 0, 0, 0.2)', textAlign: 'left', fontSize: 'var(--text-xs)' }}>
-              {checkoutSuccess.map((order) => (
-                <p key={order.id} style={{ margin: 0, color: 'var(--color-text-secondary)' }}>
-                  <strong>Item:</strong> {order.productName} ({order.selectedSize}) <span style={{ float: 'right' }}>GH₵{order.price}</span>
+                {/* Items */}
+                <div className={styles.receiptCard}>
+                  <p className={styles.receiptCardTitle}>Items Ordered</p>
+                  {checkoutSuccess.map((order) => (
+                    <div className={styles.receiptItem} key={order.id}>
+                      <div>
+                        <p className={styles.receiptItemName}>{order.productName}</p>
+                        <p className={styles.receiptItemSize}>{order.selectedSize}</p>
+                      </div>
+                      <span className={styles.receiptItemPrice}>
+                        {formatCurrency(order.price)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Totals */}
+                <div className={styles.receiptTotals}>
+                  <div className={styles.receiptTotalRow}>
+                    <span className={styles.receiptTotalLabel}>Subtotal</span>
+                    <span className={styles.receiptTotalValue}>{formatCurrency(subtotal)}</span>
+                  </div>
+                  <div className={styles.receiptTotalRow}>
+                    <span className={styles.receiptTotalLabel}>Service fee (2%)</span>
+                    <span className={styles.receiptTotalValue}>{formatCurrency(serviceCharge)}</span>
+                  </div>
+                  <hr className={styles.receiptGrandDivider} />
+                  <div className={styles.receiptGrandTotal}>
+                    <span className={styles.receiptGrandLabel}>Total Paid</span>
+                    <span className={styles.receiptGrandValue}>{formatCurrency(orderTotal)}</span>
+                  </div>
+                </div>
+
+                {/* Shipping + payment info */}
+                <div className={styles.receiptMeta}>
+                  <div className={styles.receiptMetaRow}>
+                    <span className={styles.receiptMetaKey}>Ship to</span>
+                    <span className={styles.receiptMetaVal}>
+                      {checkoutSuccess[0]?.shippingAddress}, {checkoutSuccess[0]?.shippingCity}
+                    </span>
+                  </div>
+                  <div className={styles.receiptMetaRow}>
+                    <span className={styles.receiptMetaKey}>Payment</span>
+                    <span className={styles.receiptMetaVal}>Paystack — Verified</span>
+                  </div>
+                  <div className={styles.receiptMetaRow}>
+                    <span className={styles.receiptMetaKey}>Contact</span>
+                    <span className={styles.receiptMetaVal}>{checkoutSuccess[0]?.customerPhone}</span>
+                  </div>
+                </div>
+
+                <p className={styles.receiptContact}>
+                  Our team will reach out via{' '}
+                  <strong style={{ color: 'var(--color-text-secondary)' }}>
+                    {checkoutSuccess[0]?.customerPhone}
+                  </strong>{' '}
+                  to confirm dispatch and delivery details.
                 </p>
-              ))}
-              <div style={{ borderTop: '1px solid var(--color-border)', margin: '8px 0' }} />
-              <p style={{ margin: 0, color: 'var(--color-text-secondary)' }}><strong>Total:</strong> GH₵{checkoutSuccess.reduce((sum, o) => sum + o.price, 0)}</p>
-              <p style={{ margin: 0, color: 'var(--color-text-secondary)' }}><strong>Shipping to:</strong> {checkoutSuccess[0]?.shippingAddress}, {checkoutSuccess[0]?.shippingCity}</p>
-              <p style={{ margin: 0, color: 'var(--color-text-secondary)' }}><strong>Payment:</strong> Paystack Secure Checkout</p>
+              </div>
             </div>
 
-            <p style={{ color: 'var(--color-text-secondary)', fontSize: 'var(--text-xs)', lineHeight: 'var(--leading-relaxed)' }}>
-              Our sales team will contact you via <strong>{checkoutSuccess[0]?.customerPhone}</strong> shortly to finalize dispatch and shipping details!
-            </p>
-            <button 
-              onClick={() => {
-                setCheckoutSuccess(null);
-                closeCart();
-              }}
-              style={{ marginTop: '16px', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', background: 'transparent', color: 'var(--color-white)', padding: '8px 16px', fontSize: 'var(--text-xs)', cursor: 'pointer' }}
-              onMouseOver={(e) => e.currentTarget.style.borderColor = 'var(--color-white)'}
-              onMouseOut={(e) => e.currentTarget.style.borderColor = 'var(--color-border)'}
-            >
-              Continue Shopping
-            </button>
-          </div>
+            <div className={styles.receiptFooter}>
+              <Button
+                fullWidth
+                onClick={() => { setCheckoutSuccess(null); closeCart(); }}
+                type="button"
+              >
+                Continue Shopping
+              </Button>
+            </div>
+          </>
+
         ) : showCheckout ? (
-          /* 2. CHECKOUT STATE */
-          <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100% - 76px)', overflow: 'hidden' }}>
-            <form onSubmit={handleCheckoutSubmit} className={styles.checkoutForm}>
-              {error && (
-                <div className={styles.checkoutError}>
-                  <span>✕</span> {error}
+          /* ══════════════════════════════════════════
+              2. CHECKOUT FORM
+          ══════════════════════════════════════════ */
+          <>
+            <div className={styles.checkoutScroll}>
+              <form id="checkout-form" onSubmit={handleCheckoutSubmit} className={styles.checkoutForm}>
+                {error && (
+                  <div className={styles.checkoutError}>
+                    <span>✕</span>
+                    <span>{error}</span>
+                  </div>
+                )}
+
+                {/* Contact section */}
+                <div className={styles.checkoutSection}>
+                  <p className={styles.checkoutSectionTitle}>Contact</p>
+                  <div className={styles.fieldRow}>
+                    {field('fullName', 'Full Name *', 'text', 'e.g. Musli Sabur')}
+                    {field('phone', 'Phone *', 'tel', '+233 24 XXX XXXX')}
+                  </div>
+                  {field('email', 'Email Address *', 'email', 'you@example.com')}
                 </div>
-              )}
 
-              <div className={styles.fieldGroup}>
-                <label className={styles.fieldLabel}>Full Name *</label>
-                <input
-                  required
-                  type="text"
-                  placeholder="e.g. Musli Sabur"
-                  value={formData.fullName}
-                  onChange={(e) => setFormData({ ...formData, fullName: e.target.value })}
-                  className={styles.fieldInput}
-                />
-              </div>
-
-              <div className={styles.fieldGroup}>
-                <label className={styles.fieldLabel}>Phone Number *</label>
-                <input
-                  required
-                  type="tel"
-                  placeholder="e.g. +233 24 XXX XXXX"
-                  value={formData.phone}
-                  onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                  className={styles.fieldInput}
-                />
-              </div>
-
-              <div className={styles.fieldGroup}>
-                <label className={styles.fieldLabel}>Email Address *</label>
-                <input
-                  required
-                  type="email"
-                  placeholder="e.g. info@redox.com"
-                  value={formData.email}
-                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                  className={styles.fieldInput}
-                />
-              </div>
-
-              <div className={styles.fieldGroup}>
-                <label className={styles.fieldLabel}>Delivery Address *</label>
-                <input
-                  required
-                  type="text"
-                  placeholder="e.g. House No. 44, Spintex Road"
-                  value={formData.address}
-                  onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-                  className={styles.fieldInput}
-                />
-              </div>
-
-              <div className={styles.fieldGroup}>
-                <label className={styles.fieldLabel}>City / Region *</label>
-                <select
-                  value={formData.city}
-                  onChange={(e) => setFormData({ ...formData, city: e.target.value })}
-                  className={styles.fieldSelect}
-                >
-                  <option value="Greater Accra">Greater Accra Region</option>
-                  <option value="Ashanti">Ashanti Region</option>
-                  <option value="Western">Western Region</option>
-                  <option value="Eastern">Eastern Region</option>
-                  <option value="Central">Central Region</option>
-                  <option value="Volta">Volta Region</option>
-                  <option value="Northern">Northern Region</option>
-                  <option value="Upper East">Upper East Region</option>
-                  <option value="Upper West">Upper West Region</option>
-                  <option value="Savannah">Savannah Region</option>
-                  <option value="North East">North East Region</option>
-                  <option value="Bono">Bono Region</option>
-                  <option value="Bono East">Bono East Region</option>
-                  <option value="Ahafo">Ahafo Region</option>
-                  <option value="Western North">Western North Region</option>
-                  <option value="Oti">Oti Region</option>
-                </select>
-              </div>
-
-              <div className={styles.orderSummary}>
-                <div className={styles.orderRow}>
-                  <span className={styles.orderRowLabel}>Subtotal</span>
-                  <span className={styles.orderRowValue}>{formatCurrency(subtotal)}</span>
+                {/* Shipping section */}
+                <div className={styles.checkoutSection}>
+                  <p className={styles.checkoutSectionTitle}>Shipping</p>
+                  {field('address', 'Delivery Address *', 'text', 'House No., Street, Area')}
+                  <div className={styles.fieldGroup}>
+                    <label className={styles.fieldLabel}>City / Region *</label>
+                    <select
+                      className={styles.fieldSelect}
+                      onChange={(e) => setFormData({ ...formData, city: e.target.value })}
+                      value={formData.city}
+                    >
+                      <option value="Greater Accra">Greater Accra Region</option>
+                      <option value="Ashanti">Ashanti Region</option>
+                      <option value="Western">Western Region</option>
+                      <option value="Eastern">Eastern Region</option>
+                      <option value="Central">Central Region</option>
+                      <option value="Volta">Volta Region</option>
+                      <option value="Northern">Northern Region</option>
+                      <option value="Upper East">Upper East Region</option>
+                      <option value="Upper West">Upper West Region</option>
+                      <option value="Savannah">Savannah Region</option>
+                      <option value="North East">North East Region</option>
+                      <option value="Bono">Bono Region</option>
+                      <option value="Bono East">Bono East Region</option>
+                      <option value="Ahafo">Ahafo Region</option>
+                      <option value="Western North">Western North Region</option>
+                      <option value="Oti">Oti Region</option>
+                    </select>
+                  </div>
                 </div>
-                <div className={styles.orderRow}>
-                  <span className={styles.orderRowLabel}>Service charge (2%)</span>
-                  <span className={styles.orderRowValue}>{formatCurrency(serviceCharge)}</span>
+
+                {/* Order summary */}
+                <div className={styles.checkoutSummary}>
+                  <div className={styles.checkoutSummaryRow}>
+                    <span className={styles.checkoutSummaryLabel}>Subtotal</span>
+                    <span className={styles.checkoutSummaryValue}>{formatCurrency(subtotal)}</span>
+                  </div>
+                  <div className={styles.checkoutSummaryRow}>
+                    <span className={styles.checkoutSummaryLabel}>Service fee (2%)</span>
+                    <span className={styles.checkoutSummaryValue}>{formatCurrency(serviceCharge)}</span>
+                  </div>
+                  <hr className={styles.checkoutSummaryDivider} />
+                  <div className={styles.checkoutSummaryTotal}>
+                    <span className={styles.checkoutSummaryTotalLabel}>Order Total</span>
+                    <span className={styles.checkoutSummaryTotalValue}>{formatCurrency(orderTotal)}</span>
+                  </div>
                 </div>
-                <div className={styles.orderRowTotal}>
-                  <span className={styles.orderRowTotalLabel}>Order Total</span>
-                  <span className={styles.orderRowTotalValue}>{formatCurrency(orderTotal)}</span>
-                </div>
-              </div>
-            </form>
+              </form>
+            </div>
 
             <div className={styles.checkoutFooter}>
-              <Button type="button" fullWidth onClick={handleCheckoutSubmit} disabled={checkoutLoading}>
-                {checkoutLoading ? 'Verifying Gateway...' : `Pay ${formatCurrency(orderTotal)} via Paystack`}
+              <Button
+                disabled={checkoutLoading}
+                form="checkout-form"
+                fullWidth
+                onClick={handleCheckoutSubmit}
+                type="button"
+              >
+                {checkoutLoading
+                  ? 'Connecting to gateway...'
+                  : `Pay ${formatCurrency(orderTotal)} securely`}
               </Button>
-              <button type="button" onClick={() => setShowCheckout(false)} className={styles.backButton}>
-                ← Back to Bag
+              <button
+                className={styles.backButton}
+                onClick={() => { setShowCheckout(false); setError(''); }}
+                type="button"
+              >
+                ← Back to bag
               </button>
             </div>
-          </div>
+          </>
+
         ) : (
-          /* 3. NORMAL CART ITEMS STATE */
-          <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100% - 76px)', overflow: 'hidden' }}>
+          /* ══════════════════════════════════════════
+              3. CART ITEMS
+          ══════════════════════════════════════════ */
+          <>
             <div className={styles.items}>
               {items.length === 0 ? (
                 <div className={styles.empty}>
                   <div>
                     <h3>No pieces selected</h3>
-                    <p>Build the uniform. Limited runs move quickly and do not restock.</p>
+                    <p>Limited runs move fast and do not restock. Build the uniform.</p>
                     <div onClick={closeCart}>
                       <LinkButton href="/shop">View shop</LinkButton>
                     </div>
@@ -372,7 +419,13 @@ export function CartDrawer() {
                 items.map((item) => (
                   <article className={styles.item} key={item.variantId}>
                     <Link className={styles.imageWrap} href={`/products/${item.productSlug}`} onClick={closeCart}>
-                      <Image alt={item.name} className={styles.image} fill sizes="88px" src={item.image} />
+                      <Image
+                        alt={item.name}
+                        className={styles.image}
+                        fill
+                        sizes="80px"
+                        src={item.image}
+                      />
                     </Link>
                     <div>
                       <div className={styles.itemTop}>
@@ -380,9 +433,7 @@ export function CartDrawer() {
                           <Link href={`/products/${item.productSlug}`} onClick={closeCart}>
                             <h3 className={styles.itemName}>{item.name}</h3>
                           </Link>
-                          <p className={styles.meta}>
-                            {item.color} / {item.size}
-                          </p>
+                          <p className={styles.meta}>{item.color} / {item.size}</p>
                           <p className={styles.sku}>{item.sku}</p>
                         </div>
                         <button
@@ -425,29 +476,25 @@ export function CartDrawer() {
 
             {items.length > 0 && (
               <div className={styles.footer}>
-                <div style={{ display: 'grid', gap: '6px', marginBottom: '12px' }}>
-                  <p className={styles.subtotal}>
-                    <span>Subtotal</span>
-                    <strong>{formatCurrency(subtotal)}</strong>
-                  </p>
-                  <p className={styles.subtotal} style={{ fontSize: '0.72rem', color: 'var(--color-text-secondary)' }}>
-                    <span>Service charge (2%)</span>
-                    <span>{formatCurrency(serviceCharge)}</span>
-                  </p>
-                  <p className={styles.subtotal} style={{ borderTop: '1px solid var(--color-border)', paddingTop: '8px' }}>
-                    <span>Total</span>
-                    <strong>{formatCurrency(orderTotal)}</strong>
-                  </p>
+                <div className={styles.summaryRow}>
+                  <span className={styles.summaryLabel}>Subtotal</span>
+                  <span className={styles.summaryValue}>{formatCurrency(subtotal)}</span>
+                </div>
+                <div className={styles.summaryRow}>
+                  <span className={styles.summaryLabel}>Service fee (2%)</span>
+                  <span className={styles.summaryValue}>{formatCurrency(serviceCharge)}</span>
+                </div>
+                <div className={styles.summaryTotal}>
+                  <span className={styles.summaryTotalLabel}>Order Total</span>
+                  <span className={styles.summaryTotalValue}>{formatCurrency(orderTotal)}</span>
                 </div>
                 <Button disabled={items.length === 0} fullWidth onClick={() => setShowCheckout(true)}>
                   Proceed to Checkout
                 </Button>
-                <p className={styles.checkoutNote} style={{ letterSpacing: '0.04em', fontSize: '0.68rem' }}>
-                  Secure payment gateway processed by Paystack.
-                </p>
+                <p className={styles.checkoutNote}>Secure payment via Paystack</p>
               </div>
             )}
-          </div>
+          </>
         )}
       </aside>
     </>

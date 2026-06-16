@@ -2,111 +2,111 @@ import { NextResponse } from 'next/server';
 import { getDbOrders } from '@/lib/catalog-db';
 import { rateLimit, requestKey } from '@/lib/rate-limit';
 
+function formatPhone(raw: string): string {
+  const digits = raw.replace(/\D/g, '');
+  if (digits.startsWith('0') && digits.length === 10) return '233' + digits.slice(1);
+  if (digits.length === 9 && !digits.startsWith('0')) return '233' + digits;
+  return digits;
+}
+
 async function sendUnifiedSms(orders: any[]) {
   const apiKey = process.env.MNOTIFY_API_KEY;
-  const senderId = process.env.MNOTIFY_SENDER_ID || 'RedoxDesx';
-  
+  const senderId = (process.env.MNOTIFY_SENDER_ID || 'RedoxDesx').substring(0, 11);
+
   if (!apiKey) {
-    console.warn('mNotify API Key is not set. Skipping SMS summary.');
-    return;
+    console.warn('[SMS] MNOTIFY_API_KEY not set — skipping.');
+    return { skipped: true };
   }
 
-  const primaryOrder = orders[0];
-  if (!primaryOrder) return;
+  const primary = orders[0];
+  if (!primary) return { skipped: true };
 
-  // Format customer phone
-  let rawPhone = primaryOrder.customerPhone || '';
-  let cleanedPhone = rawPhone.replace(/\D/g, '');
-  if (cleanedPhone.startsWith('0') && cleanedPhone.length === 10) {
-    cleanedPhone = '233' + cleanedPhone.substring(1);
-  } else if (cleanedPhone.length === 9 && !cleanedPhone.startsWith('0')) {
-    cleanedPhone = '233' + cleanedPhone;
+  const customerPhone = formatPhone(primary.customerPhone || '');
+  const adminPhone = formatPhone(process.env.ADMIN_PHONE_NUMBER || '');
+
+  const recipients = [...new Set([customerPhone, adminPhone].filter(Boolean))];
+  if (recipients.length === 0) {
+    console.warn('[SMS] No valid recipients — skipping.');
+    return { skipped: true };
   }
 
-  // Format admin phone from environment
-  let rawAdminPhone = process.env.ADMIN_PHONE_NUMBER || '';
-  let cleanedAdminPhone = rawAdminPhone.replace(/\D/g, '');
-  if (cleanedAdminPhone.startsWith('0') && cleanedAdminPhone.length === 10) {
-    cleanedAdminPhone = '233' + cleanedAdminPhone.substring(1);
-  } else if (cleanedAdminPhone.length === 9 && !cleanedAdminPhone.startsWith('0')) {
-    cleanedAdminPhone = '233' + cleanedAdminPhone;
-  }
-
-  // Deduplicate recipients
-  const recipientSet = new Set<string>();
-  if (cleanedPhone) recipientSet.add(cleanedPhone);
-  if (cleanedAdminPhone) recipientSet.add(cleanedAdminPhone);
-
-  if (recipientSet.size === 0) {
-    console.warn('No recipients found for SMS summary.');
-    return;
-  }
-
-  // Build a highly compact list of items to keep SMS character count minimal and save credits
-  let itemsSummary = '';
-  let totalPrice = 0;
-  
-  orders.forEach((o) => {
-    totalPrice += o.price;
-    // Shorten product name to keep it super concise
-    const shortName = o.productName.length > 15 ? o.productName.substring(0, 12) + '..' : o.productName;
-    itemsSummary += `• ${shortName} (${o.selectedColor}/${o.selectedSize})\n`;
+  // Build compact item list (prices already include 2% service charge)
+  const itemLines = orders.map((o) => {
+    const name = o.productName.length > 18 ? o.productName.slice(0, 15) + '...' : o.productName;
+    return `• ${name} (${o.selectedSize}) — GH₵${Number(o.price).toFixed(2)}`;
   });
 
-  // Shorten track link prefix
-  const trackingRef = `RD-${primaryOrder.id}`;
-  const messageText = `REDOXDESIGNX\nOrder #${trackingRef} confirmed!\n\n${itemsSummary}Total: GH₵${totalPrice}\n\nTrack: https://redoxdesignx.com/track-order?ref=${trackingRef}`;
+  const grandTotal = orders.reduce((sum, o) => sum + Number(o.price), 0);
+  const trackRef = `RD-${primary.id}`;
+
+  const message = [
+    `REDOXDESIGNX — Order Confirmed!`,
+    `Ref: #${trackRef}`,
+    ``,
+    itemLines.join('\n'),
+    ``,
+    `Total (incl. 2% fee): GH₵${grandTotal.toFixed(2)}`,
+    `Ship to: ${primary.shippingAddress}, ${primary.shippingCity}`,
+    ``,
+    `Track: redoxdesignx.com/track-order?ref=${trackRef}`
+  ].join('\n');
+
+  console.log(`[SMS] Sending to ${recipients.length} recipient(s): ${recipients.join(', ')}`);
+  console.log(`[SMS] Message:\n${message}`);
 
   try {
-    const url = `https://api.mnotify.com/api/sms/quick?key=${apiKey}`;
-    const payload = {
-      recipient: Array.from(recipientSet),
-      sender: senderId.substring(0, 11),
-      message: messageText,
-      is_schedule: false,
-      schedule_date: ''
-    };
-
-    const res = await fetch(url, {
+    const res = await fetch(`https://api.mnotify.com/api/sms/quick?key=${apiKey}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
+      body: JSON.stringify({
+        recipient: recipients,
+        sender: senderId,
+        message,
+        is_schedule: false,
+        schedule_date: ''
+      })
     });
 
-    const resData = await res.json();
-    console.log('mNotify Summary API send log:', resData);
+    const data = await res.json();
+    console.log('[SMS] mNotify response:', JSON.stringify(data));
+
+    if (!res.ok || data.status === 'error') {
+      console.error('[SMS] mNotify returned error:', data);
+      return { success: false, error: data };
+    }
+
+    return { success: true, data };
   } catch (err) {
-    console.error('mNotify Summary SMS system error:', err);
+    console.error('[SMS] Network error calling mNotify:', err);
+    return { success: false, error: String(err) };
   }
 }
 
 export async function POST(request: Request) {
   const limit = rateLimit(`sms-summary:${requestKey(request)}`, 4, 60_000);
   if (!limit.allowed) {
-    return NextResponse.json({ error: 'Too many SMS summary requests. Please wait.' }, { status: 429 });
+    return NextResponse.json({ error: 'Too many SMS requests. Please wait.' }, { status: 429 });
   }
 
   try {
     const body = await request.json().catch(() => null);
     const { orderIds } = body || {};
 
-    if (!orderIds || !Array.isArray(orderIds) || orderIds.length === 0) {
+    if (!Array.isArray(orderIds) || orderIds.length === 0) {
       return NextResponse.json({ error: 'Valid orderIds array is required.' }, { status: 400 });
     }
 
     const allOrders = await getDbOrders();
-    const matchingOrders = allOrders.filter((o: any) => orderIds.includes(o.id));
+    const matching = allOrders.filter((o: any) => orderIds.includes(o.id));
 
-    if (matchingOrders.length === 0) {
+    if (matching.length === 0) {
       return NextResponse.json({ error: 'No matching orders found.' }, { status: 404 });
     }
 
-    // Trigger unified single SMS summary
-    await sendUnifiedSms(matchingOrders);
-
-    return NextResponse.json({ success: true, message: 'Unified SMS summary triggered.' });
-  } catch (error: any) {
-    console.error('SMS summary POST error:', error);
+    const result = await sendUnifiedSms(matching);
+    return NextResponse.json({ success: true, message: 'SMS summary triggered.', result });
+  } catch (err: any) {
+    console.error('[SMS] POST handler error:', err);
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
   }
 }

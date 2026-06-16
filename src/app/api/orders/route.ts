@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { rateLimit, requestKey } from '@/lib/rate-limit';
 import { addDbOrder, applyDbProductStockDelta, getDbProduct } from '@/lib/catalog-db';
 import { getVariantStockLimit, isVariantInStock } from '@/lib/inventory';
-import { calcOrderTotal } from '@/lib/format';
+import { calcOrderTotal, calcServiceCharge } from '@/lib/format';
 
 const orderItemSchema = z.object({
   productId: z.string().optional(),
@@ -218,7 +218,8 @@ export async function POST(request: Request) {
 
     // 3. OVERWRITE WITH AUTHORITATIVE DATA BEFORE WRITE
     // Force write actual verified product data to bypass local client edits.
-    orderData.price = verifiedTotalPrice;
+    // Price stored includes the 2% service charge so receipts and SMS are accurate.
+    orderData.price = calcOrderTotal(verifiedTotalPrice);
     orderData.productId = dbProduct.id;
     orderData.productName = dbProduct.name;
     orderData.productSlug = dbProduct.slug;
