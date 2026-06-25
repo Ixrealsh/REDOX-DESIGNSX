@@ -494,14 +494,8 @@ export async function addDbOrder(o: Omit<Order, 'id' | 'createdAt'>): Promise<Or
       createdAt: new Date(row.created_at).toISOString()
     };
   } catch (error) {
-    console.error('Failed to save order to Neon Postgres, using sandbox:', error);
-    const newOrder: Order = {
-      ...o,
-      id: Math.floor(Math.random() * 100000),
-      createdAt: new Date().toISOString()
-    };
-    sandboxOrders.unshift(newOrder);
-    return newOrder;
+    console.error('Failed to save order to Neon Postgres:', error);
+    throw error;
   }
 }
 

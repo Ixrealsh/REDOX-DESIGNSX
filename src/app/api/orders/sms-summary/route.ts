@@ -4,8 +4,10 @@ import { rateLimit, requestKey } from '@/lib/rate-limit';
 
 function formatPhone(raw: string): string {
   const digits = raw.replace(/\D/g, '');
+  if (digits.startsWith('233') && digits.length === 12) return digits;
+  if (digits.startsWith('00233') && digits.length === 14) return digits.slice(2);
   if (digits.startsWith('0') && digits.length === 10) return '233' + digits.slice(1);
-  if (digits.length === 9 && !digits.startsWith('0')) return '233' + digits;
+  if (digits.length === 9) return '233' + digits;
   return digits;
 }
 
@@ -54,6 +56,9 @@ async function sendUnifiedSms(orders: any[]) {
   console.log(`[SMS] Sending to ${recipients.length} recipient(s): ${recipients.join(', ')}`);
   console.log(`[SMS] Message:\n${message}`);
 
+  const smsAbort = new AbortController();
+  const smsTimer = setTimeout(() => smsAbort.abort(), 8_000);
+
   try {
     const res = await fetch(`https://api.mnotify.com/api/sms/quick?key=${apiKey}`, {
       method: 'POST',
@@ -64,7 +69,8 @@ async function sendUnifiedSms(orders: any[]) {
         message,
         is_schedule: false,
         schedule_date: ''
-      })
+      }),
+      signal: smsAbort.signal
     });
 
     const data = await res.json();
@@ -79,6 +85,8 @@ async function sendUnifiedSms(orders: any[]) {
   } catch (err) {
     console.error('[SMS] Network error calling mNotify:', err);
     return { success: false, error: String(err) };
+  } finally {
+    clearTimeout(smsTimer);
   }
 }
 

@@ -26,6 +26,13 @@ export function CartDrawer() {
   const [error, setError] = useState('');
   const [checkoutSuccess, setCheckoutSuccess] = useState<any[] | null>(null);
 
+  // Receipt totals derived from confirmed order data — cart is cleared before receipt is shown
+  const receiptTotal = checkoutSuccess
+    ? checkoutSuccess.reduce((sum, o) => sum + (Number(o.price) || 0), 0)
+    : 0;
+  const receiptSubtotal = Math.round((receiptTotal / 1.02) * 100) / 100;
+  const receiptServiceCharge = Math.round((receiptTotal - receiptSubtotal) * 100) / 100;
+
   const [formData, setFormData] = useState({
     fullName: '',
     phone: '',
@@ -79,6 +86,7 @@ export function CartDrawer() {
         throw new Error('Could not load secure payment gateway. Check your connection or disable ad-blockers.');
       }
 
+      let paymentSucceeded = false;
       const handler = paystack.setup({
         key: paystackKey,
         email: formData.email,
@@ -86,13 +94,16 @@ export function CartDrawer() {
         currency: 'GHS',
         reference: 'RDX-CART-' + Math.floor(Math.random() * 1_000_000_000 + 1),
         callback: (response: any) => {
+          paymentSucceeded = true;
           saveCartOrders(response.reference).catch((err) => {
             console.error('Post-payment order save failed:', err);
           });
         },
         onClose: () => {
-          setCheckoutLoading(false);
-          setError('Payment was cancelled. You can try again anytime.');
+          if (!paymentSucceeded) {
+            setCheckoutLoading(false);
+            setError('Payment was cancelled. You can try again anytime.');
+          }
         }
       });
 
@@ -142,19 +153,26 @@ export function CartDrawer() {
         created.push(data.order);
       }
 
-      // Single consolidated SMS after all orders are saved
+      // Single consolidated SMS after all orders are saved — must complete before showing success
       if (created.length > 0) {
-        fetch('/api/orders/sms-summary', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ orderIds: created.map((o) => o.id) })
-        }).catch((err) => console.error('SMS summary failed:', err));
+        try {
+          await fetch('/api/orders/sms-summary', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ orderIds: created.map((o) => o.id) })
+          });
+        } catch (err) {
+          console.error('SMS summary failed:', err);
+        }
       }
 
       setCheckoutSuccess(created);
       clearCart();
     } catch (err: any) {
-      setError(err.message || 'Payment succeeded but order recording failed. Contact support with your payment reference.');
+      setError(
+        (err.message || 'Order recording failed.') +
+        ` Your payment ref is ${paymentRef} — contact support if you don't receive an SMS.`
+      );
     } finally {
       setCheckoutLoading(false);
     }
@@ -247,20 +265,20 @@ export function CartDrawer() {
                   ))}
                 </div>
 
-                {/* Totals */}
+                {/* Totals derived from confirmed orders, not the (now-cleared) cart */}
                 <div className={styles.receiptTotals}>
                   <div className={styles.receiptTotalRow}>
                     <span className={styles.receiptTotalLabel}>Subtotal</span>
-                    <span className={styles.receiptTotalValue}>{formatCurrency(subtotal)}</span>
+                    <span className={styles.receiptTotalValue}>{formatCurrency(receiptSubtotal)}</span>
                   </div>
                   <div className={styles.receiptTotalRow}>
                     <span className={styles.receiptTotalLabel}>Service fee (2%)</span>
-                    <span className={styles.receiptTotalValue}>{formatCurrency(serviceCharge)}</span>
+                    <span className={styles.receiptTotalValue}>{formatCurrency(receiptServiceCharge)}</span>
                   </div>
                   <hr className={styles.receiptGrandDivider} />
                   <div className={styles.receiptGrandTotal}>
                     <span className={styles.receiptGrandLabel}>Total Paid</span>
-                    <span className={styles.receiptGrandValue}>{formatCurrency(orderTotal)}</span>
+                    <span className={styles.receiptGrandValue}>{formatCurrency(receiptTotal)}</span>
                   </div>
                 </div>
 
@@ -302,7 +320,6 @@ export function CartDrawer() {
               </Button>
             </div>
           </>
-
         ) : showCheckout ? (
           /* ══════════════════════════════════════════
               2. CHECKOUT FORM

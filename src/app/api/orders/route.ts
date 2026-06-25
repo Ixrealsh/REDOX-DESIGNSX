@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { rateLimit, requestKey } from '@/lib/rate-limit';
 import { addDbOrder, applyDbProductStockDelta, getDbProduct } from '@/lib/catalog-db';
 import { getVariantStockLimit, isVariantInStock } from '@/lib/inventory';
-import { calcOrderTotal, calcServiceCharge } from '@/lib/format';
+import { calcOrderTotal } from '@/lib/format';
 
 const orderItemSchema = z.object({
   productId: z.string().optional(),
@@ -33,32 +33,26 @@ const orderSchema = z.object({
   skipSms: z.boolean().optional()
 });
 
+function formatGhanaPhone(raw: string): string {
+  const digits = raw.replace(/\D/g, '');
+  if (digits.startsWith('233') && digits.length === 12) return digits;
+  if (digits.startsWith('00233') && digits.length === 14) return digits.slice(2);
+  if (digits.startsWith('0') && digits.length === 10) return '233' + digits.slice(1);
+  if (digits.length === 9) return '233' + digits;
+  return digits;
+}
+
 async function sendSmsNotification(order: any) {
   const apiKey = process.env.MNOTIFY_API_KEY;
   const senderId = process.env.MNOTIFY_SENDER_ID || 'RedoxDesx';
-  
+
   if (!apiKey) {
     console.warn('mNotify API Key is not set in environment variables. Skipping SMS.');
     return;
   }
 
-  // Format customer phone
-  let rawPhone = order.customerPhone || '';
-  let cleanedPhone = rawPhone.replace(/\D/g, '');
-  if (cleanedPhone.startsWith('0') && cleanedPhone.length === 10) {
-    cleanedPhone = '233' + cleanedPhone.substring(1);
-  } else if (cleanedPhone.length === 9 && !cleanedPhone.startsWith('0')) {
-    cleanedPhone = '233' + cleanedPhone;
-  }
-
-  // Format admin phone from environment
-  let rawAdminPhone = process.env.ADMIN_PHONE_NUMBER || '';
-  let cleanedAdminPhone = rawAdminPhone.replace(/\D/g, '');
-  if (cleanedAdminPhone.startsWith('0') && cleanedAdminPhone.length === 10) {
-    cleanedAdminPhone = '233' + cleanedAdminPhone.substring(1);
-  } else if (cleanedAdminPhone.length === 9 && !cleanedAdminPhone.startsWith('0')) {
-    cleanedAdminPhone = '233' + cleanedAdminPhone;
-  }
+  const cleanedPhone = formatGhanaPhone(order.customerPhone || '');
+  const cleanedAdminPhone = formatGhanaPhone(process.env.ADMIN_PHONE_NUMBER || '');
 
   // Deduplicate recipients: if admin number equals customer number, send only once
   const recipientSet = new Set<string>();
@@ -85,14 +79,21 @@ async function sendSmsNotification(order: any) {
       schedule_date: ''
     };
 
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    });
+    const smsAbort = new AbortController();
+    const smsTimer = setTimeout(() => smsAbort.abort(), 8_000);
 
-    const resData = await res.json();
-    console.log('mNotify API send log:', resData);
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+        signal: smsAbort.signal
+      });
+      const resData = await res.json();
+      console.log('mNotify API send log:', resData);
+    } finally {
+      clearTimeout(smsTimer);
+    }
   } catch (err) {
     console.error('mNotify SMS system error:', err);
   }
@@ -188,20 +189,35 @@ export async function POST(request: Request) {
       }
 
       // Query the official Paystack Verification Endpoint securely from the server
-      const verifyRes = await fetch(`https://api.paystack.co/transaction/verify/${encodeURIComponent(paymentRef)}`, {
-        method: 'GET',
-        headers: {
-          Authorization: `Bearer ${paystackSecret}`,
-          'Content-Type': 'application/json'
+      const paystackAbort = new AbortController();
+      const paystackTimer = setTimeout(() => paystackAbort.abort(), 10_000);
+
+      let verifyRes: Response;
+      try {
+        verifyRes = await fetch(`https://api.paystack.co/transaction/verify/${encodeURIComponent(paymentRef)}`, {
+          method: 'GET',
+          headers: {
+            Authorization: `Bearer ${paystackSecret}`,
+            'Content-Type': 'application/json'
+          },
+          signal: paystackAbort.signal
+        });
+      } catch (fetchErr: any) {
+        clearTimeout(paystackTimer);
+        if (fetchErr.name === 'AbortError') {
+          return NextResponse.json({ error: 'Payment verification timed out. Please contact support with your payment reference.' }, { status: 504 });
         }
-      });
+        return NextResponse.json({ error: 'Could not communicate with Paystack payment gateway.' }, { status: 400 });
+      } finally {
+        clearTimeout(paystackTimer);
+      }
 
       if (!verifyRes.ok) {
         return NextResponse.json({ error: 'Could not communicate with Paystack payment gateway.' }, { status: 400 });
       }
 
       const verifyData = await verifyRes.json();
-      if (!verifyData.status || verifyData.data.status !== 'success') {
+      if (!verifyData.status || !verifyData.data || verifyData.data.status !== 'success') {
         return NextResponse.json({ error: 'Security breach: Transaction payment has not been successfully capture-verified.' }, { status: 400 });
       }
 
