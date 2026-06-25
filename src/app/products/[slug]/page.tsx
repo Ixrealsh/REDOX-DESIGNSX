@@ -19,7 +19,7 @@ export async function generateMetadata({ params }: ProductPageProps) {
   }
 
   return buildMetadata({
-    title: `${product.name} - ${product.collectionName}`,
+    title: `${product.name}`,
     description: product.description,
     path: `/products/${product.slug}`,
     image: product.image

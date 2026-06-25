@@ -360,7 +360,6 @@ export function ProductDetail({ product }: ProductDetailProps) {
         </div>
 
         <div className={styles.panel}>
-          <p className={styles.collection}>{product.collectionName}</p>
           <h1 className={styles.name}>{product.name}</h1>
           <div className={styles.rating}>
             <StarIcon />
