@@ -66,7 +66,6 @@ export function ProductCard({ product, priority = false }: ProductCardProps) {
           <Link href={`/products/${product.slug}`}>
             <h3 className={styles.name}>{product.name}</h3>
           </Link>
-          <p className={styles.collection}>{product.collectionName}</p>
           <p className={stock.isSoldOut ? styles.stockOut : styles.stock}>
             {stock.isSoldOut
               ? 'Out of stock'
