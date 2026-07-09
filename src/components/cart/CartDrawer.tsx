@@ -9,6 +9,7 @@ import { LinkButton } from '@/components/ui/LinkButton';
 import { formatCurrency } from '@/lib/format';
 import { getCartTotals, useCartStore } from '@/store/cart.store';
 import { loadPaystackScript } from '@/lib/paystack';
+import type { Order } from '@/types/product';
 import styles from './CartDrawer.module.css';
 
 export function CartDrawer() {
@@ -24,14 +25,12 @@ export function CartDrawer() {
   const [showCheckout, setShowCheckout] = useState(false);
   const [checkoutLoading, setCheckoutLoading] = useState(false);
   const [error, setError] = useState('');
-  const [checkoutSuccess, setCheckoutSuccess] = useState<any[] | null>(null);
+  const [checkoutSuccess, setCheckoutSuccess] = useState<Order | null>(null);
 
-  // Receipt totals derived from confirmed order data — cart is cleared before receipt is shown
-  const receiptTotal = checkoutSuccess
-    ? checkoutSuccess.reduce((sum, o) => sum + (Number(o.price) || 0), 0)
-    : 0;
-  const receiptSubtotal = Math.round((receiptTotal / 1.02) * 100) / 100;
-  const receiptServiceCharge = Math.round((receiptTotal - receiptSubtotal) * 100) / 100;
+  // Receipt totals come straight off the confirmed order — the cart is cleared before it renders.
+  const receiptTotal = Number(checkoutSuccess?.price) || 0;
+  const receiptSubtotal = Number(checkoutSuccess?.subtotal) || 0;
+  const receiptServiceCharge = Number(checkoutSuccess?.serviceCharge) || 0;
 
   const [formData, setFormData] = useState({
     fullName: '',
@@ -116,57 +115,38 @@ export function CartDrawer() {
 
   const saveCartOrders = async (paymentRef: string) => {
     try {
-      const created: any[] = [];
+      if (items.length === 0) {
+        throw new Error('Your bag was emptied before the order could be recorded.');
+      }
 
-      for (const item of items) {
-        const res = await fetch('/api/orders', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
+      // One payment is one order. Posting a request per line item meant a failure
+      // partway through left the customer charged for a cart the admin never saw.
+      const res = await fetch('/api/orders', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          customerName: formData.fullName,
+          customerPhone: formData.phone,
+          customerEmail: formData.email,
+          shippingAddress: formData.address,
+          shippingCity: formData.city,
+          paymentMethod: 'PAYSTACK',
+          paymentReference: paymentRef,
+          items: items.map((item) => ({
             productId: item.productId,
-            productName: item.name,
             productSlug: item.productSlug,
-            selectedColor: item.color,
-            selectedSize: item.size,
-            price: item.price * item.quantity,
-            customerName: formData.fullName,
-            customerPhone: formData.phone,
-            customerEmail: formData.email,
-            shippingAddress: formData.address,
-            shippingCity: formData.city,
-            paymentMethod: 'PAYSTACK',
-            momoNumber: paymentRef,
-            items: [{
-              productId: item.productId,
-              productSlug: item.productSlug,
-              variantId: item.variantId,
-              color: item.color,
-              size: item.size,
-              quantity: item.quantity
-            }],
-            skipSms: true
-          })
-        });
+            variantId: item.variantId,
+            color: item.color,
+            size: item.size,
+            quantity: item.quantity
+          }))
+        })
+      });
 
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error || 'Failed to record order.');
-        created.push(data.order);
-      }
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to record order.');
 
-      // Single consolidated SMS after all orders are saved — must complete before showing success
-      if (created.length > 0) {
-        try {
-          await fetch('/api/orders/sms-summary', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ orderIds: created.map((o) => o.id) })
-          });
-        } catch (err) {
-          console.error('SMS summary failed:', err);
-        }
-      }
-
-      setCheckoutSuccess(created);
+      setCheckoutSuccess(data.order);
       clearCart();
     } catch (err: any) {
       setError(
@@ -243,8 +223,8 @@ export function CartDrawer() {
                   </div>
                   <h2 className={styles.receiptHeading}>Order Placed!</h2>
                   <p className={styles.receiptSubtext}>
-                    Thank you, <strong>{checkoutSuccess[0]?.customerName}</strong>. Your reference is{' '}
-                    <span className={styles.receiptRef}>#{checkoutSuccess[0]?.id ? `RD-${checkoutSuccess[0].id}` : '—'}</span>.
+                    Thank you, <strong>{checkoutSuccess.customerName}</strong>. Your reference is{' '}
+                    <span className={styles.receiptRef}>#RD-{checkoutSuccess.id}</span>.
                     You&apos;ll receive an SMS confirmation shortly.
                   </p>
                 </div>
@@ -252,14 +232,16 @@ export function CartDrawer() {
                 {/* Items */}
                 <div className={styles.receiptCard}>
                   <p className={styles.receiptCardTitle}>Items Ordered</p>
-                  {checkoutSuccess.map((order) => (
-                    <div className={styles.receiptItem} key={order.id}>
+                  {checkoutSuccess.items.map((item) => (
+                    <div className={styles.receiptItem} key={`${item.productSlug}-${item.color}-${item.size}`}>
                       <div>
-                        <p className={styles.receiptItemName}>{order.productName}</p>
-                        <p className={styles.receiptItemSize}>{order.selectedSize}</p>
+                        <p className={styles.receiptItemName}>{item.productName}</p>
+                        <p className={styles.receiptItemSize}>
+                          {item.color} / {item.size} &times; {item.quantity}
+                        </p>
                       </div>
                       <span className={styles.receiptItemPrice}>
-                        {formatCurrency(order.price)}
+                        {formatCurrency(item.lineTotal)}
                       </span>
                     </div>
                   ))}
@@ -287,7 +269,7 @@ export function CartDrawer() {
                   <div className={styles.receiptMetaRow}>
                     <span className={styles.receiptMetaKey}>Ship to</span>
                     <span className={styles.receiptMetaVal}>
-                      {checkoutSuccess[0]?.shippingAddress}, {checkoutSuccess[0]?.shippingCity}
+                      {checkoutSuccess.shippingAddress}, {checkoutSuccess.shippingCity}
                     </span>
                   </div>
                   <div className={styles.receiptMetaRow}>
@@ -296,14 +278,14 @@ export function CartDrawer() {
                   </div>
                   <div className={styles.receiptMetaRow}>
                     <span className={styles.receiptMetaKey}>Contact</span>
-                    <span className={styles.receiptMetaVal}>{checkoutSuccess[0]?.customerPhone}</span>
+                    <span className={styles.receiptMetaVal}>{checkoutSuccess.customerPhone}</span>
                   </div>
                 </div>
 
                 <p className={styles.receiptContact}>
                   Our team will reach out via{' '}
                   <strong style={{ color: 'var(--color-text-secondary)' }}>
-                    {checkoutSuccess[0]?.customerPhone}
+                    {checkoutSuccess.customerPhone}
                   </strong>{' '}
                   to confirm dispatch and delivery details.
                 </p>

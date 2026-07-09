@@ -6,7 +6,8 @@ import {
   lookbooks as mockLookbooks
 } from '@/data/catalog';
 import { isVariantInStock, normalizeVariantStock } from '@/lib/inventory';
-import type { Product, Drop, Collection, LookbookIssue, Order } from '@/types/product';
+import { SERVICE_CHARGE_RATE } from '@/lib/format';
+import type { Product, Drop, Collection, LookbookIssue, Order, OrderItem } from '@/types/product';
 
 export interface WaitlistSignup {
   id: number;
@@ -193,6 +194,16 @@ export interface StockSelection {
   quantity: number;
 }
 
+async function persistProduct(product: Product, slug: string) {
+  if (isDbConfigured) {
+    await saveDbProduct(product);
+    return;
+  }
+  const index = mockProducts.findIndex((candidate) => candidate.slug === slug || candidate.id === product.id);
+  if (index > -1) mockProducts[index] = product;
+}
+
+/** Decrement stock for a purchase. Validates availability first and throws if short. */
 export async function applyDbProductStockDelta(slug: string, selections: StockSelection[]): Promise<Product | undefined> {
   const product = await getDbProduct(slug);
   if (!product) return undefined;
@@ -236,14 +247,40 @@ export async function applyDbProductStockDelta(slug: string, selections: StockSe
     })
   };
 
-  if (isDbConfigured) {
-    await saveDbProduct(nextProduct);
-  } else {
-    const index = mockProducts.findIndex((candidate) => candidate.slug === slug || candidate.id === product.id);
-    if (index > -1) mockProducts[index] = nextProduct;
-  }
-
+  await persistProduct(nextProduct, slug);
   return nextProduct;
+}
+
+/**
+ * Give reserved stock back. Used to roll back a reservation when the order row
+ * fails to persist, so a failed checkout never silently eats inventory.
+ */
+export async function restoreDbProductStock(slug: string, selections: StockSelection[]): Promise<void> {
+  const product = await getDbProduct(slug);
+  if (!product) return;
+
+  const nextProduct: Product = {
+    ...product,
+    variants: product.variants.map((variant) => {
+      const returnedQuantity = selections
+        .filter((selection) => selection.color === variant.color && selection.size === variant.size)
+        .reduce((sum, selection) => sum + Math.max(1, Math.floor(Number(selection.quantity) || 1)), 0);
+
+      // Untracked variants (inventory === null) have nothing to give back.
+      if (!returnedQuantity || typeof variant.inventory !== 'number') {
+        return variant;
+      }
+
+      const nextInventory = variant.inventory + returnedQuantity;
+      return {
+        ...variant,
+        inventory: nextInventory,
+        stockStatus: nextInventory === 0 ? 'out_of_stock' : 'in_stock'
+      };
+    })
+  };
+
+  await persistProduct(nextProduct, slug);
 }
 
 // ----------------------------------------------------
@@ -421,32 +458,186 @@ export async function addWaitlistSignup(email: string, dropSlug: string): Promis
 // In-memory fallback for sandbox orders
 let sandboxOrders: Order[] = [];
 
+/**
+ * The original schema stored every purchased variant flattened into a single
+ * `selected_size VARCHAR(50)`. Postgres rejects (never truncates) an oversized
+ * value, so any order with three or more variants failed to insert outright.
+ * This widens those columns and adds the real line-item columns. Idempotent, and
+ * memoised so it costs one round trip per process rather than one per request.
+ */
+let ordersSchemaPromise: Promise<void> | null = null;
+
+async function ensureOrdersSchema(): Promise<void> {
+  if (!isDbConfigured) return;
+
+  if (!ordersSchemaPromise) {
+    ordersSchemaPromise = (async () => {
+      await sql`
+        CREATE TABLE IF NOT EXISTS orders (
+          id SERIAL PRIMARY KEY,
+          product_id VARCHAR(100) NOT NULL,
+          product_name VARCHAR(255) NOT NULL,
+          product_slug VARCHAR(255) NOT NULL,
+          selected_color TEXT NOT NULL,
+          selected_size TEXT NOT NULL,
+          price NUMERIC NOT NULL,
+          customer_name VARCHAR(255) NOT NULL,
+          customer_phone VARCHAR(100) NOT NULL,
+          customer_email VARCHAR(255) NOT NULL,
+          shipping_address TEXT NOT NULL,
+          shipping_city VARCHAR(255) NOT NULL,
+          payment_method VARCHAR(100) NOT NULL,
+          momo_network VARCHAR(100),
+          momo_number VARCHAR(100),
+          status VARCHAR(100) DEFAULT 'Pending',
+          created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+        );
+      `;
+
+      const narrowColumns = await sql`
+        SELECT column_name FROM information_schema.columns
+        WHERE table_name = 'orders'
+          AND column_name IN ('selected_color', 'selected_size')
+          AND data_type <> 'text'
+      `;
+
+      if (narrowColumns.length > 0) {
+        await sql`
+          ALTER TABLE orders
+            ALTER COLUMN selected_color TYPE TEXT,
+            ALTER COLUMN selected_size TYPE TEXT
+        `;
+      }
+
+      await sql`ALTER TABLE orders ADD COLUMN IF NOT EXISTS items JSONB NOT NULL DEFAULT '[]'::jsonb`;
+      await sql`ALTER TABLE orders ADD COLUMN IF NOT EXISTS total_quantity INTEGER NOT NULL DEFAULT 1`;
+      await sql`ALTER TABLE orders ADD COLUMN IF NOT EXISTS subtotal NUMERIC`;
+      await sql`ALTER TABLE orders ADD COLUMN IF NOT EXISTS service_charge NUMERIC`;
+    })().catch((error) => {
+      // Let the next caller retry rather than caching a permanent failure.
+      ordersSchemaPromise = null;
+      throw error;
+    });
+  }
+
+  return ordersSchemaPromise;
+}
+
+/**
+ * Reconstruct line items for rows written before `items` existed, where the
+ * variants live in a string like "Obsidian Black / M (x2), Oxide Bone / L".
+ */
+export function parseLegacyOrderItems(row: any, grandTotal: number): OrderItem[] {
+  const summary = String(row.selected_size || '').trim();
+  if (!summary) return [];
+
+  const fallbackColor = String(row.selected_color || '').split(',')[0]?.trim() || '';
+
+  const parsed = summary
+    .split(',')
+    .map((part: string) => part.trim())
+    .filter(Boolean)
+    .map((part: string) => {
+      const quantityMatch = part.match(/\(x(\d+)\)\s*$/i);
+      const quantity = quantityMatch ? Number(quantityMatch[1]) : 1;
+      const label = quantityMatch ? part.slice(0, quantityMatch.index).trim() : part;
+
+      const [first, second] = label.split('/').map((segment) => segment.trim());
+      return {
+        color: second ? first : fallbackColor,
+        size: second || first,
+        quantity
+      };
+    });
+
+  const totalQuantity = parsed.reduce((sum, item) => sum + item.quantity, 0) || 1;
+  // Stored price includes the service charge; back it out to approximate unit price.
+  const subtotal = grandTotal / (1 + SERVICE_CHARGE_RATE);
+  const unitPrice = Math.round((subtotal / totalQuantity) * 100) / 100;
+
+  return parsed.map((item) => ({
+    productId: row.product_id,
+    productSlug: row.product_slug,
+    productName: row.product_name,
+    color: item.color,
+    size: item.size,
+    sku: '',
+    quantity: item.quantity,
+    unitPrice,
+    lineTotal: Math.round(unitPrice * item.quantity * 100) / 100
+  }));
+}
+
+function mapOrderRow(row: any): Order {
+  const price = Number(row.price);
+  const rawItems = typeof row.items === 'string' ? JSON.parse(row.items) : row.items;
+
+  const items: OrderItem[] =
+    Array.isArray(rawItems) && rawItems.length > 0 ? rawItems : parseLegacyOrderItems(row, price);
+
+  const totalQuantity =
+    Number(row.total_quantity) || items.reduce((sum, item) => sum + item.quantity, 0) || 1;
+
+  const subtotal =
+    row.subtotal != null
+      ? Number(row.subtotal)
+      : Math.round((price / (1 + SERVICE_CHARGE_RATE)) * 100) / 100;
+
+  const serviceCharge =
+    row.service_charge != null ? Number(row.service_charge) : Math.round((price - subtotal) * 100) / 100;
+
+  return {
+    id: Number(row.id),
+    productId: row.product_id,
+    productName: row.product_name,
+    productSlug: row.product_slug,
+    selectedColor: row.selected_color,
+    selectedSize: row.selected_size,
+    items,
+    totalQuantity,
+    subtotal,
+    serviceCharge,
+    price,
+    customerName: row.customer_name,
+    customerPhone: row.customer_phone,
+    customerEmail: row.customer_email,
+    shippingAddress: row.shipping_address,
+    shippingCity: row.shipping_city,
+    paymentMethod: row.payment_method,
+    momoNetwork: row.momo_network || undefined,
+    momoNumber: row.momo_number || undefined,
+    status: row.status,
+    createdAt: new Date(row.created_at).toISOString()
+  };
+}
+
 export async function getDbOrders(): Promise<Order[]> {
   if (!isDbConfigured) return sandboxOrders;
   try {
+    await ensureOrdersSchema();
     const rows = await sql`SELECT * FROM orders ORDER BY created_at DESC`;
-    return rows.map((row: any) => ({
-      id: Number(row.id),
-      productId: row.product_id,
-      productName: row.product_name,
-      productSlug: row.product_slug,
-      selectedColor: row.selected_color,
-      selectedSize: row.selected_size,
-      price: Number(row.price),
-      customerName: row.customer_name,
-      customerPhone: row.customer_phone,
-      customerEmail: row.customer_email,
-      shippingAddress: row.shipping_address,
-      shippingCity: row.shipping_city,
-      paymentMethod: row.payment_method,
-      momoNetwork: row.momo_network || undefined,
-      momoNumber: row.momo_number || undefined,
-      status: row.status,
-      createdAt: new Date(row.created_at).toISOString()
-    }));
+    return rows.map(mapOrderRow);
   } catch (error) {
     console.error('Failed to fetch orders from Neon Postgres, using fallback:', error);
     return sandboxOrders;
+  }
+}
+
+/** Guards against a Paystack reference being replayed into several orders. */
+export async function findDbOrderByPaymentRef(reference: string): Promise<Order | undefined> {
+  if (!reference) return undefined;
+
+  if (!isDbConfigured) {
+    return sandboxOrders.find((order) => order.momoNumber === reference);
+  }
+
+  try {
+    await ensureOrdersSchema();
+    const rows = await sql`SELECT * FROM orders WHERE momo_number = ${reference} LIMIT 1`;
+    return rows.length > 0 ? mapOrderRow(rows[0]) : undefined;
+  } catch (error) {
+    console.error('Failed to look up order by payment reference:', error);
+    return undefined;
   }
 }
 
@@ -461,38 +652,22 @@ export async function addDbOrder(o: Omit<Order, 'id' | 'createdAt'>): Promise<Or
     return newOrder;
   }
   try {
+    await ensureOrdersSchema();
     const rows = await sql`
       INSERT INTO orders (
         product_id, product_name, product_slug, selected_color, selected_size, price,
         customer_name, customer_phone, customer_email, shipping_address, shipping_city,
-        payment_method, momo_network, momo_number, status
+        payment_method, momo_network, momo_number, status,
+        items, total_quantity, subtotal, service_charge
       ) VALUES (
         ${o.productId}, ${o.productName}, ${o.productSlug}, ${o.selectedColor}, ${o.selectedSize}, ${o.price},
         ${o.customerName}, ${o.customerPhone}, ${o.customerEmail}, ${o.shippingAddress}, ${o.shippingCity},
-        ${o.paymentMethod}, ${o.momoNetwork || null}, ${o.momoNumber || null}, ${o.status || 'Pending'}
+        ${o.paymentMethod}, ${o.momoNetwork || null}, ${o.momoNumber || null}, ${o.status || 'Pending'},
+        ${JSON.stringify(o.items || [])}, ${o.totalQuantity}, ${o.subtotal}, ${o.serviceCharge}
       )
       RETURNING *;
     `;
-    const row = rows[0];
-    return {
-      id: Number(row.id),
-      productId: row.product_id,
-      productName: row.product_name,
-      productSlug: row.product_slug,
-      selectedColor: row.selected_color,
-      selectedSize: row.selected_size,
-      price: Number(row.price),
-      customerName: row.customer_name,
-      customerPhone: row.customer_phone,
-      customerEmail: row.customer_email,
-      shippingAddress: row.shipping_address,
-      shippingCity: row.shipping_city,
-      paymentMethod: row.payment_method,
-      momoNetwork: row.momo_network || undefined,
-      momoNumber: row.momo_number || undefined,
-      status: row.status,
-      createdAt: new Date(row.created_at).toISOString()
-    };
+    return mapOrderRow(rows[0]);
   } catch (error) {
     console.error('Failed to save order to Neon Postgres:', error);
     throw error;

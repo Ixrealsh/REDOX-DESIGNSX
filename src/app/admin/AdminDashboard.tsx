@@ -1129,8 +1129,8 @@ export function AdminDashboard({
                   <tr style={{ background: '#111', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
                     <th style={{ padding: 'var(--space-3)', color: '#aaa', fontWeight: 600 }}>Order ID</th>
                     <th style={{ padding: 'var(--space-3)', color: '#aaa', fontWeight: 600 }}>Customer Info</th>
-                    <th style={{ padding: 'var(--space-3)', color: '#aaa', fontWeight: 600 }}>Product Name</th>
-                    <th style={{ padding: 'var(--space-3)', color: '#aaa', fontWeight: 600 }}>Options</th>
+                    <th style={{ padding: 'var(--space-3)', color: '#aaa', fontWeight: 600 }}>Items Ordered</th>
+                    <th style={{ padding: 'var(--space-3)', color: '#aaa', fontWeight: 600 }}>Qty</th>
                     <th style={{ padding: 'var(--space-3)', color: '#aaa', fontWeight: 600 }}>Price</th>
                     <th style={{ padding: 'var(--space-3)', color: '#aaa', fontWeight: 600 }}>Shipping Destination</th>
                     <th style={{ padding: 'var(--space-3)', color: '#aaa', fontWeight: 600 }}>Payment Info</th>
@@ -1148,16 +1148,38 @@ export function AdminDashboard({
                         <div style={{ color: '#aaa', fontSize: '0.75rem' }}>{o.customerPhone}</div>
                         <div style={{ color: '#777', fontSize: '0.7rem' }}>{o.customerEmail}</div>
                       </td>
-                      <td style={{ padding: 'var(--space-3)', color: '#10b981', fontWeight: 'bold' }}>{o.productName}</td>
-                      <td style={{ padding: 'var(--space-3)' }}>
-                        <span style={{ background: 'rgba(255,255,255,0.08)', padding: '2px 6px', borderRadius: '3px', marginRight: '4px' }}>
-                          {o.selectedColor}
-                        </span>
-                        <span style={{ background: 'rgba(16,185,129,0.15)', color: '#10b981', padding: '2px 6px', borderRadius: '3px' }}>
-                          {o.selectedSize}
-                        </span>
+                      <td style={{ padding: 'var(--space-3)', minWidth: '260px' }}>
+                        <div style={{ display: 'grid', gap: '6px' }}>
+                          {o.items.map((item, index) => (
+                            <div key={`${item.productSlug}-${item.color}-${item.size}-${index}`}>
+                              <div style={{ color: '#10b981', fontWeight: 'bold' }}>{item.productName}</div>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginTop: '2px', flexWrap: 'wrap' }}>
+                                <span style={{ background: 'rgba(255,255,255,0.08)', padding: '2px 6px', borderRadius: '3px' }}>
+                                  {item.color}
+                                </span>
+                                <span style={{ background: 'rgba(16,185,129,0.15)', color: '#10b981', padding: '2px 6px', borderRadius: '3px' }}>
+                                  {item.size}
+                                </span>
+                                <span style={{ background: 'rgba(215,38,56,0.18)', color: '#ff6b7a', padding: '2px 6px', borderRadius: '3px', fontWeight: 'bold' }}>
+                                  &times;{item.quantity}
+                                </span>
+                                <span style={{ color: '#777', fontSize: '0.75rem' }}>
+                                  @ GH₵{item.unitPrice} = GH₵{item.lineTotal.toFixed(2)}
+                                </span>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
                       </td>
-                      <td style={{ padding: 'var(--space-3)', color: '#fff', fontWeight: 'bold' }}>GH₵{o.price}</td>
+                      <td style={{ padding: 'var(--space-3)', color: '#fff', fontWeight: 'bold', textAlign: 'center' }}>
+                        {o.totalQuantity}
+                      </td>
+                      <td style={{ padding: 'var(--space-3)', color: '#fff', fontWeight: 'bold', whiteSpace: 'nowrap' }}>
+                        GH₵{o.price.toFixed(2)}
+                        <div style={{ color: '#666', fontSize: '0.7rem', fontWeight: 'normal', marginTop: '2px' }}>
+                          sub GH₵{o.subtotal.toFixed(2)} + fee GH₵{o.serviceCharge.toFixed(2)}
+                        </div>
+                      </td>
                       <td style={{ padding: 'var(--space-3)' }}>
                         <div style={{ color: '#f5f3ee' }}>{o.shippingAddress}</div>
                         <div style={{ color: '#888', fontSize: '0.75rem' }}>{o.shippingCity}</div>

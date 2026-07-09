@@ -36,13 +36,33 @@ export interface Product {
   colorImages?: Record<string, string[]>;
 }
 
+/** One purchased line: a specific product + colour + size, and how many of it. */
+export interface OrderItem {
+  productId: string;
+  productSlug: string;
+  productName: string;
+  color: string;
+  size: string;
+  sku: string;
+  quantity: number;
+  unitPrice: number;
+  lineTotal: number;
+}
+
 export interface Order {
   id: number;
+  /** Primary (first) line's product. `items` is the authoritative record. */
   productId: string;
   productName: string;
   productSlug: string;
+  /** Human-readable summaries kept for legacy rows and SMS/track-order text. */
   selectedColor: string;
   selectedSize: string;
+  items: OrderItem[];
+  totalQuantity: number;
+  subtotal: number;
+  serviceCharge: number;
+  /** Grand total actually charged (subtotal + service charge). */
   price: number;
   customerName: string;
   customerPhone: string;

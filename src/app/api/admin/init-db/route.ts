@@ -95,15 +95,18 @@ export async function POST() {
       );
     `;
 
-    // 5.5 Create Orders Table
+    // 5.5 Create Orders Table.
+    // selected_color/selected_size hold comma-joined summaries of every purchased
+    // variant, so they must be TEXT — Postgres rejects an oversized VARCHAR insert
+    // outright rather than truncating it. `items` is the authoritative line-item list.
     await sql`
       CREATE TABLE IF NOT EXISTS orders (
         id SERIAL PRIMARY KEY,
         product_id VARCHAR(100) NOT NULL,
         product_name VARCHAR(255) NOT NULL,
         product_slug VARCHAR(255) NOT NULL,
-        selected_color VARCHAR(100) NOT NULL,
-        selected_size VARCHAR(50) NOT NULL,
+        selected_color TEXT NOT NULL,
+        selected_size TEXT NOT NULL,
         price NUMERIC NOT NULL,
         customer_name VARCHAR(255) NOT NULL,
         customer_phone VARCHAR(100) NOT NULL,
@@ -114,6 +117,10 @@ export async function POST() {
         momo_network VARCHAR(100),
         momo_number VARCHAR(100),
         status VARCHAR(100) DEFAULT 'Pending',
+        items JSONB NOT NULL DEFAULT '[]'::jsonb,
+        total_quantity INTEGER NOT NULL DEFAULT 1,
+        subtotal NUMERIC,
+        service_charge NUMERIC,
         created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
       );
     `;

@@ -161,19 +161,6 @@ export function ProductDetail({ product }: ProductDetailProps) {
     }
   }, [colorSpecificImages, selectedColor]);
 
-  const selectedVariant = useMemo(
-    () =>
-      product.variants.find(
-        (variant) => variant.size === selectedSize && variant.color === selectedColor && isVariantInStock(variant)
-      ) ||
-      product.variants.find((variant) => variant.size === selectedSize && isVariantInStock(variant)),
-    [product.variants, selectedColor, selectedSize]
-  );
-
-  const lowStockMessage = selectedVariant && typeof selectedVariant.inventory === 'number' && selectedVariant.inventory <= 3
-    ? `Only ${selectedVariant.inventory} left in ${selectedVariant.size}`
-    : '';
-
   useEffect(() => {
     const handleScroll = () => setStickyOpen(window.scrollY > 760);
     handleScroll();
@@ -255,7 +242,6 @@ export function ProductDetail({ product }: ProductDetailProps) {
           productSlug: product.slug,
           selectedColor: selectedColorString,
           selectedSize,
-          price: totalPrice,
           customerName: formData.fullName,
           customerPhone: formData.phone,
           customerEmail: formData.email,
@@ -263,7 +249,8 @@ export function ProductDetail({ product }: ProductDetailProps) {
           shippingCity: formData.city,
           paymentMethod: formData.paymentMethod,
           momoNetwork: formData.paymentMethod === 'MOMO' ? formData.momoNetwork : undefined,
-          momoNumber: formData.paymentMethod === 'MOMO' ? formData.momoNumber : (formData.paymentMethod === 'PAYSTACK' ? paymentRef : undefined),
+          momoNumber: formData.paymentMethod === 'MOMO' ? formData.momoNumber : undefined,
+          paymentReference: formData.paymentMethod === 'PAYSTACK' ? paymentRef : undefined,
           items: selectedItems
         })
       });
@@ -273,6 +260,8 @@ export function ProductDetail({ product }: ProductDetailProps) {
         throw new Error(resData.error || 'Failed to place order.');
       }
 
+      // The confirmed order carries its own line items, so clearing the local
+      // selection here no longer blanks out the success summary.
       setCheckoutSuccess(resData.order);
       setQuantities({});
       localStorage.removeItem(`redox_sel_qty_${product.id}`);
@@ -902,7 +891,12 @@ export function ProductDetail({ product }: ProductDetailProps) {
                 <span className={styles.refCode}>#RD-{checkoutSuccess.id}</span>.
               </p>
               <div className={styles.successSummary}>
-                <p><strong>Item:</strong> {product.name} ({selectedColor} / {selectedSize})</p>
+                {checkoutSuccess.items?.map((item: any) => (
+                  <p key={`${item.color}-${item.size}`}>
+                    <strong>Item:</strong> {item.productName} ({item.color} / {item.size}) &times; {item.quantity}
+                    {' — '}{formatCurrency(item.lineTotal)}
+                  </p>
+                ))}
                 <p><strong>Total:</strong> {formatCurrency(checkoutSuccess.price)}</p>
                 <p><strong>Shipping to:</strong> {checkoutSuccess.shippingAddress}, {checkoutSuccess.shippingCity}</p>
                 <p><strong>Payment:</strong> Paystack Secure Checkout</p>

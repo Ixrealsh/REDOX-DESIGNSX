@@ -227,20 +227,26 @@ export function TrackOrder() {
                 <strong style={{ color: '#fff', fontSize: '0.9rem' }}>#RD-{order.id}</strong>
               </div>
               <div>
-                <span style={{ color: '#666', display: 'block', fontSize: '0.7rem', letterSpacing: '0.05em' }}>PRODUCT NAME</span>
-                <strong style={{ color: '#fff', fontSize: '0.88rem' }}>{order.productName}</strong>
-              </div>
-              <div>
-                <span style={{ color: '#666', display: 'block', fontSize: '0.7rem', letterSpacing: '0.05em' }}>COLOR / SPECS</span>
-                <strong style={{ color: '#10b981' }}>{order.selectedColor}</strong>
-              </div>
-              <div>
-                <span style={{ color: '#666', display: 'block', fontSize: '0.7rem', letterSpacing: '0.05em' }}>SIZE / QUANTITY</span>
-                <strong style={{ color: '#fff' }}>Size {order.selectedSize}</strong>
+                <span style={{ color: '#666', display: 'block', fontSize: '0.7rem', letterSpacing: '0.05em' }}>
+                  ITEMS ORDERED
+                </span>
+                <div style={{ display: 'grid', gap: '8px', marginTop: '4px' }}>
+                  {order.items?.map((item: any, index: number) => (
+                    <div key={`${item.productSlug}-${item.color}-${item.size}-${index}`}>
+                      <strong style={{ color: '#fff', fontSize: '0.88rem' }}>{item.productName}</strong>
+                      <div style={{ color: '#10b981', fontSize: '0.78rem', marginTop: '2px' }}>
+                        {item.color} / Size {item.size} &times; {item.quantity} — GH₵{Number(item.lineTotal).toFixed(2)}
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
               <div>
                 <span style={{ color: '#666', display: 'block', fontSize: '0.7rem', letterSpacing: '0.05em' }}>ORDER PRICE</span>
-                <strong style={{ color: '#fff' }}>GH₵{order.price}</strong>
+                <strong style={{ color: '#fff' }}>GH₵{Number(order.price).toFixed(2)}</strong>
+                <div style={{ color: '#666', fontSize: '0.72rem', marginTop: '2px' }}>
+                  {order.totalQuantity} item{order.totalQuantity === 1 ? '' : 's'} · incl. 2% service fee
+                </div>
               </div>
               <div>
                 <span style={{ color: '#666', display: 'block', fontSize: '0.7rem', letterSpacing: '0.05em' }}>SHIPMENT STATUS</span>
