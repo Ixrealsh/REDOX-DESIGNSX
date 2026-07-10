@@ -1,4 +1,4 @@
-/** Normalise a Ghanaian phone number to the MSISDN form mNotify expects: 233XXXXXXXXX. */
+/** Normalise a Ghanaian phone number to the MSISDN form the SMS gateway expects: 233XXXXXXXXX. */
 export function formatGhanaPhone(raw: string): string {
   const digits = (raw || '').replace(/\D/g, '');
 
@@ -10,7 +10,10 @@ export function formatGhanaPhone(raw: string): string {
   return digits;
 }
 
-/** True only for a complete Ghanaian MSISDN. Anything else would be rejected by mNotify. */
+/**
+ * True only for a complete Ghanaian MSISDN. This is the allowlist that keeps a
+ * crafted checkout phone number from directing billable SMS to arbitrary numbers.
+ */
 export function isValidGhanaPhone(msisdn: string): boolean {
   return /^233\d{9}$/.test(msisdn);
 }

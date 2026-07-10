@@ -1,9 +1,13 @@
 import type { Order } from '@/types/product';
 import { formatGhanaPhone, isValidGhanaPhone } from './phone';
 
+const HUBTEL_ENDPOINT = 'https://smsc.hubtel.com/v1/messages/send';
 const SMS_TIMEOUT_MS = 8_000;
 const MAX_ITEM_LINES = 5;
 const MAX_NAME_LENGTH = 28;
+
+/** Hard ceiling on billable segments per recipient, whatever the catalogue contains. */
+const MAX_MESSAGE_LENGTH = 480;
 
 /** GSM-7 fits 160 chars in one segment, or 153 each once a message is concatenated. */
 export function countSmsSegments(message: string): number {
@@ -104,75 +108,179 @@ export function buildOrderSms(order: Order): string {
   return toGsm7(message);
 }
 
+type RecipientRole = 'customer' | 'admin';
+
+interface Recipient {
+  role: RecipientRole;
+  msisdn: string;
+}
+
+export interface SmsDelivery {
+  role: RecipientRole;
+  /** Masked for logs and API responses - never the full subscriber number. */
+  msisdn: string;
+  ok: boolean;
+  reason?: string;
+  messageId?: string;
+}
+
 export interface SmsResult {
+  /** True only when the *customer* was notified. Admin delivery is best-effort. */
   sent: boolean;
   recipients: string[];
+  deliveries: SmsDelivery[];
   reason?: string;
-  response?: unknown;
+}
+
+interface HubtelConfig {
+  clientId: string;
+  clientSecret: string;
+  senderId: string;
+}
+
+const PLACEHOLDERS = new Set([
+  '',
+  'your_hubtel_client_id_here',
+  'your_hubtel_client_secret_here'
+]);
+
+/**
+ * Credentials are read from the server environment only. They are never sent as
+ * query parameters (Hubtel's sample URL does exactly that, which writes the
+ * secret into access logs, proxy logs and browser history) - we use HTTP Basic
+ * auth over TLS instead.
+ */
+function readHubtelConfig(): HubtelConfig | null {
+  const clientId = (process.env.HUBTEL_CLIENT_ID || '').trim();
+  const clientSecret = (process.env.HUBTEL_CLIENT_SECRET || '').trim();
+
+  if (PLACEHOLDERS.has(clientId) || PLACEHOLDERS.has(clientSecret)) return null;
+
+  // Hubtel caps alphanumeric sender IDs at 11 characters, and it must be pre-approved.
+  const senderId = toGsm7(process.env.HUBTEL_SENDER_ID || 'RedoxDesign').trim().slice(0, 11);
+  if (!senderId) return null;
+
+  return { clientId, clientSecret, senderId };
+}
+
+function basicAuthHeader({ clientId, clientSecret }: HubtelConfig): string {
+  const raw = `${clientId}:${clientSecret}`;
+  const encoded =
+    typeof Buffer !== 'undefined' ? Buffer.from(raw, 'utf8').toString('base64') : btoa(raw);
+  return `Basic ${encoded}`;
+}
+
+/** 233241234567 -> 233***4567. Keeps logs useful without spilling subscriber numbers. */
+function maskPhone(msisdn: string): string {
+  return msisdn.length <= 7 ? '***' : `${msisdn.slice(0, 3)}***${msisdn.slice(-4)}`;
 }
 
 /**
- * Sends the order confirmation to the customer and the admin.
+ * Hubtel accepts exactly one destination per request. Each recipient therefore
+ * gets its own call, its own timeout and its own failure, so a bad admin number
+ * can never suppress the customer's confirmation.
+ */
+async function sendToRecipient(
+  config: HubtelConfig,
+  recipient: Recipient,
+  message: string
+): Promise<SmsDelivery> {
+  const masked = maskPhone(recipient.msisdn);
+  const abort = new AbortController();
+  const timer = setTimeout(() => abort.abort(), SMS_TIMEOUT_MS);
+
+  try {
+    const res = await fetch(HUBTEL_ENDPOINT, {
+      method: 'POST',
+      headers: {
+        Authorization: basicAuthHeader(config),
+        'Content-Type': 'application/json',
+        Accept: 'application/json'
+      },
+      body: JSON.stringify({
+        From: config.senderId,
+        To: recipient.msisdn,
+        Content: message
+      }),
+      signal: abort.signal
+    });
+
+    const data: any = await res.json().catch(() => null);
+
+    // Hubtel replies 201 with `status: 0` on acceptance. Field casing has varied
+    // across their docs, so read both, and fall back to the HTTP status alone.
+    const status = data?.status ?? data?.Status;
+    const messageId = data?.messageId ?? data?.MessageId;
+    const accepted = res.ok && (status === undefined || status === null || Number(status) === 0);
+
+    if (!accepted) {
+      const detail = data ? JSON.stringify(data) : `HTTP ${res.status}`;
+      console.error(`[SMS] Hubtel rejected send to ${masked}: ${detail}`);
+      return { role: recipient.role, msisdn: masked, ok: false, reason: `hubtel_error_${res.status}` };
+    }
+
+    return { role: recipient.role, msisdn: masked, ok: true, messageId };
+  } catch (error: any) {
+    const reason = error?.name === 'AbortError' ? 'timeout' : 'network_error';
+    console.error(`[SMS] Delivery to ${masked} failed (${reason}).`);
+    return { role: recipient.role, msisdn: masked, ok: false, reason };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
+ * Sends the order confirmation to the customer and the admin via Hubtel.
  *
  * Awaited by the caller on purpose: a detached promise is not guaranteed to run
  * to completion once a serverless function has returned its response.
  */
 export async function sendOrderSms(order: Order): Promise<SmsResult> {
-  const apiKey = process.env.MNOTIFY_API_KEY;
-  const senderId = (process.env.MNOTIFY_SENDER_ID || 'RedoxDesx').substring(0, 11);
+  const config = readHubtelConfig();
 
-  if (!apiKey || apiKey === 'your_mnotify_api_key_here') {
-    console.warn('[SMS] MNOTIFY_API_KEY is not configured - skipping notification.');
-    return { sent: false, recipients: [], reason: 'missing_api_key' };
+  if (!config) {
+    console.warn('[SMS] Hubtel credentials are not configured - skipping notification.');
+    return { sent: false, recipients: [], deliveries: [], reason: 'not_configured' };
   }
 
-  const customerPhone = formatGhanaPhone(order.customerPhone || '');
-  const adminPhone = formatGhanaPhone(process.env.ADMIN_PHONE_NUMBER || '');
+  const customerMsisdn = formatGhanaPhone(order.customerPhone || '');
+  const adminMsisdn = formatGhanaPhone(process.env.ADMIN_PHONE_NUMBER || '');
 
+  // Only well-formed Ghanaian MSISDNs are ever dialled. This is the guard that
+  // stops a crafted checkout phone number from directing paid SMS anywhere else.
+  const recipients: Recipient[] = [];
+  if (isValidGhanaPhone(customerMsisdn)) {
+    recipients.push({ role: 'customer', msisdn: customerMsisdn });
+  }
   // Dedupe so an admin ordering from their own number is not billed twice.
-  const recipients = Array.from(new Set([customerPhone, adminPhone])).filter(isValidGhanaPhone);
+  if (isValidGhanaPhone(adminMsisdn) && adminMsisdn !== customerMsisdn) {
+    recipients.push({ role: 'admin', msisdn: adminMsisdn });
+  }
 
   if (recipients.length === 0) {
     console.warn('[SMS] No valid Ghanaian recipients resolved - skipping notification.');
-    return { sent: false, recipients: [], reason: 'no_valid_recipients' };
+    return { sent: false, recipients: [], deliveries: [], reason: 'no_valid_recipients' };
   }
 
-  const message = buildOrderSms(order);
-  const abort = new AbortController();
-  const timer = setTimeout(() => abort.abort(), SMS_TIMEOUT_MS);
+  const message = buildOrderSms(order).slice(0, MAX_MESSAGE_LENGTH);
+  const segments = countSmsSegments(message);
 
-  try {
-    const res = await fetch(`https://api.mnotify.com/api/sms/quick?key=${encodeURIComponent(apiKey)}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        recipient: recipients,
-        sender: senderId,
-        message,
-        is_schedule: false,
-        schedule_date: ''
-      }),
-      signal: abort.signal
-    });
+  const deliveries = await Promise.all(
+    recipients.map((recipient) => sendToRecipient(config, recipient, message))
+  );
 
-    const data = await res.json().catch(() => ({}));
+  const customerDelivery = deliveries.find((delivery) => delivery.role === 'customer');
+  const sent = Boolean(customerDelivery?.ok);
 
-    if (!res.ok || data?.status === 'error') {
-      console.error(`[SMS] mNotify rejected order #RD-${order.id}:`, JSON.stringify(data));
-      return { sent: false, recipients, reason: 'mnotify_error', response: data };
-    }
+  console.log(
+    `[SMS] Order #RD-${order.id}: ${deliveries.filter((d) => d.ok).length}/${deliveries.length} delivered, ` +
+      `${message.length} chars / ${segments} segment(s) each.`
+  );
 
-    const segments = countSmsSegments(message);
-    console.log(
-      `[SMS] Order #RD-${order.id} sent to ${recipients.length} recipient(s), ` +
-        `${message.length} chars / ${segments} segment(s) each.`
-    );
-    return { sent: true, recipients, response: data };
-  } catch (error: any) {
-    const reason = error?.name === 'AbortError' ? 'timeout' : 'network_error';
-    console.error(`[SMS] Failed to notify for order #RD-${order.id} (${reason}):`, error);
-    return { sent: false, recipients, reason };
-  } finally {
-    clearTimeout(timer);
-  }
+  return {
+    sent,
+    recipients: recipients.map((recipient) => maskPhone(recipient.msisdn)),
+    deliveries,
+    reason: sent ? undefined : customerDelivery?.reason || 'customer_phone_invalid'
+  };
 }
