@@ -46,6 +46,209 @@ function slugify(value: string) {
   return value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
 }
 
+const BRAND_PHONE = '+233 55 805 8348';
+const BRAND_URL = 'https://redoxdesignx.com';
+
+/** Escape user-supplied text before it lands in the print document's markup. */
+function escapeHtml(value: unknown): string {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function ghs(amount: number): string {
+  return `GH₵${Number(amount || 0).toFixed(2)}`;
+}
+
+function paymentLabel(order: Order): string {
+  if (order.paymentMethod === 'PAYSTACK') return 'Paystack (Paid Online)';
+  if (order.paymentMethod === 'COD') return 'Cash on Delivery';
+  if (order.paymentMethod === 'MOMO') return `Mobile Money${order.momoNetwork ? ` (${order.momoNetwork})` : ''}`;
+  return order.paymentMethod || '—';
+}
+
+/** The REDOX square mark, inlined so the slip prints without any network fetch. */
+const SLIP_LOGO = `<svg width="58" height="58" viewBox="0 0 96 96" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="96" height="96" fill="#080808"/>
+  <rect x="14" y="14" width="68" height="68" stroke="#D72638" stroke-width="5"/>
+  <path d="M32 68V28h22.5c9 0 14.8 5.2 14.8 13 0 5.4-2.8 9.6-7.6 11.6L72 68H59.1l-8.6-13.4h-6.9V68H32Zm11.6-22.2h9.8c3.1 0 5-1.6 5-4.4 0-2.8-1.9-4.4-5-4.4h-9.8v8.8Z" fill="#EFEFEF"/>
+</svg>`;
+
+/** Build a self-contained, white, print-ready order slip for a single order. */
+function buildOrderSlipHtml(order: Order): string {
+  const ref = `#RD-${order.id}`;
+  const placed = order.createdAt ? new Date(order.createdAt).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' }) : '—';
+  const status = escapeHtml(order.status || 'Pending');
+
+  const rows = (order.items || [])
+    .map(
+      (item) => `
+        <tr>
+          <td>
+            <div class="item-name">${escapeHtml(item.productName)}</div>
+            <div class="item-variant">${escapeHtml(item.color)} &middot; Size ${escapeHtml(item.size)}${item.sku ? ` &middot; SKU ${escapeHtml(item.sku)}` : ''}</div>
+          </td>
+          <td class="num">${escapeHtml(item.quantity)}</td>
+          <td class="num">${ghs(item.unitPrice)}</td>
+          <td class="num">${ghs(item.lineTotal)}</td>
+        </tr>`
+    )
+    .join('');
+
+  const paymentRef = order.paymentMethod === 'PAYSTACK' || order.paymentMethod === 'MOMO'
+    ? order.momoNumber
+    : '';
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Order ${escapeHtml(ref)} — REDOXDESIGNX</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: #f2f2f2; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    color: #111;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  .sheet {
+    width: 148mm;
+    min-height: 210mm;
+    margin: 12px auto;
+    background: #fff;
+    padding: 14mm 13mm;
+    box-shadow: 0 4px 24px rgba(0,0,0,0.12);
+  }
+  .head {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    border-bottom: 2px solid #111;
+    padding-bottom: 14px;
+  }
+  .brand { display: flex; align-items: center; gap: 12px; }
+  .brand .mark { border-radius: 6px; overflow: hidden; line-height: 0; }
+  .brand .name { font-size: 17px; font-weight: 800; letter-spacing: 0.14em; }
+  .brand .tag { font-size: 9.5px; color: #666; letter-spacing: 0.22em; text-transform: uppercase; margin-top: 3px; }
+  .doc { text-align: right; }
+  .doc .title { font-size: 11px; letter-spacing: 0.2em; text-transform: uppercase; color: #666; }
+  .doc .ref { font-size: 22px; font-weight: 800; margin-top: 2px; }
+  .doc .date { font-size: 11px; color: #666; margin-top: 4px; }
+  .status {
+    display: inline-block; margin-top: 8px; padding: 4px 12px; border-radius: 999px;
+    background: #111; color: #fff; font-size: 10px; font-weight: 700;
+    letter-spacing: 0.14em; text-transform: uppercase;
+  }
+  .cols { display: flex; gap: 18px; margin-top: 20px; }
+  .col { flex: 1; }
+  .block-label { font-size: 9.5px; letter-spacing: 0.18em; text-transform: uppercase; color: #999; margin-bottom: 6px; }
+  .block-body { font-size: 12.5px; line-height: 1.55; }
+  .block-body .strong { font-weight: 700; font-size: 13.5px; }
+  table { width: 100%; border-collapse: collapse; margin-top: 24px; }
+  thead th {
+    text-align: left; font-size: 9.5px; letter-spacing: 0.14em; text-transform: uppercase;
+    color: #999; padding: 0 0 8px; border-bottom: 1.5px solid #111;
+  }
+  thead th.num, tbody td.num { text-align: right; }
+  tbody td { padding: 11px 0; border-bottom: 1px solid #eee; font-size: 12.5px; vertical-align: top; }
+  .item-name { font-weight: 700; }
+  .item-variant { font-size: 10.5px; color: #777; margin-top: 3px; }
+  .totals { margin-top: 16px; margin-left: auto; width: 62%; }
+  .totals .row { display: flex; justify-content: space-between; font-size: 12px; padding: 5px 0; color: #444; }
+  .totals .grand {
+    display: flex; justify-content: space-between; margin-top: 8px; padding-top: 10px;
+    border-top: 2px solid #111; font-size: 16px; font-weight: 800;
+  }
+  .foot {
+    margin-top: 34px; padding-top: 14px; border-top: 1px solid #ddd;
+    display: flex; justify-content: space-between; align-items: center;
+    font-size: 10.5px; color: #666;
+  }
+  .foot .thanks { font-weight: 700; color: #111; letter-spacing: 0.04em; }
+  .foot .contact { text-align: right; line-height: 1.6; }
+  @media print {
+    html, body { background: #fff; }
+    .sheet { margin: 0; box-shadow: none; width: auto; min-height: auto; }
+    @page { size: A5; margin: 8mm; }
+  }
+</style>
+</head>
+<body>
+  <div class="sheet">
+    <div class="head">
+      <div class="brand">
+        <span class="mark">${SLIP_LOGO}</span>
+        <span>
+          <div class="name">REDOXDESIGNX</div>
+          <div class="tag">Apparel &amp; Design</div>
+        </span>
+      </div>
+      <div class="doc">
+        <div class="title">Order Slip</div>
+        <div class="ref">${escapeHtml(ref)}</div>
+        <div class="date">${escapeHtml(placed)}</div>
+        <div class="status">${status}</div>
+      </div>
+    </div>
+
+    <div class="cols">
+      <div class="col">
+        <div class="block-label">Deliver To</div>
+        <div class="block-body">
+          <div class="strong">${escapeHtml(order.customerName)}</div>
+          <div>${escapeHtml(order.shippingAddress)}</div>
+          <div>${escapeHtml(order.shippingCity)}</div>
+          <div>${escapeHtml(order.customerPhone)}</div>
+          <div>${escapeHtml(order.customerEmail)}</div>
+        </div>
+      </div>
+      <div class="col">
+        <div class="block-label">Payment</div>
+        <div class="block-body">
+          <div class="strong">${escapeHtml(paymentLabel(order))}</div>
+          ${paymentRef ? `<div>Ref: ${escapeHtml(paymentRef)}</div>` : ''}
+          <div>Items: ${escapeHtml(order.totalQuantity)}</div>
+        </div>
+      </div>
+    </div>
+
+    <table>
+      <thead>
+        <tr>
+          <th>Item</th>
+          <th class="num">Qty</th>
+          <th class="num">Unit</th>
+          <th class="num">Total</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${rows}
+      </tbody>
+    </table>
+
+    <div class="totals">
+      <div class="row"><span>Subtotal</span><span>${ghs(order.subtotal)}</span></div>
+      <div class="row"><span>Service charge</span><span>${ghs(order.serviceCharge)}</span></div>
+      <div class="grand"><span>Total</span><span>${ghs(order.price)}</span></div>
+    </div>
+
+    <div class="foot">
+      <div class="thanks">Thank you for shopping with REDOXDESIGNX.</div>
+      <div class="contact">
+        <div>${escapeHtml(BRAND_PHONE)}</div>
+        <div>${escapeHtml(BRAND_URL)}</div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>`;
+}
+
 export function AdminDashboard({
   isDbConnected: initialDbStatus,
   isCloudinaryConnected: initialCloudinaryStatus,
@@ -215,6 +418,23 @@ export function AdminDashboard({
     } catch (err: any) {
       triggerNotification(err.message || 'Error deleting order.', 'error');
     }
+  };
+
+  const handlePrintOrder = (order: Order) => {
+    const html = buildOrderSlipHtml(order);
+    const printWindow = window.open('', '_blank', 'width=820,height=1000');
+    if (!printWindow) {
+      triggerNotification('Please allow pop-ups to print the order slip.', 'error');
+      return;
+    }
+    printWindow.document.open();
+    printWindow.document.write(html);
+    printWindow.document.close();
+    // Give images/fonts a beat to lay out before invoking the print dialog.
+    printWindow.onload = () => {
+      printWindow.focus();
+      printWindow.print();
+    };
   };
 
   const handleDeleteProduct = async (product: Product) => {
@@ -1230,24 +1450,45 @@ export function AdminDashboard({
                       </td>
                       <td style={{ padding: 'var(--space-3)', color: '#777' }}>{new Date(o.createdAt).toLocaleString()}</td>
                       <td style={{ padding: 'var(--space-3)' }}>
-                        <button
-                          onClick={() => handleDeleteOrder(o.id)}
-                          style={{
-                            background: 'rgba(239, 68, 68, 0.15)',
-                            color: '#ef4444',
-                            border: '1px solid rgba(239, 68, 68, 0.3)',
-                            padding: '6px 12px',
-                            fontSize: '0.75rem',
-                            borderRadius: '4px',
-                            cursor: 'pointer',
-                            fontWeight: 'bold',
-                            fontFamily: 'var(--font-mono), monospace',
-                            textTransform: 'uppercase',
-                            letterSpacing: '0.05em'
-                          }}
-                        >
-                          Delete
-                        </button>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                          <button
+                            onClick={() => handlePrintOrder(o)}
+                            style={{
+                              background: 'rgba(16, 185, 129, 0.15)',
+                              color: '#10b981',
+                              border: '1px solid rgba(16, 185, 129, 0.3)',
+                              padding: '6px 12px',
+                              fontSize: '0.75rem',
+                              borderRadius: '4px',
+                              cursor: 'pointer',
+                              fontWeight: 'bold',
+                              fontFamily: 'var(--font-mono), monospace',
+                              textTransform: 'uppercase',
+                              letterSpacing: '0.05em',
+                              whiteSpace: 'nowrap'
+                            }}
+                          >
+                            ⎙ Print
+                          </button>
+                          <button
+                            onClick={() => handleDeleteOrder(o.id)}
+                            style={{
+                              background: 'rgba(239, 68, 68, 0.15)',
+                              color: '#ef4444',
+                              border: '1px solid rgba(239, 68, 68, 0.3)',
+                              padding: '6px 12px',
+                              fontSize: '0.75rem',
+                              borderRadius: '4px',
+                              cursor: 'pointer',
+                              fontWeight: 'bold',
+                              fontFamily: 'var(--font-mono), monospace',
+                              textTransform: 'uppercase',
+                              letterSpacing: '0.05em'
+                            }}
+                          >
+                            Delete
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}
