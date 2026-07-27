@@ -95,7 +95,14 @@ function buildOrderSlipHtml(order: Order, origin: string): string {
     border-bottom: 2px solid #111;
     padding-bottom: 16px;
   }
-  .brand img { height: 64px; width: auto; object-fit: contain; }
+  .brand img { height: 64px; width: auto; object-fit: contain; display: block; margin: 0 auto; }
+  .brand .name {
+    margin-top: 10px;
+    font-size: 22px;
+    font-weight: 800;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
   .gap { margin-top: 26px; }
   .block-label {
     font-size: 10px; letter-spacing: 0.2em; text-transform: uppercase;
@@ -126,7 +133,10 @@ function buildOrderSlipHtml(order: Order, origin: string): string {
 </head>
 <body>
   <div class="sheet">
-    <div class="brand"><img src="${escapeHtml(logoSrc)}" alt="RedoxDesignx" /></div>
+    <div class="brand">
+      <img src="${escapeHtml(logoSrc)}" alt="RedoxDesignx" />
+      <div class="name">RedoxDesignx</div>
+    </div>
 
     <div class="gap">
       <div class="block-label">Customer</div>
