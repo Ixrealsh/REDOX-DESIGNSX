@@ -63,50 +63,16 @@ function ghs(amount: number): string {
   return `GH₵${Number(amount || 0).toFixed(2)}`;
 }
 
-function paymentLabel(order: Order): string {
-  if (order.paymentMethod === 'PAYSTACK') return 'Paystack (Paid Online)';
-  if (order.paymentMethod === 'COD') return 'Cash on Delivery';
-  if (order.paymentMethod === 'MOMO') return `Mobile Money${order.momoNetwork ? ` (${order.momoNetwork})` : ''}`;
-  return order.paymentMethod || '—';
-}
-
-/** The REDOX square mark, inlined so the slip prints without any network fetch. */
-const SLIP_LOGO = `<svg width="58" height="58" viewBox="0 0 96 96" fill="none" xmlns="http://www.w3.org/2000/svg">
-  <rect width="96" height="96" fill="#080808"/>
-  <rect x="14" y="14" width="68" height="68" stroke="#D72638" stroke-width="5"/>
-  <path d="M32 68V28h22.5c9 0 14.8 5.2 14.8 13 0 5.4-2.8 9.6-7.6 11.6L72 68H59.1l-8.6-13.4h-6.9V68H32Zm11.6-22.2h9.8c3.1 0 5-1.6 5-4.4 0-2.8-1.9-4.4-5-4.4h-9.8v8.8Z" fill="#EFEFEF"/>
-</svg>`;
-
 /** Build a self-contained, white, print-ready order slip for a single order. */
-function buildOrderSlipHtml(order: Order): string {
+function buildOrderSlipHtml(order: Order, origin: string): string {
   const ref = `#RD-${order.id}`;
-  const placed = order.createdAt ? new Date(order.createdAt).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' }) : '—';
-  const status = escapeHtml(order.status || 'Pending');
-
-  const rows = (order.items || [])
-    .map(
-      (item) => `
-        <tr>
-          <td>
-            <div class="item-name">${escapeHtml(item.productName)}</div>
-            <div class="item-variant">${escapeHtml(item.color)} &middot; Size ${escapeHtml(item.size)}${item.sku ? ` &middot; SKU ${escapeHtml(item.sku)}` : ''}</div>
-          </td>
-          <td class="num">${escapeHtml(item.quantity)}</td>
-          <td class="num">${ghs(item.unitPrice)}</td>
-          <td class="num">${ghs(item.lineTotal)}</td>
-        </tr>`
-    )
-    .join('');
-
-  const paymentRef = order.paymentMethod === 'PAYSTACK' || order.paymentMethod === 'MOMO'
-    ? order.momoNumber
-    : '';
+  const logoSrc = `${origin}/assets/icons/redoxlogo.jpg`;
 
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8" />
-<title>Order ${escapeHtml(ref)} — REDOXDESIGNX</title>
+<title>Order ${escapeHtml(ref)} — RedoxDesignx</title>
 <style>
   * { box-sizing: border-box; }
   html, body { margin: 0; padding: 0; background: #f2f2f2; }
@@ -121,56 +87,36 @@ function buildOrderSlipHtml(order: Order): string {
     min-height: 210mm;
     margin: 12px auto;
     background: #fff;
-    padding: 14mm 13mm;
+    padding: 16mm 14mm;
     box-shadow: 0 4px 24px rgba(0,0,0,0.12);
   }
-  .head {
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-start;
+  .brand {
+    text-align: center;
     border-bottom: 2px solid #111;
-    padding-bottom: 14px;
+    padding-bottom: 16px;
   }
-  .brand { display: flex; align-items: center; gap: 12px; }
-  .brand .mark { border-radius: 6px; overflow: hidden; line-height: 0; }
-  .brand .name { font-size: 17px; font-weight: 800; letter-spacing: 0.14em; }
-  .brand .tag { font-size: 9.5px; color: #666; letter-spacing: 0.22em; text-transform: uppercase; margin-top: 3px; }
-  .doc { text-align: right; }
-  .doc .title { font-size: 11px; letter-spacing: 0.2em; text-transform: uppercase; color: #666; }
-  .doc .ref { font-size: 22px; font-weight: 800; margin-top: 2px; }
-  .doc .date { font-size: 11px; color: #666; margin-top: 4px; }
-  .status {
-    display: inline-block; margin-top: 8px; padding: 4px 12px; border-radius: 999px;
-    background: #111; color: #fff; font-size: 10px; font-weight: 700;
-    letter-spacing: 0.14em; text-transform: uppercase;
+  .brand img { height: 64px; width: auto; object-fit: contain; }
+  .gap { margin-top: 26px; }
+  .block-label {
+    font-size: 10px; letter-spacing: 0.2em; text-transform: uppercase;
+    color: #999; margin-bottom: 8px;
   }
-  .cols { display: flex; gap: 18px; margin-top: 20px; }
-  .col { flex: 1; }
-  .block-label { font-size: 9.5px; letter-spacing: 0.18em; text-transform: uppercase; color: #999; margin-bottom: 6px; }
-  .block-body { font-size: 12.5px; line-height: 1.55; }
-  .block-body .strong { font-weight: 700; font-size: 13.5px; }
-  table { width: 100%; border-collapse: collapse; margin-top: 24px; }
-  thead th {
-    text-align: left; font-size: 9.5px; letter-spacing: 0.14em; text-transform: uppercase;
-    color: #999; padding: 0 0 8px; border-bottom: 1.5px solid #111;
+  .block-body { font-size: 14px; line-height: 1.7; }
+  .block-body .strong { font-weight: 700; font-size: 16px; }
+  .info-row { display: flex; justify-content: space-between; padding: 7px 0; border-bottom: 1px solid #eee; font-size: 14px; }
+  .info-row .k { color: #777; }
+  .info-row .v { font-weight: 700; }
+  .total {
+    display: flex; justify-content: space-between; align-items: baseline;
+    margin-top: 26px; padding-top: 16px; border-top: 2px solid #111;
   }
-  thead th.num, tbody td.num { text-align: right; }
-  tbody td { padding: 11px 0; border-bottom: 1px solid #eee; font-size: 12.5px; vertical-align: top; }
-  .item-name { font-weight: 700; }
-  .item-variant { font-size: 10.5px; color: #777; margin-top: 3px; }
-  .totals { margin-top: 16px; margin-left: auto; width: 62%; }
-  .totals .row { display: flex; justify-content: space-between; font-size: 12px; padding: 5px 0; color: #444; }
-  .totals .grand {
-    display: flex; justify-content: space-between; margin-top: 8px; padding-top: 10px;
-    border-top: 2px solid #111; font-size: 16px; font-weight: 800;
-  }
+  .total .k { font-size: 13px; letter-spacing: 0.16em; text-transform: uppercase; color: #666; }
+  .total .v { font-size: 30px; font-weight: 800; }
   .foot {
-    margin-top: 34px; padding-top: 14px; border-top: 1px solid #ddd;
-    display: flex; justify-content: space-between; align-items: center;
-    font-size: 10.5px; color: #666;
+    margin-top: 40px; padding-top: 16px; border-top: 1px solid #ddd;
+    text-align: center; font-size: 12px; color: #666; line-height: 1.7;
   }
-  .foot .thanks { font-weight: 700; color: #111; letter-spacing: 0.04em; }
-  .foot .contact { text-align: right; line-height: 1.6; }
+  .foot .thanks { font-weight: 700; color: #111; margin-bottom: 4px; }
   @media print {
     html, body { background: #fff; }
     .sheet { margin: 0; box-shadow: none; width: auto; min-height: auto; }
@@ -180,69 +126,33 @@ function buildOrderSlipHtml(order: Order): string {
 </head>
 <body>
   <div class="sheet">
-    <div class="head">
-      <div class="brand">
-        <span class="mark">${SLIP_LOGO}</span>
-        <span>
-          <div class="name">REDOXDESIGNX</div>
-          <div class="tag">Apparel &amp; Design</div>
-        </span>
-      </div>
-      <div class="doc">
-        <div class="title">Order Slip</div>
-        <div class="ref">${escapeHtml(ref)}</div>
-        <div class="date">${escapeHtml(placed)}</div>
-        <div class="status">${status}</div>
+    <div class="brand"><img src="${escapeHtml(logoSrc)}" alt="RedoxDesignx" /></div>
+
+    <div class="gap">
+      <div class="block-label">Customer</div>
+      <div class="block-body">
+        <div class="strong">${escapeHtml(order.customerName)}</div>
+        <div>${escapeHtml(order.shippingAddress)}, ${escapeHtml(order.shippingCity)}</div>
+        <div>${escapeHtml(order.customerPhone)}</div>
+        <div>${escapeHtml(order.customerEmail)}</div>
       </div>
     </div>
 
-    <div class="cols">
-      <div class="col">
-        <div class="block-label">Deliver To</div>
-        <div class="block-body">
-          <div class="strong">${escapeHtml(order.customerName)}</div>
-          <div>${escapeHtml(order.shippingAddress)}</div>
-          <div>${escapeHtml(order.shippingCity)}</div>
-          <div>${escapeHtml(order.customerPhone)}</div>
-          <div>${escapeHtml(order.customerEmail)}</div>
-        </div>
-      </div>
-      <div class="col">
-        <div class="block-label">Payment</div>
-        <div class="block-body">
-          <div class="strong">${escapeHtml(paymentLabel(order))}</div>
-          ${paymentRef ? `<div>Ref: ${escapeHtml(paymentRef)}</div>` : ''}
-          <div>Items: ${escapeHtml(order.totalQuantity)}</div>
-        </div>
-      </div>
+    <div class="gap">
+      <div class="block-label">Order</div>
+      <div class="info-row"><span class="k">Order ID</span><span class="v">${escapeHtml(ref)}</span></div>
+      <div class="info-row"><span class="k">Total items</span><span class="v">${escapeHtml(order.totalQuantity)}</span></div>
     </div>
 
-    <table>
-      <thead>
-        <tr>
-          <th>Item</th>
-          <th class="num">Qty</th>
-          <th class="num">Unit</th>
-          <th class="num">Total</th>
-        </tr>
-      </thead>
-      <tbody>
-        ${rows}
-      </tbody>
-    </table>
-
-    <div class="totals">
-      <div class="row"><span>Subtotal</span><span>${ghs(order.subtotal)}</span></div>
-      <div class="row"><span>Service charge</span><span>${ghs(order.serviceCharge)}</span></div>
-      <div class="grand"><span>Total</span><span>${ghs(order.price)}</span></div>
+    <div class="total">
+      <span class="k">Total Amount</span>
+      <span class="v">${ghs(order.price)}</span>
     </div>
 
     <div class="foot">
-      <div class="thanks">Thank you for shopping with REDOXDESIGNX.</div>
-      <div class="contact">
-        <div>${escapeHtml(BRAND_PHONE)}</div>
-        <div>${escapeHtml(BRAND_URL)}</div>
-      </div>
+      <div class="thanks">Thank you for shopping with RedoxDesignx.</div>
+      <div>${escapeHtml(BRAND_PHONE)}</div>
+      <div>${escapeHtml(BRAND_URL)}</div>
     </div>
   </div>
 </body>
@@ -421,7 +331,7 @@ export function AdminDashboard({
   };
 
   const handlePrintOrder = (order: Order) => {
-    const html = buildOrderSlipHtml(order);
+    const html = buildOrderSlipHtml(order, window.location.origin);
     const printWindow = window.open('', '_blank', 'width=820,height=1000');
     if (!printWindow) {
       triggerNotification('Please allow pop-ups to print the order slip.', 'error');
@@ -430,7 +340,8 @@ export function AdminDashboard({
     printWindow.document.open();
     printWindow.document.write(html);
     printWindow.document.close();
-    // Give images/fonts a beat to lay out before invoking the print dialog.
+    // Wait for the document (including the logo image) to finish loading, so the
+    // logo is never missing from the printout.
     printWindow.onload = () => {
       printWindow.focus();
       printWindow.print();
