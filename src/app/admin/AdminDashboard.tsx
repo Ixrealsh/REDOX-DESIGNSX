@@ -83,51 +83,55 @@ function buildOrderSlipHtml(order: Order, origin: string): string {
     print-color-adjust: exact;
   }
   .sheet {
-    width: 148mm;
-    min-height: 210mm;
+    width: 76mm;
+    min-height: 130mm;
     margin: 12px auto;
     background: #fff;
-    padding: 16mm 14mm;
+    padding: 7mm 6mm;
     box-shadow: 0 4px 24px rgba(0,0,0,0.12);
   }
   .brand {
     text-align: center;
-    border-bottom: 2px solid #111;
-    padding-bottom: 16px;
+    border-bottom: 1.5px solid #111;
+    padding-bottom: 9px;
   }
-  .brand img { height: 64px; width: auto; object-fit: contain; display: block; margin: 0 auto; }
+  .brand img { height: 40px; width: auto; object-fit: contain; display: block; margin: 0 auto; }
   .brand .name {
-    margin-top: 10px;
-    font-size: 22px;
+    margin-top: 6px;
+    font-size: 14px;
     font-weight: 800;
-    letter-spacing: 0.06em;
+    letter-spacing: 0.05em;
     text-transform: uppercase;
   }
-  .gap { margin-top: 26px; }
-  .block-label {
-    font-size: 10px; letter-spacing: 0.2em; text-transform: uppercase;
-    color: #999; margin-bottom: 8px;
+  .gap { margin-top: 14px; }
+  .section-title {
+    font-size: 8px; letter-spacing: 0.18em; text-transform: uppercase;
+    color: #999; margin-bottom: 7px;
   }
-  .block-body { font-size: 14px; line-height: 1.7; }
-  .block-body .strong { font-weight: 700; font-size: 16px; }
-  .info-row { display: flex; justify-content: space-between; padding: 7px 0; border-bottom: 1px solid #eee; font-size: 14px; }
-  .info-row .k { color: #777; }
-  .info-row .v { font-weight: 700; }
+  .recipient { font-size: 14px; font-weight: 800; margin-bottom: 8px; }
+  .field { padding: 5px 0; border-bottom: 1px dashed #e6e6e6; }
+  .field:last-child { border-bottom: none; }
+  .field .l { font-size: 7.5px; letter-spacing: 0.14em; text-transform: uppercase; color: #aaa; }
+  .field .d { font-size: 11px; color: #111; margin-top: 2px; word-break: break-word; }
+  .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .stat { border: 1px solid #eaeaea; border-radius: 5px; padding: 9px 6px; text-align: center; }
+  .stat .l { font-size: 7.5px; letter-spacing: 0.14em; text-transform: uppercase; color: #aaa; }
+  .stat .d { font-size: 15px; font-weight: 800; margin-top: 4px; }
   .total {
-    display: flex; justify-content: space-between; align-items: baseline;
-    margin-top: 26px; padding-top: 16px; border-top: 2px solid #111;
+    display: flex; justify-content: space-between; align-items: center;
+    margin-top: 16px; padding: 11px 12px; background: #111; border-radius: 5px;
   }
-  .total .k { font-size: 13px; letter-spacing: 0.16em; text-transform: uppercase; color: #666; }
-  .total .v { font-size: 30px; font-weight: 800; }
+  .total .k { font-size: 8.5px; letter-spacing: 0.16em; text-transform: uppercase; color: #bbb; }
+  .total .v { font-size: 19px; font-weight: 800; color: #fff; }
   .foot {
-    margin-top: 40px; padding-top: 16px; border-top: 1px solid #ddd;
-    text-align: center; font-size: 12px; color: #666; line-height: 1.7;
+    margin-top: 20px; padding-top: 10px; border-top: 1px solid #ddd;
+    text-align: center; font-size: 9px; color: #666; line-height: 1.6;
   }
-  .foot .thanks { font-weight: 700; color: #111; margin-bottom: 4px; }
+  .foot .thanks { font-weight: 700; color: #111; margin-bottom: 3px; }
   @media print {
     html, body { background: #fff; }
-    .sheet { margin: 0; box-shadow: none; width: auto; min-height: auto; }
-    @page { size: A5; margin: 8mm; }
+    .sheet { margin: 0; box-shadow: none; width: auto; min-height: auto; padding: 0; }
+    @page { size: 76mm 130mm; margin: 5mm; }
   }
 </style>
 </head>
@@ -139,19 +143,34 @@ function buildOrderSlipHtml(order: Order, origin: string): string {
     </div>
 
     <div class="gap">
-      <div class="block-label">Customer</div>
-      <div class="block-body">
-        <div class="strong">${escapeHtml(order.customerName)}</div>
-        <div>${escapeHtml(order.shippingAddress)}, ${escapeHtml(order.shippingCity)}</div>
-        <div>${escapeHtml(order.customerPhone)}</div>
-        <div>${escapeHtml(order.customerEmail)}</div>
+      <div class="section-title">Customer</div>
+      <div class="recipient">${escapeHtml(order.customerName)}</div>
+      <div class="field">
+        <div class="l">Location</div>
+        <div class="d">${escapeHtml(order.shippingAddress)}, ${escapeHtml(order.shippingCity)}</div>
+      </div>
+      <div class="field">
+        <div class="l">Phone</div>
+        <div class="d">${escapeHtml(order.customerPhone)}</div>
+      </div>
+      <div class="field">
+        <div class="l">Email</div>
+        <div class="d">${escapeHtml(order.customerEmail)}</div>
       </div>
     </div>
 
     <div class="gap">
-      <div class="block-label">Order</div>
-      <div class="info-row"><span class="k">Order ID</span><span class="v">${escapeHtml(ref)}</span></div>
-      <div class="info-row"><span class="k">Total items</span><span class="v">${escapeHtml(order.totalQuantity)}</span></div>
+      <div class="section-title">Order</div>
+      <div class="stats">
+        <div class="stat">
+          <div class="l">Order ID</div>
+          <div class="d">${escapeHtml(ref)}</div>
+        </div>
+        <div class="stat">
+          <div class="l">Total Items</div>
+          <div class="d">${escapeHtml(order.totalQuantity)}</div>
+        </div>
+      </div>
     </div>
 
     <div class="total">
