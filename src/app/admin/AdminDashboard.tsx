@@ -129,28 +129,6 @@ function buildOrderSlipHtml(order: Order, origin: string): string {
   const ref = `#RD-${order.id}`;
   const logoSrc = `${origin}/assets/icons/redoxlogo.jpg`;
 
-  const isPaid = order.paymentStatus === 'paid';
-  const reference = order.paymentReference || order.momoNumber || '';
-
-  const methodLabel =
-    order.paymentMethod === 'PAYSTACK'
-      ? `Paystack${order.paymentChannel ? ` — ${formatChannel(order.paymentChannel)}` : ''}`
-      : order.paymentMethod === 'COD'
-      ? 'Cash on delivery'
-      : `Mobile money${order.momoNetwork ? ` (${order.momoNetwork})` : ''}`;
-
-  // The line under the stamp is what tells a rider or packer, at a glance,
-  // whether money still has to be collected on this order.
-  const paymentLine = isPaid
-    ? `${ghs(order.amountPaid ?? order.price)} received${order.paidAt ? ` on ${new Date(order.paidAt).toLocaleString()}` : ''}`
-    : order.paymentStatus === 'failed'
-    ? 'The gateway declined this payment — do not dispatch.'
-    : order.paymentStatus === 'abandoned'
-    ? 'Checkout was abandoned — do not dispatch.'
-    : order.paymentStatus === 'refunded'
-    ? 'This order was refunded.'
-    : `Collect ${ghs(order.price)} before handover.`;
-
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -200,26 +178,12 @@ function buildOrderSlipHtml(order: Order, origin: string): string {
   .stat { border: 1px solid #eaeaea; border-radius: 5px; padding: 9px 6px; text-align: center; }
   .stat .l { font-size: 7.5px; letter-spacing: 0.14em; text-transform: uppercase; color: #aaa; }
   .stat .d { font-size: 15px; font-weight: 800; margin-top: 4px; }
-  .lines { border-top: 1px solid #eee; }
-  .line { display: flex; justify-content: space-between; gap: 8px; padding: 6px 0; border-bottom: 1px dashed #eee; }
-  .line .n { font-size: 10.5px; font-weight: 700; }
-  .line .v { font-size: 9px; color: #666; margin-top: 1px; }
-  .line .p { font-size: 10.5px; font-weight: 700; white-space: nowrap; }
-  .sums { margin-top: 10px; }
-  .sum { display: flex; justify-content: space-between; font-size: 10px; color: #444; padding: 2px 0; }
   .total {
     display: flex; justify-content: space-between; align-items: center;
-    margin-top: 10px; padding: 11px 12px; background: #111; border-radius: 5px;
+    margin-top: 16px; padding: 11px 12px; background: #111; border-radius: 5px;
   }
   .total .k { font-size: 8.5px; letter-spacing: 0.16em; text-transform: uppercase; color: #bbb; }
   .total .v { font-size: 19px; font-weight: 800; color: #fff; }
-  .stamp {
-    margin-top: 12px; padding: 9px 10px; border-radius: 5px; text-align: center;
-    font-size: 12px; font-weight: 800; letter-spacing: 0.14em; text-transform: uppercase;
-  }
-  .stamp.paid { background: #e7f8f0; color: #067a52; border: 1.5px solid #067a52; }
-  .stamp.unpaid { background: #fff4e5; color: #a35b00; border: 1.5px dashed #a35b00; }
-  .stamp .sub { display: block; font-size: 8px; font-weight: 600; letter-spacing: 0.06em; margin-top: 3px; text-transform: none; }
   .foot {
     margin-top: 20px; padding-top: 10px; border-top: 1px solid #ddd;
     text-align: center; font-size: 9px; color: #666; line-height: 1.6;
@@ -270,62 +234,9 @@ function buildOrderSlipHtml(order: Order, origin: string): string {
       </div>
     </div>
 
-    <div class="gap">
-      <div class="section-title">Items</div>
-      <div class="lines">
-        ${order.items
-          .map(
-            (item) => `
-        <div class="line">
-          <div>
-            <div class="n">${escapeHtml(item.productName)}</div>
-            <div class="v">${escapeHtml(item.color)} / ${escapeHtml(item.size)} &times; ${escapeHtml(item.quantity)}${
-              item.sku ? ` &middot; ${escapeHtml(item.sku)}` : ''
-            }</div>
-          </div>
-          <div class="p">${ghs(item.lineTotal)}</div>
-        </div>`
-          )
-          .join('')}
-      </div>
-      <div class="sums">
-        <div class="sum"><span>Subtotal</span><span>${ghs(order.subtotal)}</span></div>
-        <div class="sum"><span>Service fee (2%)</span><span>${ghs(order.serviceCharge)}</span></div>
-      </div>
-    </div>
-
     <div class="total">
       <span class="k">Total Amount</span>
       <span class="v">${ghs(order.price)}</span>
-    </div>
-
-    <div class="stamp ${isPaid ? 'paid' : 'unpaid'}">
-      ${isPaid ? 'Paid in full' : 'Payment outstanding'}
-      <span class="sub">${escapeHtml(paymentLine)}</span>
-    </div>
-
-    <div class="gap">
-      <div class="section-title">Payment</div>
-      <div class="field">
-        <div class="l">Method</div>
-        <div class="d">${escapeHtml(methodLabel)}</div>
-      </div>
-      ${
-        reference
-          ? `<div class="field">
-        <div class="l">Reference</div>
-        <div class="d">${escapeHtml(reference)}</div>
-      </div>`
-          : ''
-      }
-      <div class="field">
-        <div class="l">Placed</div>
-        <div class="d">${escapeHtml(new Date(order.createdAt).toLocaleString())}</div>
-      </div>
-      <div class="field">
-        <div class="l">Fulfilment</div>
-        <div class="d">${escapeHtml(order.status || 'Pending')}</div>
-      </div>
     </div>
 
     <div class="foot">
