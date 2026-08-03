@@ -49,6 +49,34 @@ export interface OrderItem {
   lineTotal: number;
 }
 
+/**
+ * Money state, tracked separately from fulfilment `status` so a network drop
+ * after payment can never be confused with an unfulfilled order.
+ *
+ * - `unpaid`    — order recorded, payment not (yet) confirmed by Paystack.
+ * - `paid`      — confirmed by client callback, webhook, reconciliation or admin.
+ * - `failed`    — the gateway explicitly declined the charge.
+ * - `abandoned` — the customer never completed (or never started) the charge.
+ * - `refunded`  — money returned to the customer.
+ */
+export type PaymentStatus = 'unpaid' | 'paid' | 'failed' | 'abandoned' | 'refunded';
+
+/** Which channel proved the payment. Kept for the admin audit trail. */
+export type PaymentVerificationSource = 'client' | 'webhook' | 'sweep' | 'admin' | 'legacy';
+
+/** Fulfilment states. `Awaiting Payment` is the entry state for card orders. */
+export const ORDER_STATUSES = [
+  'Awaiting Payment',
+  'Pending',
+  'Processing',
+  'Shipped',
+  'Delivered',
+  'Cancelled',
+  'Payment Failed'
+] as const;
+
+export type OrderStatus = (typeof ORDER_STATUSES)[number];
+
 export interface Order {
   id: number;
   /** Primary (first) line's product. `items` is the authoritative record. */
@@ -71,9 +99,32 @@ export interface Order {
   shippingCity: string;
   paymentMethod: string;
   momoNetwork?: string;
+  /** Legacy mirror of `paymentReference`, kept so old track-order links resolve. */
   momoNumber?: string;
   status: string;
   createdAt: string;
+
+  // ── Payment ledger ─────────────────────────────────────────────
+  paymentStatus: PaymentStatus;
+  /** Gateway reference. Server-generated before the charge, unique per order. */
+  paymentReference?: string;
+  paidAt?: string;
+  /** Amount Paystack actually captured, in GHS. */
+  amountPaid?: number;
+  /** card | mobile_money | bank | ussd | … */
+  paymentChannel?: string;
+  paystackTransactionId?: string;
+  lastVerifiedAt?: string;
+  paymentVerifiedBy?: PaymentVerificationSource;
+  /** Raw `gateway_response` from Paystack, e.g. "Successful", "Declined". */
+  gatewayResponse?: string;
+  /** Free text an admin can attach when confirming payment by hand. */
+  paymentNote?: string;
+
+  // ── Inventory + notification bookkeeping ───────────────────────
+  stockReserved: boolean;
+  stockReleased: boolean;
+  smsSent: boolean;
 }
 
 export interface Collection {

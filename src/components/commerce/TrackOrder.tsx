@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { formatCurrency } from '@/lib/format';
 
 export function TrackOrder() {
@@ -10,9 +10,9 @@ export function TrackOrder() {
   const [order, setOrder] = useState<any>(null);
   const [lightboxOpen, setLightboxOpen] = useState(false);
 
-  const handleTrackSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!refInput.trim()) {
+  const lookupOrder = useCallback(async (reference: string) => {
+    const trimmed = reference.trim();
+    if (!trimmed) {
       setError('Please input a valid order reference or Paystack ID.');
       return;
     }
@@ -22,7 +22,7 @@ export function TrackOrder() {
     setOrder(null);
 
     try {
-      const response = await fetch(`/api/orders?ref=${encodeURIComponent(refInput.trim())}`);
+      const response = await fetch(`/api/orders?ref=${encodeURIComponent(trimmed)}`);
       const data = await response.json();
 
       if (!response.ok) {
@@ -35,6 +35,22 @@ export function TrackOrder() {
     } finally {
       setLoading(false);
     }
+  }, []);
+
+  /**
+   * Confirmation texts and receipts link straight here with `?ref=RD-1042`, so
+   * arriving with one should show the order rather than an empty search box.
+   */
+  useEffect(() => {
+    const fromUrl = new URLSearchParams(window.location.search).get('ref');
+    if (!fromUrl) return;
+    setRefInput(fromUrl);
+    void lookupOrder(fromUrl);
+  }, [lookupOrder]);
+
+  const handleTrackSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    await lookupOrder(refInput);
   };
 
   const getStatusColor = (status: string) => {
@@ -247,6 +263,31 @@ export function TrackOrder() {
                 <div style={{ color: '#666', fontSize: '0.72rem', marginTop: '2px' }}>
                   {order.totalQuantity} item{order.totalQuantity === 1 ? '' : 's'} · incl. 2% service fee
                 </div>
+              </div>
+              <div>
+                <span style={{ color: '#666', display: 'block', fontSize: '0.7rem', letterSpacing: '0.05em' }}>PAYMENT</span>
+                {order.paymentStatus === 'paid' ? (
+                  <strong style={{ color: '#10b981' }}>
+                    ✓ PAID
+                    {order.paymentChannel ? ` · ${String(order.paymentChannel).replace(/_/g, ' ').toUpperCase()}` : ''}
+                  </strong>
+                ) : order.paymentStatus === 'failed' || order.paymentStatus === 'abandoned' ? (
+                  <strong style={{ color: '#ef4444' }}>NOT COMPLETED</strong>
+                ) : order.paymentStatus === 'refunded' ? (
+                  <strong style={{ color: '#a78bfa' }}>REFUNDED</strong>
+                ) : (
+                  <>
+                    <strong style={{ color: '#f59e0b' }}>AWAITING CONFIRMATION</strong>
+                    <div style={{ color: '#666', fontSize: '0.7rem', marginTop: '2px', lineHeight: 1.5 }}>
+                      Your order is saved. If you have paid, this updates automatically — no need to pay again.
+                    </div>
+                  </>
+                )}
+                {order.paidAt && (
+                  <div style={{ color: '#666', fontSize: '0.7rem', marginTop: '2px' }}>
+                    {new Date(order.paidAt).toLocaleString()}
+                  </div>
+                )}
               </div>
               <div>
                 <span style={{ color: '#666', display: 'block', fontSize: '0.7rem', letterSpacing: '0.05em' }}>SHIPMENT STATUS</span>

@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect } from 'react';
 import Image from 'next/image';
 import type { Product, Drop, Collection, LookbookIssue, Order } from '@/types/product';
+import type { OrderPaymentSummary } from '@/lib/order-receipt';
 import type { WaitlistSignup } from '@/lib/catalog-db';
 import { formatCurrency } from '@/lib/format';
 import { getProductStockSummary } from '@/lib/inventory';
@@ -63,10 +64,92 @@ function ghs(amount: number): string {
   return `GH₵${Number(amount || 0).toFixed(2)}`;
 }
 
+// ----------------------------------------------------------------
+// Payment presentation
+// ----------------------------------------------------------------
+
+export type PaymentFilter = 'all' | 'paid' | 'unpaid' | 'attention' | 'failed';
+
+interface PaymentBadgeStyle {
+  label: string;
+  color: string;
+  background: string;
+}
+
+/**
+ * One place that decides how a payment state looks, so the table, the filters
+ * and the printed slip can never disagree about whether an order is paid.
+ */
+function paymentBadge(order: Order): PaymentBadgeStyle {
+  switch (order.paymentStatus) {
+    case 'paid':
+      return { label: '✓ PAID', color: '#10b981', background: 'rgba(16, 185, 129, 0.16)' };
+    case 'failed':
+      return { label: '✕ PAYMENT FAILED', color: '#ef4444', background: 'rgba(239, 68, 68, 0.16)' };
+    case 'abandoned':
+      return { label: '○ ABANDONED', color: '#9ca3af', background: 'rgba(156, 163, 175, 0.14)' };
+    case 'refunded':
+      return { label: '↩ REFUNDED', color: '#a78bfa', background: 'rgba(167, 139, 250, 0.16)' };
+    default:
+      return { label: '● NOT PAID', color: '#f59e0b', background: 'rgba(245, 158, 11, 0.16)' };
+  }
+}
+
+/** Unpaid card orders more than an hour old are the ones worth chasing. */
+function needsAttention(order: Order): boolean {
+  return (
+    order.paymentStatus === 'unpaid' &&
+    order.paymentMethod === 'PAYSTACK' &&
+    Date.now() - new Date(order.createdAt).getTime() > 60 * 60 * 1000
+  );
+}
+
+function matchesPaymentFilter(order: Order, filter: PaymentFilter): boolean {
+  switch (filter) {
+    case 'paid':
+      return order.paymentStatus === 'paid';
+    case 'unpaid':
+      return order.paymentStatus === 'unpaid';
+    case 'attention':
+      return needsAttention(order);
+    case 'failed':
+      return order.paymentStatus === 'failed' || order.paymentStatus === 'abandoned';
+    default:
+      return true;
+  }
+}
+
+function formatChannel(channel?: string): string {
+  if (!channel) return '';
+  return channel.replace(/_/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
 /** Build a self-contained, white, print-ready order slip for a single order. */
 function buildOrderSlipHtml(order: Order, origin: string): string {
   const ref = `#RD-${order.id}`;
   const logoSrc = `${origin}/assets/icons/redoxlogo.jpg`;
+
+  const isPaid = order.paymentStatus === 'paid';
+  const reference = order.paymentReference || order.momoNumber || '';
+
+  const methodLabel =
+    order.paymentMethod === 'PAYSTACK'
+      ? `Paystack${order.paymentChannel ? ` — ${formatChannel(order.paymentChannel)}` : ''}`
+      : order.paymentMethod === 'COD'
+      ? 'Cash on delivery'
+      : `Mobile money${order.momoNetwork ? ` (${order.momoNetwork})` : ''}`;
+
+  // The line under the stamp is what tells a rider or packer, at a glance,
+  // whether money still has to be collected on this order.
+  const paymentLine = isPaid
+    ? `${ghs(order.amountPaid ?? order.price)} received${order.paidAt ? ` on ${new Date(order.paidAt).toLocaleString()}` : ''}`
+    : order.paymentStatus === 'failed'
+    ? 'The gateway declined this payment — do not dispatch.'
+    : order.paymentStatus === 'abandoned'
+    ? 'Checkout was abandoned — do not dispatch.'
+    : order.paymentStatus === 'refunded'
+    ? 'This order was refunded.'
+    : `Collect ${ghs(order.price)} before handover.`;
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -117,12 +200,26 @@ function buildOrderSlipHtml(order: Order, origin: string): string {
   .stat { border: 1px solid #eaeaea; border-radius: 5px; padding: 9px 6px; text-align: center; }
   .stat .l { font-size: 7.5px; letter-spacing: 0.14em; text-transform: uppercase; color: #aaa; }
   .stat .d { font-size: 15px; font-weight: 800; margin-top: 4px; }
+  .lines { border-top: 1px solid #eee; }
+  .line { display: flex; justify-content: space-between; gap: 8px; padding: 6px 0; border-bottom: 1px dashed #eee; }
+  .line .n { font-size: 10.5px; font-weight: 700; }
+  .line .v { font-size: 9px; color: #666; margin-top: 1px; }
+  .line .p { font-size: 10.5px; font-weight: 700; white-space: nowrap; }
+  .sums { margin-top: 10px; }
+  .sum { display: flex; justify-content: space-between; font-size: 10px; color: #444; padding: 2px 0; }
   .total {
     display: flex; justify-content: space-between; align-items: center;
-    margin-top: 16px; padding: 11px 12px; background: #111; border-radius: 5px;
+    margin-top: 10px; padding: 11px 12px; background: #111; border-radius: 5px;
   }
   .total .k { font-size: 8.5px; letter-spacing: 0.16em; text-transform: uppercase; color: #bbb; }
   .total .v { font-size: 19px; font-weight: 800; color: #fff; }
+  .stamp {
+    margin-top: 12px; padding: 9px 10px; border-radius: 5px; text-align: center;
+    font-size: 12px; font-weight: 800; letter-spacing: 0.14em; text-transform: uppercase;
+  }
+  .stamp.paid { background: #e7f8f0; color: #067a52; border: 1.5px solid #067a52; }
+  .stamp.unpaid { background: #fff4e5; color: #a35b00; border: 1.5px dashed #a35b00; }
+  .stamp .sub { display: block; font-size: 8px; font-weight: 600; letter-spacing: 0.06em; margin-top: 3px; text-transform: none; }
   .foot {
     margin-top: 20px; padding-top: 10px; border-top: 1px solid #ddd;
     text-align: center; font-size: 9px; color: #666; line-height: 1.6;
@@ -173,9 +270,62 @@ function buildOrderSlipHtml(order: Order, origin: string): string {
       </div>
     </div>
 
+    <div class="gap">
+      <div class="section-title">Items</div>
+      <div class="lines">
+        ${order.items
+          .map(
+            (item) => `
+        <div class="line">
+          <div>
+            <div class="n">${escapeHtml(item.productName)}</div>
+            <div class="v">${escapeHtml(item.color)} / ${escapeHtml(item.size)} &times; ${escapeHtml(item.quantity)}${
+              item.sku ? ` &middot; ${escapeHtml(item.sku)}` : ''
+            }</div>
+          </div>
+          <div class="p">${ghs(item.lineTotal)}</div>
+        </div>`
+          )
+          .join('')}
+      </div>
+      <div class="sums">
+        <div class="sum"><span>Subtotal</span><span>${ghs(order.subtotal)}</span></div>
+        <div class="sum"><span>Service fee (2%)</span><span>${ghs(order.serviceCharge)}</span></div>
+      </div>
+    </div>
+
     <div class="total">
       <span class="k">Total Amount</span>
       <span class="v">${ghs(order.price)}</span>
+    </div>
+
+    <div class="stamp ${isPaid ? 'paid' : 'unpaid'}">
+      ${isPaid ? 'Paid in full' : 'Payment outstanding'}
+      <span class="sub">${escapeHtml(paymentLine)}</span>
+    </div>
+
+    <div class="gap">
+      <div class="section-title">Payment</div>
+      <div class="field">
+        <div class="l">Method</div>
+        <div class="d">${escapeHtml(methodLabel)}</div>
+      </div>
+      ${
+        reference
+          ? `<div class="field">
+        <div class="l">Reference</div>
+        <div class="d">${escapeHtml(reference)}</div>
+      </div>`
+          : ''
+      }
+      <div class="field">
+        <div class="l">Placed</div>
+        <div class="d">${escapeHtml(new Date(order.createdAt).toLocaleString())}</div>
+      </div>
+      <div class="field">
+        <div class="l">Fulfilment</div>
+        <div class="d">${escapeHtml(order.status || 'Pending')}</div>
+      </div>
     </div>
 
     <div class="foot">
@@ -204,12 +354,17 @@ export function AdminDashboard({
   const [lookbooks, setLookbooks] = useState<LookbookIssue[]>(initialLookbooks);
   const [waitlist, setWaitlist] = useState<WaitlistSignup[]>(initialWaitlist);
   const [orders, setOrders] = useState<Order[]>([]);
+  const [paymentSummary, setPaymentSummary] = useState<OrderPaymentSummary | null>(null);
+  const [paymentFilter, setPaymentFilter] = useState<PaymentFilter>('all');
   const [isDbConnected, setIsDbConnected] = useState(initialDbStatus);
-  
+
   // Database Initializing State
   const [isInitializing, setIsInitializing] = useState(false);
   const [isRefreshingWaitlist, setIsRefreshingWaitlist] = useState(false);
   const [isRefreshingOrders, setIsRefreshingOrders] = useState(false);
+  const [isReconciling, setIsReconciling] = useState(false);
+  /** The order whose payment action is in flight, so its row can show progress. */
+  const [busyOrderId, setBusyOrderId] = useState<number | null>(null);
   
   // Form Modal States
   const [showProductModal, setShowProductModal] = useState(false);
@@ -306,14 +461,17 @@ export function AdminDashboard({
   };
 
   // Fetch Latest Placed Orders
-  const refreshOrders = async () => {
+  const refreshOrders = async (options?: { silent?: boolean }) => {
     setIsRefreshingOrders(true);
     try {
       const response = await fetch('/api/admin/orders');
       const data = await response.json();
       if (response.ok && Array.isArray(data.orders)) {
         setOrders(data.orders);
-        triggerNotification('Customer direct orders synced live from Neon DB!', 'success');
+        setPaymentSummary(data.summary || null);
+        if (!options?.silent) {
+          triggerNotification('Customer orders synced live from Neon DB!', 'success');
+        }
       }
     } catch (err: any) {
       triggerNotification(err.message || 'Failed to sync orders.', 'error');
@@ -322,31 +480,132 @@ export function AdminDashboard({
     }
   };
 
+  /** Replaces one order in place, keeping the rest of the table untouched. */
+  const patchOrder = (updated: Order | undefined, orderId: number) => {
+    if (!updated) return;
+    setOrders((prev) => prev.map((o) => (o.id === orderId ? { ...o, ...updated } : o)));
+  };
+
+  const postOrderAction = async (payload: Record<string, unknown>) => {
+    const response = await fetch('/api/admin/orders', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'That action failed.');
+    return data;
+  };
+
   const handleUpdateOrderStatus = async (orderId: number, status: string) => {
     try {
-      const response = await fetch('/api/admin/orders', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ orderId, status })
-      });
-      const data = await response.json();
-      if (response.ok) {
-        setOrders(prev => prev.map(o => o.id === orderId ? { ...o, status } : o));
-        triggerNotification(`Order #RD-${orderId} status set to "${status}" successfully!`, 'success');
-      } else {
-        throw new Error(data.error || 'Failed to update order status.');
-      }
+      await postOrderAction({ action: 'updateStatus', orderId, status });
+      setOrders(prev => prev.map(o => o.id === orderId ? { ...o, status } : o));
+      triggerNotification(`Order #RD-${orderId} status set to "${status}" successfully!`, 'success');
     } catch (err: any) {
       triggerNotification(err.message || 'Error updating order status.', 'error');
     }
   };
 
-  const handleDeleteOrder = async (orderId: number) => {
-    if (!window.confirm(`Are you absolutely sure you want to permanently delete order #RD-${orderId}?`)) return;
+  /** Re-asks Paystack about one order and writes back whatever it says. */
+  const handleVerifyPayment = async (orderId: number) => {
+    setBusyOrderId(orderId);
     try {
-      const response = await fetch(`/api/admin/orders?orderId=${orderId}`, {
-        method: 'DELETE'
+      const data = await postOrderAction({ action: 'verifyPayment', orderId });
+      patchOrder(data.order, orderId);
+      await refreshOrders({ silent: true });
+      triggerNotification(`#RD-${orderId}: ${data.message}`, data.outcome === 'paid' ? 'success' : 'error');
+    } catch (err: any) {
+      triggerNotification(err.message || 'Could not verify that payment.', 'error');
+    } finally {
+      setBusyOrderId(null);
+    }
+  };
+
+  /** Confirms money that arrived outside Paystack — cash, transfer, direct MoMo. */
+  const handleMarkPaid = async (order: Order) => {
+    const note = window.prompt(
+      `Mark order #RD-${order.id} (GH₵${Number(order.price).toFixed(2)}) as PAID.\n\n` +
+        'Use this only for money received outside Paystack — cash on delivery, a bank transfer, ' +
+        'or a direct mobile-money payment.\n\nAdd a short note for the record:',
+      'Received directly'
+    );
+    if (note === null) return;
+
+    setBusyOrderId(order.id);
+    try {
+      const data = await postOrderAction({
+        action: 'markPaid',
+        orderId: order.id,
+        note,
+        channel: 'manual'
       });
+      patchOrder(data.order, order.id);
+      await refreshOrders({ silent: true });
+      triggerNotification(
+        `${data.message}${data.smsSent ? ' Customer notified by SMS.' : ''}`,
+        'success'
+      );
+    } catch (err: any) {
+      triggerNotification(err.message || 'Could not mark that order as paid.', 'error');
+    } finally {
+      setBusyOrderId(null);
+    }
+  };
+
+  const handleMarkUnpaid = async (order: Order) => {
+    if (
+      !window.confirm(
+        `Mark order #RD-${order.id} as UNPAID again?\n\nThis clears the recorded payment date and amount. ` +
+          'Only do this if the order was confirmed by mistake.'
+      )
+    ) {
+      return;
+    }
+
+    setBusyOrderId(order.id);
+    try {
+      const data = await postOrderAction({ action: 'markUnpaid', orderId: order.id });
+      patchOrder(data.order, order.id);
+      await refreshOrders({ silent: true });
+      triggerNotification(data.message, 'success');
+    } catch (err: any) {
+      triggerNotification(err.message || 'Could not revert that order.', 'error');
+    } finally {
+      setBusyOrderId(null);
+    }
+  };
+
+  /**
+   * Walks every unpaid card order and settles it against Paystack. This is the
+   * button that recovers a payment whose customer lost connection before the
+   * confirmation could reach us.
+   */
+  const handleReconcilePayments = async () => {
+    setIsReconciling(true);
+    try {
+      const data = await postOrderAction({ action: 'reconcile', limit: 50 });
+      if (Array.isArray(data.orders)) setOrders(data.orders);
+      if (data.summary) setPaymentSummary(data.summary);
+      triggerNotification(data.message, data.reconciliation?.rescued > 0 ? 'success' : 'success');
+    } catch (err: any) {
+      triggerNotification(err.message || 'Reconciliation failed.', 'error');
+    } finally {
+      setIsReconciling(false);
+    }
+  };
+
+  const handleDeleteOrder = async (orderId: number, isPaid: boolean) => {
+    const warning = isPaid
+      ? `Order #RD-${orderId} has been PAID. Deleting it permanently destroys the only record of that payment.\n\nDelete anyway?`
+      : `Are you absolutely sure you want to permanently delete order #RD-${orderId}?`;
+    if (!window.confirm(warning)) return;
+
+    try {
+      const response = await fetch(
+        `/api/admin/orders?orderId=${orderId}${isPaid ? '&force=true' : ''}`,
+        { method: 'DELETE' }
+      );
       const data = await response.json();
       if (response.ok) {
         setOrders(prev => prev.filter(o => o.id !== orderId));
@@ -1267,14 +1526,115 @@ export function AdminDashboard({
         <div>
           <div className={styles.sectionHeader}>
             <h2 className={styles.sectionTitle}>Customer Placed Orders (Direct Checkout)</h2>
-            <button 
-              className={styles.saveButton}
-              onClick={refreshOrders}
-              disabled={isRefreshingOrders}
-            >
-              {isRefreshingOrders ? 'Syncing...' : '↻ Sync orders'}
-            </button>
+            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+              <button
+                className={styles.saveButton}
+                onClick={handleReconcilePayments}
+                disabled={isReconciling}
+                title="Ask Paystack about every order that has not been confirmed as paid, and settle it."
+              >
+                {isReconciling ? 'Checking Paystack…' : '⟳ Verify all pending payments'}
+              </button>
+              <button
+                className={styles.saveButton}
+                onClick={() => refreshOrders()}
+                disabled={isRefreshingOrders}
+              >
+                {isRefreshingOrders ? 'Syncing...' : '↻ Sync orders'}
+              </button>
+            </div>
           </div>
+
+          {/* Money at a glance. `needsAttention` is the number that matters:
+              paid-for orders that have not been confirmed yet would once have
+              been lost entirely. */}
+          {paymentSummary && paymentSummary.total > 0 && (
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
+                gap: '10px',
+                marginBottom: 'var(--space-4)'
+              }}
+            >
+              {[
+                { label: 'Confirmed paid', value: String(paymentSummary.paid), sub: `GH₵${paymentSummary.paidRevenue.toFixed(2)} received`, color: '#10b981' },
+                { label: 'Awaiting payment', value: String(paymentSummary.unpaid), sub: `GH₵${paymentSummary.unpaidValue.toFixed(2)} outstanding`, color: '#f59e0b' },
+                { label: 'Needs checking', value: String(paymentSummary.needsAttention), sub: 'Unpaid card orders over 1h old', color: paymentSummary.needsAttention > 0 ? '#ef4444' : '#666' },
+                { label: 'Failed / abandoned', value: String(paymentSummary.failed + paymentSummary.abandoned), sub: 'No money received', color: '#9ca3af' }
+              ].map((card) => (
+                <div
+                  key={card.label}
+                  style={{
+                    background: '#0a0a0a',
+                    border: `1px solid ${card.color}33`,
+                    borderRadius: '6px',
+                    padding: 'var(--space-3) var(--space-4)'
+                  }}
+                >
+                  <div style={{ color: '#777', fontSize: '0.62rem', letterSpacing: '0.12em', textTransform: 'uppercase' }}>
+                    {card.label}
+                  </div>
+                  <div style={{ color: card.color, fontSize: '1.5rem', fontWeight: 'bold', fontFamily: 'monospace', marginTop: '4px' }}>
+                    {card.value}
+                  </div>
+                  <div style={{ color: '#666', fontSize: '0.68rem', marginTop: '2px' }}>{card.sub}</div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {paymentSummary && paymentSummary.needsAttention > 0 && (
+            <div
+              style={{
+                background: 'rgba(239, 68, 68, 0.08)',
+                border: '1px solid rgba(239, 68, 68, 0.28)',
+                borderRadius: '6px',
+                padding: 'var(--space-3) var(--space-4)',
+                marginBottom: 'var(--space-4)',
+                color: '#ff9aa4',
+                fontSize: '0.8rem',
+                lineHeight: 1.55
+              }}
+            >
+              <strong>{paymentSummary.needsAttention} card order(s)</strong> have been sitting unpaid for over an
+              hour. Press <strong>Verify all pending payments</strong> above — any customer who was charged but
+              lost connection will be confirmed automatically.
+            </div>
+          )}
+
+          {orders.length > 0 && (
+            <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: 'var(--space-3)' }}>
+              {([
+                ['all', `All (${orders.length})`],
+                ['paid', `Paid (${orders.filter((o) => o.paymentStatus === 'paid').length})`],
+                ['unpaid', `Unpaid (${orders.filter((o) => o.paymentStatus === 'unpaid').length})`],
+                ['attention', `Needs checking (${orders.filter(needsAttention).length})`],
+                ['failed', `Failed (${orders.filter((o) => o.paymentStatus === 'failed' || o.paymentStatus === 'abandoned').length})`]
+              ] as [PaymentFilter, string][]).map(([key, label]) => (
+                <button
+                  key={key}
+                  onClick={() => setPaymentFilter(key)}
+                  style={{
+                    background: paymentFilter === key ? '#fff' : 'transparent',
+                    color: paymentFilter === key ? '#000' : '#888',
+                    border: '1px solid rgba(255,255,255,0.12)',
+                    padding: '6px 12px',
+                    borderRadius: '4px',
+                    fontSize: '0.7rem',
+                    fontFamily: 'monospace',
+                    fontWeight: 'bold',
+                    letterSpacing: '0.05em',
+                    textTransform: 'uppercase',
+                    cursor: 'pointer'
+                  }}
+                  type="button"
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          )}
 
           {orders.length === 0 ? (
             <div style={{ padding: 'var(--space-8) var(--space-4)', textAlign: 'center', background: '#090909', border: '1px dashed rgba(255,255,255,0.08)', borderRadius: '4px' }}>
@@ -1293,15 +1653,26 @@ export function AdminDashboard({
                     <th style={{ padding: 'var(--space-3)', color: '#aaa', fontWeight: 600 }}>Qty</th>
                     <th style={{ padding: 'var(--space-3)', color: '#aaa', fontWeight: 600 }}>Price</th>
                     <th style={{ padding: 'var(--space-3)', color: '#aaa', fontWeight: 600 }}>Shipping Destination</th>
-                    <th style={{ padding: 'var(--space-3)', color: '#aaa', fontWeight: 600 }}>Payment Info</th>
+                    <th style={{ padding: 'var(--space-3)', color: '#aaa', fontWeight: 600, minWidth: '230px' }}>Payment</th>
                     <th style={{ padding: 'var(--space-3)', color: '#aaa', fontWeight: 600 }}>Order Status</th>
                     <th style={{ padding: 'var(--space-3)', color: '#aaa', fontWeight: 600 }}>Date Placed</th>
                     <th style={{ padding: 'var(--space-3)', color: '#aaa', fontWeight: 600 }}>Action</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {orders.map((o) => (
-                    <tr key={o.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.03)' }}>
+                  {orders.filter((o) => matchesPaymentFilter(o, paymentFilter)).map((o) => (
+                    <tr
+                      key={o.id}
+                      style={{
+                        borderBottom: '1px solid rgba(255,255,255,0.03)',
+                        // An unpaid card order left hanging gets a red rail down
+                        // its left edge so it cannot be missed while scanning.
+                        borderLeft: needsAttention(o) ? '3px solid #ef4444' : '3px solid transparent',
+                        background: o.paymentStatus === 'paid' ? 'transparent' : 'rgba(245, 158, 11, 0.03)',
+                        opacity: busyOrderId === o.id ? 0.55 : 1,
+                        transition: 'opacity 0.15s'
+                      }}
+                    >
                       <td style={{ padding: 'var(--space-3)', color: '#555' }}>#RD-{o.id}</td>
                       <td style={{ padding: 'var(--space-3)' }}>
                         <div style={{ fontWeight: 'bold', color: '#fff' }}>{o.customerName}</div>
@@ -1344,20 +1715,145 @@ export function AdminDashboard({
                         <div style={{ color: '#f5f3ee' }}>{o.shippingAddress}</div>
                         <div style={{ color: '#888', fontSize: '0.75rem' }}>{o.shippingCity}</div>
                       </td>
-                      <td style={{ padding: 'var(--space-3)' }}>
-                        {o.paymentMethod === 'PAYSTACK' ? (
-                          <div>
-                            <span style={{ color: '#10b981', fontWeight: 'bold' }}>Paystack Secure</span>
-                            {o.momoNumber && <div style={{ color: '#888', fontSize: '0.725rem', marginTop: '4px' }}>Ref: {o.momoNumber}</div>}
-                          </div>
-                        ) : o.paymentMethod === 'COD' ? (
-                          <span style={{ color: '#f59e0b', fontWeight: 'bold' }}>Cash on Delivery</span>
-                        ) : (
-                          <div>
-                            <span style={{ color: '#3b82f6', fontWeight: 'bold' }}>MOMO ({o.momoNetwork})</span>
-                            <div style={{ color: '#888', fontSize: '0.75rem' }}>{o.momoNumber}</div>
-                          </div>
-                        )}
+                      <td style={{ padding: 'var(--space-3)', verticalAlign: 'top' }}>
+                        {(() => {
+                          const badge = paymentBadge(o);
+                          const reference = o.paymentReference || o.momoNumber;
+                          const busy = busyOrderId === o.id;
+
+                          return (
+                            <div style={{ display: 'grid', gap: '6px' }}>
+                              <span
+                                style={{
+                                  background: badge.background,
+                                  color: badge.color,
+                                  border: `1px solid ${badge.color}66`,
+                                  padding: '4px 9px',
+                                  borderRadius: '4px',
+                                  fontWeight: 'bold',
+                                  fontSize: '0.72rem',
+                                  letterSpacing: '0.06em',
+                                  justifySelf: 'start'
+                                }}
+                              >
+                                {badge.label}
+                              </span>
+
+                              <div style={{ color: '#999', fontSize: '0.7rem', lineHeight: 1.6 }}>
+                                <div>
+                                  {o.paymentMethod === 'PAYSTACK'
+                                    ? `Paystack${o.paymentChannel ? ` · ${formatChannel(o.paymentChannel)}` : ''}`
+                                    : o.paymentMethod === 'COD'
+                                    ? 'Cash on delivery'
+                                    : `Mobile money${o.momoNetwork ? ` · ${o.momoNetwork}` : ''}`}
+                                </div>
+
+                                {o.paymentStatus === 'paid' && (
+                                  <div style={{ color: '#10b981' }}>
+                                    GH₵{Number(o.amountPaid ?? o.price).toFixed(2)} received
+                                    {o.paidAt ? ` · ${new Date(o.paidAt).toLocaleString()}` : ''}
+                                  </div>
+                                )}
+
+                                {reference && (
+                                  <div
+                                    onClick={() => {
+                                      navigator.clipboard?.writeText(reference);
+                                      triggerNotification('Payment reference copied.', 'success');
+                                    }}
+                                    style={{ color: '#777', cursor: 'copy', wordBreak: 'break-all' }}
+                                    title="Click to copy — search this on your Paystack dashboard"
+                                  >
+                                    Ref: {reference}
+                                  </div>
+                                )}
+
+                                {o.paymentVerifiedBy && (
+                                  <div style={{ color: '#555', fontSize: '0.66rem' }}>
+                                    Confirmed by: {o.paymentVerifiedBy}
+                                    {o.lastVerifiedAt ? ` · checked ${new Date(o.lastVerifiedAt).toLocaleString()}` : ''}
+                                  </div>
+                                )}
+
+                                {o.gatewayResponse && o.paymentStatus !== 'paid' && (
+                                  <div style={{ color: '#ff8a94', fontSize: '0.66rem' }}>{o.gatewayResponse}</div>
+                                )}
+
+                                {o.paymentNote && (
+                                  <div style={{ color: '#a78bfa', fontSize: '0.66rem' }}>Note: {o.paymentNote}</div>
+                                )}
+                              </div>
+
+                              <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap', marginTop: '2px' }}>
+                                {o.paymentMethod === 'PAYSTACK' && (
+                                  <button
+                                    onClick={() => handleVerifyPayment(o.id)}
+                                    disabled={busy}
+                                    title="Ask Paystack directly whether this transaction was paid, and update the order."
+                                    style={{
+                                      background: 'rgba(59, 130, 246, 0.15)',
+                                      color: '#60a5fa',
+                                      border: '1px solid rgba(59, 130, 246, 0.35)',
+                                      padding: '4px 8px',
+                                      fontSize: '0.66rem',
+                                      borderRadius: '4px',
+                                      cursor: busy ? 'wait' : 'pointer',
+                                      fontWeight: 'bold',
+                                      fontFamily: 'var(--font-mono), monospace',
+                                      whiteSpace: 'nowrap'
+                                    }}
+                                    type="button"
+                                  >
+                                    {busy ? '…' : '⟳ Check Paystack'}
+                                  </button>
+                                )}
+
+                                {o.paymentStatus !== 'paid' ? (
+                                  <button
+                                    onClick={() => handleMarkPaid(o)}
+                                    disabled={busy}
+                                    title="Record money received outside Paystack (cash, transfer, direct MoMo)."
+                                    style={{
+                                      background: 'rgba(16, 185, 129, 0.15)',
+                                      color: '#10b981',
+                                      border: '1px solid rgba(16, 185, 129, 0.35)',
+                                      padding: '4px 8px',
+                                      fontSize: '0.66rem',
+                                      borderRadius: '4px',
+                                      cursor: busy ? 'wait' : 'pointer',
+                                      fontWeight: 'bold',
+                                      fontFamily: 'var(--font-mono), monospace',
+                                      whiteSpace: 'nowrap'
+                                    }}
+                                    type="button"
+                                  >
+                                    ✓ Mark paid
+                                  </button>
+                                ) : (
+                                  <button
+                                    onClick={() => handleMarkUnpaid(o)}
+                                    disabled={busy}
+                                    title="Undo a payment confirmation made in error."
+                                    style={{
+                                      background: 'transparent',
+                                      color: '#777',
+                                      border: '1px solid rgba(255,255,255,0.14)',
+                                      padding: '4px 8px',
+                                      fontSize: '0.66rem',
+                                      borderRadius: '4px',
+                                      cursor: busy ? 'wait' : 'pointer',
+                                      fontFamily: 'var(--font-mono), monospace',
+                                      whiteSpace: 'nowrap'
+                                    }}
+                                    type="button"
+                                  >
+                                    Undo paid
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })()}
                       </td>
                       <td style={{ padding: 'var(--space-3)' }}>
                         <select
@@ -1381,12 +1877,23 @@ export function AdminDashboard({
                             outline: 'none'
                           }}
                         >
+                          <option value="Awaiting Payment" style={{ background: '#111', color: '#f59e0b' }}>Awaiting Payment</option>
                           <option value="Pending" style={{ background: '#111', color: '#f59e0b' }}>Pending</option>
                           <option value="Processing" style={{ background: '#111', color: '#3b82f6' }}>Processing</option>
                           <option value="Shipped" style={{ background: '#111', color: '#8b5cf6' }}>Shipped</option>
                           <option value="Delivered" style={{ background: '#111', color: '#10b981' }}>Delivered</option>
                           <option value="Cancelled" style={{ background: '#111', color: '#ef4444' }}>Cancelled</option>
+                          <option value="Payment Failed" style={{ background: '#111', color: '#ef4444' }}>Payment Failed</option>
                         </select>
+
+                        {/* Fulfilment and money are separate states: shipping an
+                            unpaid order is a decision, never an accident. */}
+                        {o.paymentStatus !== 'paid' &&
+                          ['Processing', 'Shipped', 'Delivered'].includes(o.status) && (
+                            <div style={{ color: '#ef4444', fontSize: '0.65rem', marginTop: '6px', maxWidth: '130px', lineHeight: 1.4 }}>
+                              ⚠ Being fulfilled while unpaid
+                            </div>
+                          )}
                       </td>
                       <td style={{ padding: 'var(--space-3)', color: '#777' }}>{new Date(o.createdAt).toLocaleString()}</td>
                       <td style={{ padding: 'var(--space-3)' }}>
@@ -1411,7 +1918,7 @@ export function AdminDashboard({
                             ⎙ Print
                           </button>
                           <button
-                            onClick={() => handleDeleteOrder(o.id)}
+                            onClick={() => handleDeleteOrder(o.id, o.paymentStatus === 'paid')}
                             style={{
                               background: 'rgba(239, 68, 68, 0.15)',
                               color: '#ef4444',

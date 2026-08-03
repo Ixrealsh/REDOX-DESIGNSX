@@ -7,7 +7,16 @@ import {
 } from '@/data/catalog';
 import { isVariantInStock, normalizeVariantStock } from '@/lib/inventory';
 import { SERVICE_CHARGE_RATE } from '@/lib/format';
-import type { Product, Drop, Collection, LookbookIssue, Order, OrderItem } from '@/types/product';
+import type {
+  Product,
+  Drop,
+  Collection,
+  LookbookIssue,
+  Order,
+  OrderItem,
+  PaymentStatus,
+  PaymentVerificationSource
+} from '@/types/product';
 
 export interface WaitlistSignup {
   id: number;
@@ -462,10 +471,14 @@ let sandboxOrders: Order[] = [];
  * The original schema stored every purchased variant flattened into a single
  * `selected_size VARCHAR(50)`. Postgres rejects (never truncates) an oversized
  * value, so any order with three or more variants failed to insert outright.
- * This widens those columns and adds the real line-item columns. Idempotent, and
- * memoised so it costs one round trip per process rather than one per request.
+ * This widens those columns, adds the real line-item columns, and adds the
+ * payment ledger. Idempotent, and memoised so it costs one round trip per
+ * process rather than one per request.
  */
 let ordersSchemaPromise: Promise<void> | null = null;
+
+/** Applied exactly once across every instance, guarded by `schema_migrations`. */
+const PAYMENT_LEDGER_MIGRATION = 'orders_payment_ledger_v1';
 
 async function ensureOrdersSchema(): Promise<void> {
   if (!isDbConfigured) return;
@@ -509,10 +522,96 @@ async function ensureOrdersSchema(): Promise<void> {
         `;
       }
 
-      await sql`ALTER TABLE orders ADD COLUMN IF NOT EXISTS items JSONB NOT NULL DEFAULT '[]'::jsonb`;
-      await sql`ALTER TABLE orders ADD COLUMN IF NOT EXISTS total_quantity INTEGER NOT NULL DEFAULT 1`;
-      await sql`ALTER TABLE orders ADD COLUMN IF NOT EXISTS subtotal NUMERIC`;
-      await sql`ALTER TABLE orders ADD COLUMN IF NOT EXISTS service_charge NUMERIC`;
+      // One ALTER, not seventeen: this runs on every cold start, and each Neon
+      // round trip is latency a waiting customer pays for.
+      await sql`
+        ALTER TABLE orders
+          ADD COLUMN IF NOT EXISTS items JSONB NOT NULL DEFAULT '[]'::jsonb,
+          ADD COLUMN IF NOT EXISTS total_quantity INTEGER NOT NULL DEFAULT 1,
+          ADD COLUMN IF NOT EXISTS subtotal NUMERIC,
+          ADD COLUMN IF NOT EXISTS service_charge NUMERIC,
+          ADD COLUMN IF NOT EXISTS payment_status VARCHAR(20) NOT NULL DEFAULT 'unpaid',
+          ADD COLUMN IF NOT EXISTS payment_reference VARCHAR(120),
+          ADD COLUMN IF NOT EXISTS paid_at TIMESTAMP WITH TIME ZONE,
+          ADD COLUMN IF NOT EXISTS amount_paid NUMERIC,
+          ADD COLUMN IF NOT EXISTS payment_channel VARCHAR(60),
+          ADD COLUMN IF NOT EXISTS paystack_transaction_id VARCHAR(64),
+          ADD COLUMN IF NOT EXISTS last_verified_at TIMESTAMP WITH TIME ZONE,
+          ADD COLUMN IF NOT EXISTS payment_verified_by VARCHAR(20),
+          ADD COLUMN IF NOT EXISTS gateway_response TEXT,
+          ADD COLUMN IF NOT EXISTS payment_note TEXT,
+          ADD COLUMN IF NOT EXISTS stock_reserved BOOLEAN NOT NULL DEFAULT TRUE,
+          ADD COLUMN IF NOT EXISTS stock_released BOOLEAN NOT NULL DEFAULT FALSE,
+          ADD COLUMN IF NOT EXISTS sms_sent BOOLEAN NOT NULL DEFAULT FALSE
+      `;
+
+      await sql`
+        CREATE TABLE IF NOT EXISTS schema_migrations (
+          name VARCHAR(160) PRIMARY KEY,
+          applied_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+        );
+      `;
+
+      /**
+       * Rows written by the old flow only ever existed *after* Paystack had
+       * verified the charge, so they are genuinely paid and must not surface as
+       * "unpaid" in the new admin view.
+       *
+       * The claim and the backfill share one statement on purpose: only the
+       * instance that wins the INSERT sees a row from `claim`, and the UPDATE
+       * runs against that statement's snapshot, so an order inserted by another
+       * instance a millisecond later can never be swept up by it.
+       */
+      await sql`
+        WITH claim AS (
+          INSERT INTO schema_migrations (name)
+          VALUES (${PAYMENT_LEDGER_MIGRATION})
+          ON CONFLICT (name) DO NOTHING
+          RETURNING name
+        )
+        UPDATE orders SET
+          payment_status = 'paid',
+          payment_reference = COALESCE(payment_reference, momo_number),
+          paid_at = COALESCE(paid_at, created_at),
+          amount_paid = COALESCE(amount_paid, price),
+          payment_verified_by = COALESCE(payment_verified_by, 'legacy'),
+          last_verified_at = COALESCE(last_verified_at, created_at),
+          sms_sent = TRUE,
+          stock_reserved = TRUE,
+          stock_released = FALSE
+        WHERE EXISTS (SELECT 1 FROM claim)
+          AND payment_method = 'PAYSTACK'
+          AND payment_status = 'unpaid';
+      `;
+
+      // Non-Paystack legacy rows keep their fulfilment status but are marked as
+      // notified, so reconciliation never re-sends their confirmation SMS.
+      await sql`
+        UPDATE orders SET sms_sent = TRUE
+        WHERE sms_sent = FALSE
+          AND payment_method <> 'PAYSTACK'
+          AND created_at < (SELECT COALESCE(applied_at, NOW()) FROM schema_migrations WHERE name = ${PAYMENT_LEDGER_MIGRATION});
+      `;
+
+      // Indexes are an optimisation, not a correctness requirement: a duplicate
+      // left behind by an older build must not take checkout down with it.
+      try {
+        await sql`
+          CREATE UNIQUE INDEX IF NOT EXISTS orders_payment_reference_uidx
+          ON orders (payment_reference) WHERE payment_reference IS NOT NULL
+        `;
+      } catch (error) {
+        console.error('[orders] Could not create the unique payment_reference index:', error);
+      }
+
+      try {
+        await sql`
+          CREATE INDEX IF NOT EXISTS orders_payment_status_idx
+          ON orders (payment_status, created_at DESC)
+        `;
+      } catch (error) {
+        console.error('[orders] Could not create the payment_status index:', error);
+      }
     })().catch((error) => {
       // Let the next caller retry rather than caching a permanent failure.
       ordersSchemaPromise = null;
@@ -568,6 +667,12 @@ export function parseLegacyOrderItems(row: any, grandTotal: number): OrderItem[]
   }));
 }
 
+function toIso(value: any): string | undefined {
+  if (!value) return undefined;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? undefined : date.toISOString();
+}
+
 function mapOrderRow(row: any): Order {
   const price = Number(row.price);
   const rawItems = typeof row.items === 'string' ? JSON.parse(row.items) : row.items;
@@ -607,7 +712,21 @@ function mapOrderRow(row: any): Order {
     momoNetwork: row.momo_network || undefined,
     momoNumber: row.momo_number || undefined,
     status: row.status,
-    createdAt: new Date(row.created_at).toISOString()
+    createdAt: new Date(row.created_at).toISOString(),
+
+    paymentStatus: (row.payment_status as PaymentStatus) || 'unpaid',
+    paymentReference: row.payment_reference || row.momo_number || undefined,
+    paidAt: toIso(row.paid_at),
+    amountPaid: row.amount_paid != null ? Number(row.amount_paid) : undefined,
+    paymentChannel: row.payment_channel || undefined,
+    paystackTransactionId: row.paystack_transaction_id || undefined,
+    lastVerifiedAt: toIso(row.last_verified_at),
+    paymentVerifiedBy: (row.payment_verified_by as PaymentVerificationSource) || undefined,
+    gatewayResponse: row.gateway_response || undefined,
+    paymentNote: row.payment_note || undefined,
+    stockReserved: row.stock_reserved !== false,
+    stockReleased: row.stock_released === true,
+    smsSent: row.sms_sent === true
   };
 }
 
@@ -623,17 +742,28 @@ export async function getDbOrders(): Promise<Order[]> {
   }
 }
 
-/** Guards against a Paystack reference being replayed into several orders. */
+/**
+ * Guards against a Paystack reference being replayed into several orders, and
+ * is the lookup every post-payment path uses. `momo_number` is still consulted
+ * because rows written before the dedicated column existed stored it there.
+ */
 export async function findDbOrderByPaymentRef(reference: string): Promise<Order | undefined> {
   if (!reference) return undefined;
 
   if (!isDbConfigured) {
-    return sandboxOrders.find((order) => order.momoNumber === reference);
+    return sandboxOrders.find(
+      (order) => order.paymentReference === reference || order.momoNumber === reference
+    );
   }
 
   try {
     await ensureOrdersSchema();
-    const rows = await sql`SELECT * FROM orders WHERE momo_number = ${reference} LIMIT 1`;
+    const rows = await sql`
+      SELECT * FROM orders
+      WHERE payment_reference = ${reference} OR momo_number = ${reference}
+      ORDER BY id DESC
+      LIMIT 1
+    `;
     return rows.length > 0 ? mapOrderRow(rows[0]) : undefined;
   } catch (error) {
     console.error('Failed to look up order by payment reference:', error);
@@ -641,16 +771,45 @@ export async function findDbOrderByPaymentRef(reference: string): Promise<Order 
   }
 }
 
-export async function addDbOrder(o: Omit<Order, 'id' | 'createdAt'>): Promise<Order> {
+export async function getDbOrderById(id: number): Promise<Order | undefined> {
+  if (!Number.isFinite(id)) return undefined;
+
+  if (!isDbConfigured) {
+    return sandboxOrders.find((order) => order.id === id);
+  }
+
+  try {
+    await ensureOrdersSchema();
+    const rows = await sql`SELECT * FROM orders WHERE id = ${id} LIMIT 1`;
+    return rows.length > 0 ? mapOrderRow(rows[0]) : undefined;
+  } catch (error) {
+    console.error(`Failed to load order #${id}:`, error);
+    return undefined;
+  }
+}
+
+export type NewOrderInput = Omit<Order, 'id' | 'createdAt' | 'paymentStatus' | 'stockReserved' | 'stockReleased' | 'smsSent'> &
+  Partial<Pick<Order, 'paymentStatus' | 'stockReserved' | 'stockReleased' | 'smsSent'>>;
+
+export async function addDbOrder(o: NewOrderInput): Promise<Order> {
+  const defaults = {
+    paymentStatus: o.paymentStatus || ('unpaid' as PaymentStatus),
+    stockReserved: o.stockReserved !== false,
+    stockReleased: o.stockReleased === true,
+    smsSent: o.smsSent === true
+  };
+
   if (!isDbConfigured) {
     const newOrder: Order = {
       ...o,
+      ...defaults,
       id: Math.floor(Math.random() * 100000),
       createdAt: new Date().toISOString()
     };
     sandboxOrders.unshift(newOrder);
     return newOrder;
   }
+
   try {
     await ensureOrdersSchema();
     const rows = await sql`
@@ -658,12 +817,19 @@ export async function addDbOrder(o: Omit<Order, 'id' | 'createdAt'>): Promise<Or
         product_id, product_name, product_slug, selected_color, selected_size, price,
         customer_name, customer_phone, customer_email, shipping_address, shipping_city,
         payment_method, momo_network, momo_number, status,
-        items, total_quantity, subtotal, service_charge
+        items, total_quantity, subtotal, service_charge,
+        payment_status, payment_reference, paid_at, amount_paid, payment_channel,
+        paystack_transaction_id, last_verified_at, payment_verified_by, gateway_response,
+        stock_reserved, stock_released, sms_sent
       ) VALUES (
         ${o.productId}, ${o.productName}, ${o.productSlug}, ${o.selectedColor}, ${o.selectedSize}, ${o.price},
         ${o.customerName}, ${o.customerPhone}, ${o.customerEmail}, ${o.shippingAddress}, ${o.shippingCity},
-        ${o.paymentMethod}, ${o.momoNetwork || null}, ${o.momoNumber || null}, ${o.status || 'Pending'},
-        ${JSON.stringify(o.items || [])}, ${o.totalQuantity}, ${o.subtotal}, ${o.serviceCharge}
+        ${o.paymentMethod}, ${o.momoNetwork || null}, ${o.momoNumber || o.paymentReference || null}, ${o.status || 'Pending'},
+        ${JSON.stringify(o.items || [])}, ${o.totalQuantity}, ${o.subtotal}, ${o.serviceCharge},
+        ${defaults.paymentStatus}, ${o.paymentReference || null}, ${o.paidAt || null}, ${o.amountPaid ?? null},
+        ${o.paymentChannel || null}, ${o.paystackTransactionId || null}, ${o.lastVerifiedAt || null},
+        ${o.paymentVerifiedBy || null}, ${o.gatewayResponse || null},
+        ${defaults.stockReserved}, ${defaults.stockReleased}, ${defaults.smsSent}
       )
       RETURNING *;
     `;
@@ -672,6 +838,432 @@ export async function addDbOrder(o: Omit<Order, 'id' | 'createdAt'>): Promise<Or
     console.error('Failed to save order to Neon Postgres:', error);
     throw error;
   }
+}
+
+/**
+ * Rewrites a freshly created order's reference so it carries the order number
+ * (`RDX-1042-9F3A21`), which makes the Paystack dashboard readable without a
+ * lookup. Best-effort: the temporary reference is already unique and valid, so
+ * a failure here must not fail the checkout.
+ */
+export async function rebrandDbOrderReference(id: number, reference: string): Promise<boolean> {
+  if (!isDbConfigured) {
+    const order = sandboxOrders.find((candidate) => candidate.id === id);
+    if (!order) return false;
+    order.paymentReference = reference;
+    order.momoNumber = reference;
+    return true;
+  }
+
+  try {
+    const rows = await sql`
+      UPDATE orders
+      SET payment_reference = ${reference}, momo_number = ${reference}
+      WHERE id = ${id} AND payment_status = 'unpaid'
+      RETURNING id
+    `;
+    return rows.length > 0;
+  } catch (error) {
+    console.error(`Could not upgrade the payment reference for order #${id}:`, error);
+    return false;
+  }
+}
+
+// ----------------------------------------------------------------
+// Payment ledger transitions
+//
+// Every transition below is expressed as a conditional UPDATE that returns the
+// row only when *this* caller actually changed it. The client callback, the
+// Paystack webhook, the reconciliation sweep and the admin panel all race each
+// other by design; `transitioned` tells the winner it owns the side effects
+// (SMS, stock) so they happen exactly once.
+// ----------------------------------------------------------------
+
+export interface LedgerTransition {
+  transitioned: boolean;
+  order?: Order;
+}
+
+export interface MarkPaidInput {
+  amountPaid: number;
+  paidAt?: string;
+  channel?: string;
+  transactionId?: string;
+  gatewayResponse?: string;
+  note?: string;
+  source: PaymentVerificationSource;
+}
+
+export async function markDbOrderPaid(id: number, input: MarkPaidInput): Promise<LedgerTransition> {
+  const paidAt = input.paidAt || new Date().toISOString();
+
+  if (!isDbConfigured) {
+    const order = sandboxOrders.find((candidate) => candidate.id === id);
+    if (!order) return { transitioned: false };
+    if (order.paymentStatus === 'paid') return { transitioned: false, order };
+
+    order.paymentStatus = 'paid';
+    order.paidAt = order.paidAt || paidAt;
+    order.amountPaid = input.amountPaid;
+    order.paymentChannel = input.channel || order.paymentChannel;
+    order.paystackTransactionId = input.transactionId || order.paystackTransactionId;
+    order.gatewayResponse = input.gatewayResponse || order.gatewayResponse;
+    order.paymentNote = input.note || order.paymentNote;
+    order.paymentVerifiedBy = input.source;
+    order.lastVerifiedAt = new Date().toISOString();
+    if (order.status === 'Awaiting Payment' || order.status === 'Payment Failed') order.status = 'Pending';
+    return { transitioned: true, order };
+  }
+
+  await ensureOrdersSchema();
+  const rows = await sql`
+    UPDATE orders SET
+      payment_status = 'paid',
+      status = CASE WHEN status IN ('Awaiting Payment', 'Payment Failed') THEN 'Pending' ELSE status END,
+      paid_at = COALESCE(paid_at, ${paidAt}),
+      amount_paid = ${input.amountPaid},
+      payment_channel = COALESCE(${input.channel || null}, payment_channel),
+      paystack_transaction_id = COALESCE(${input.transactionId || null}, paystack_transaction_id),
+      gateway_response = COALESCE(${input.gatewayResponse || null}, gateway_response),
+      payment_note = COALESCE(${input.note || null}, payment_note),
+      payment_verified_by = ${input.source},
+      last_verified_at = NOW()
+    WHERE id = ${id} AND payment_status <> 'paid'
+    RETURNING *;
+  `;
+
+  if (rows.length > 0) {
+    return { transitioned: true, order: mapOrderRow(rows[0]) };
+  }
+  return { transitioned: false, order: await getDbOrderById(id) };
+}
+
+export interface MarkUnsuccessfulInput {
+  status: Extract<PaymentStatus, 'failed' | 'abandoned'>;
+  gatewayResponse?: string;
+  note?: string;
+  source: PaymentVerificationSource;
+}
+
+/**
+ * Records a non-payment. Paid and refunded orders are deliberately untouchable
+ * here — a late "abandoned" event must never un-pay a settled order.
+ */
+export async function markDbOrderUnsuccessful(
+  id: number,
+  input: MarkUnsuccessfulInput
+): Promise<LedgerTransition> {
+  if (!isDbConfigured) {
+    const order = sandboxOrders.find((candidate) => candidate.id === id);
+    if (!order || order.paymentStatus === 'paid' || order.paymentStatus === 'refunded') {
+      return { transitioned: false, order };
+    }
+    const changed = order.paymentStatus !== input.status;
+    order.paymentStatus = input.status;
+    order.gatewayResponse = input.gatewayResponse || order.gatewayResponse;
+    order.paymentNote = input.note || order.paymentNote;
+    order.paymentVerifiedBy = input.source;
+    order.lastVerifiedAt = new Date().toISOString();
+    if (order.status === 'Awaiting Payment') order.status = 'Payment Failed';
+    return { transitioned: changed, order };
+  }
+
+  await ensureOrdersSchema();
+  const rows = await sql`
+    UPDATE orders SET
+      payment_status = ${input.status},
+      status = CASE WHEN status = 'Awaiting Payment' THEN 'Payment Failed' ELSE status END,
+      gateway_response = COALESCE(${input.gatewayResponse || null}, gateway_response),
+      payment_note = COALESCE(${input.note || null}, payment_note),
+      payment_verified_by = ${input.source},
+      last_verified_at = NOW()
+    WHERE id = ${id}
+      AND payment_status NOT IN ('paid', 'refunded')
+      AND payment_status <> ${input.status}
+    RETURNING *;
+  `;
+
+  if (rows.length > 0) {
+    return { transitioned: true, order: mapOrderRow(rows[0]) };
+  }
+  return { transitioned: false, order: await getDbOrderById(id) };
+}
+
+/** Records that the gateway (or the merchant) sent the money back. */
+export async function markDbOrderRefunded(id: number, note?: string): Promise<LedgerTransition> {
+  if (!isDbConfigured) {
+    const order = sandboxOrders.find((candidate) => candidate.id === id);
+    if (!order || order.paymentStatus === 'refunded') return { transitioned: false, order };
+    order.paymentStatus = 'refunded';
+    order.paymentNote = note || order.paymentNote;
+    order.lastVerifiedAt = new Date().toISOString();
+    return { transitioned: true, order };
+  }
+
+  await ensureOrdersSchema();
+  const rows = await sql`
+    UPDATE orders SET
+      payment_status = 'refunded',
+      payment_note = COALESCE(${note || null}, payment_note),
+      last_verified_at = NOW()
+    WHERE id = ${id} AND payment_status <> 'refunded'
+    RETURNING *;
+  `;
+
+  if (rows.length > 0) return { transitioned: true, order: mapOrderRow(rows[0]) };
+  return { transitioned: false, order: await getDbOrderById(id) };
+}
+
+/** Marks an order unpaid again — the admin's undo for a manual confirmation. */
+export async function revertDbOrderToUnpaid(id: number, note?: string): Promise<LedgerTransition> {
+  if (!isDbConfigured) {
+    const order = sandboxOrders.find((candidate) => candidate.id === id);
+    if (!order) return { transitioned: false };
+    order.paymentStatus = 'unpaid';
+    order.paidAt = undefined;
+    order.amountPaid = undefined;
+    order.paymentNote = note || order.paymentNote;
+    order.paymentVerifiedBy = 'admin';
+    return { transitioned: true, order };
+  }
+
+  await ensureOrdersSchema();
+  const rows = await sql`
+    UPDATE orders SET
+      payment_status = 'unpaid',
+      paid_at = NULL,
+      amount_paid = NULL,
+      payment_note = COALESCE(${note || null}, payment_note),
+      payment_verified_by = 'admin',
+      last_verified_at = NOW()
+    WHERE id = ${id} AND payment_status <> 'unpaid'
+    RETURNING *;
+  `;
+
+  if (rows.length > 0) return { transitioned: true, order: mapOrderRow(rows[0]) };
+  return { transitioned: false, order: await getDbOrderById(id) };
+}
+
+/** Stamps a verification attempt that produced no state change, for the audit trail. */
+export async function touchDbOrderVerification(id: number, gatewayResponse?: string): Promise<void> {
+  if (!isDbConfigured) {
+    const order = sandboxOrders.find((candidate) => candidate.id === id);
+    if (order) {
+      order.lastVerifiedAt = new Date().toISOString();
+      if (gatewayResponse) order.gatewayResponse = gatewayResponse;
+    }
+    return;
+  }
+
+  try {
+    await sql`
+      UPDATE orders
+      SET last_verified_at = NOW(), gateway_response = COALESCE(${gatewayResponse || null}, gateway_response)
+      WHERE id = ${id}
+    `;
+  } catch (error) {
+    console.error(`Could not stamp verification on order #${id}:`, error);
+  }
+}
+
+/**
+ * Claims the right to hand this order's reserved stock back. Returns the order
+ * only to the single caller that wins, so inventory can never be credited twice
+ * — and never for an order that has been paid.
+ */
+export async function claimDbOrderStockRelease(id: number): Promise<Order | undefined> {
+  if (!isDbConfigured) {
+    const order = sandboxOrders.find((candidate) => candidate.id === id);
+    if (!order || !order.stockReserved || order.stockReleased || order.paymentStatus === 'paid') {
+      return undefined;
+    }
+    order.stockReleased = true;
+    return order;
+  }
+
+  await ensureOrdersSchema();
+  const rows = await sql`
+    UPDATE orders SET stock_released = TRUE
+    WHERE id = ${id}
+      AND stock_reserved = TRUE
+      AND stock_released = FALSE
+      AND payment_status <> 'paid'
+    RETURNING *;
+  `;
+  return rows.length > 0 ? mapOrderRow(rows[0]) : undefined;
+}
+
+/** Undoes a stock-release claim when the inventory write itself failed. */
+export async function unclaimDbOrderStockRelease(id: number): Promise<void> {
+  if (!isDbConfigured) {
+    const order = sandboxOrders.find((candidate) => candidate.id === id);
+    if (order) order.stockReleased = false;
+    return;
+  }
+
+  try {
+    await sql`UPDATE orders SET stock_released = FALSE WHERE id = ${id}`;
+  } catch (error) {
+    console.error(`Could not roll back the stock-release claim on order #${id}:`, error);
+  }
+}
+
+/**
+ * Flips a released reservation back to held, after a late payment forced us to
+ * take the units out of inventory a second time.
+ */
+export async function reclaimDbOrderStockReservation(id: number): Promise<void> {
+  if (!isDbConfigured) {
+    const order = sandboxOrders.find((candidate) => candidate.id === id);
+    if (order) order.stockReleased = false;
+    return;
+  }
+
+  try {
+    await sql`UPDATE orders SET stock_reserved = TRUE, stock_released = FALSE WHERE id = ${id}`;
+  } catch (error) {
+    console.error(`Could not re-hold the stock reservation on order #${id}:`, error);
+  }
+}
+
+/** Appends an operational note to an order without touching its payment state. */
+export async function annotateDbOrderPayment(id: number, note: string): Promise<void> {
+  if (!isDbConfigured) {
+    const order = sandboxOrders.find((candidate) => candidate.id === id);
+    if (order) order.paymentNote = order.paymentNote ? `${order.paymentNote} | ${note}` : note;
+    return;
+  }
+
+  try {
+    await sql`
+      UPDATE orders
+      SET payment_note = CASE
+        WHEN payment_note IS NULL OR payment_note = '' THEN ${note}
+        WHEN payment_note LIKE ${'%' + note + '%'} THEN payment_note
+        ELSE payment_note || ' | ' || ${note}
+      END
+      WHERE id = ${id}
+    `;
+  } catch (error) {
+    console.error(`Could not annotate order #${id}:`, error);
+  }
+}
+
+/** Claims the right to send this order's confirmation SMS, exactly once. */
+export async function claimDbOrderSms(id: number): Promise<boolean> {
+  if (!isDbConfigured) {
+    const order = sandboxOrders.find((candidate) => candidate.id === id);
+    if (!order || order.smsSent) return false;
+    order.smsSent = true;
+    return true;
+  }
+
+  try {
+    await ensureOrdersSchema();
+    const rows = await sql`
+      UPDATE orders SET sms_sent = TRUE
+      WHERE id = ${id} AND sms_sent = FALSE
+      RETURNING id
+    `;
+    return rows.length > 0;
+  } catch (error) {
+    console.error(`Could not claim the SMS slot for order #${id}:`, error);
+    return false;
+  }
+}
+
+/** Releases the SMS claim so a later run can retry after a delivery failure. */
+export async function releaseDbOrderSmsClaim(id: number): Promise<void> {
+  if (!isDbConfigured) {
+    const order = sandboxOrders.find((candidate) => candidate.id === id);
+    if (order) order.smsSent = false;
+    return;
+  }
+
+  try {
+    await sql`UPDATE orders SET sms_sent = FALSE WHERE id = ${id}`;
+  } catch (error) {
+    console.error(`Could not release the SMS claim on order #${id}:`, error);
+  }
+}
+
+/**
+ * Card orders still waiting on money, oldest first. `minAgeSeconds` keeps the
+ * sweep away from customers who are mid-flow on a mobile-money OTP prompt.
+ */
+export async function listDbOrdersAwaitingPayment(options: {
+  minAgeSeconds: number;
+  limit: number;
+}): Promise<Order[]> {
+  const cutoff = Date.now() - options.minAgeSeconds * 1000;
+
+  if (!isDbConfigured) {
+    return sandboxOrders
+      .filter(
+        (order) =>
+          order.paymentMethod === 'PAYSTACK' &&
+          order.paymentStatus === 'unpaid' &&
+          new Date(order.createdAt).getTime() <= cutoff
+      )
+      .slice(0, options.limit);
+  }
+
+  try {
+    await ensureOrdersSchema();
+    const rows = await sql`
+      SELECT * FROM orders
+      WHERE payment_method = 'PAYSTACK'
+        AND payment_status = 'unpaid'
+        AND created_at <= ${new Date(cutoff).toISOString()}
+      ORDER BY created_at ASC
+      LIMIT ${options.limit}
+    `;
+    return rows.map(mapOrderRow);
+  } catch (error) {
+    console.error('Failed to list orders awaiting payment:', error);
+    return [];
+  }
+}
+
+/**
+ * Paid orders whose confirmation SMS never went out — because the gateway was
+ * down, or the process died between the payment and the send. The sweep retries
+ * these so a paying customer is never left without their tracking reference.
+ */
+export async function listDbOrdersMissingSms(limit: number): Promise<Order[]> {
+  if (!isDbConfigured) {
+    return sandboxOrders.filter((order) => order.paymentStatus === 'paid' && !order.smsSent).slice(0, limit);
+  }
+
+  try {
+    await ensureOrdersSchema();
+    const rows = await sql`
+      SELECT * FROM orders
+      WHERE payment_status = 'paid' AND sms_sent = FALSE
+      ORDER BY created_at ASC
+      LIMIT ${limit}
+    `;
+    return rows.map(mapOrderRow);
+  } catch (error) {
+    console.error('Failed to list orders missing their confirmation SMS:', error);
+    return [];
+  }
+}
+
+/** Updates fulfilment status only. Payment state is never touched from here. */
+export async function setDbOrderStatus(id: number, status: string): Promise<Order | undefined> {
+  if (!isDbConfigured) {
+    const order = sandboxOrders.find((candidate) => candidate.id === id);
+    if (!order) return undefined;
+    order.status = status;
+    return order;
+  }
+
+  await ensureOrdersSchema();
+  const rows = await sql`
+    UPDATE orders SET status = ${status} WHERE id = ${id} RETURNING *;
+  `;
+  return rows.length > 0 ? mapOrderRow(rows[0]) : undefined;
 }
 
 export async function deleteDbOrder(id: number): Promise<boolean> {

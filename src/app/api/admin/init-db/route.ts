@@ -121,7 +121,43 @@ export async function POST() {
         total_quantity INTEGER NOT NULL DEFAULT 1,
         subtotal NUMERIC,
         service_charge NUMERIC,
-        created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+
+        -- Payment ledger. Money state is tracked separately from the fulfilment
+        -- status so a dropped connection after payment can never be mistaken
+        -- for an unfulfilled order. See src/lib/payment-service.ts.
+        payment_status VARCHAR(20) NOT NULL DEFAULT 'unpaid',
+        payment_reference VARCHAR(120),
+        paid_at TIMESTAMP WITH TIME ZONE,
+        amount_paid NUMERIC,
+        payment_channel VARCHAR(60),
+        paystack_transaction_id VARCHAR(64),
+        last_verified_at TIMESTAMP WITH TIME ZONE,
+        payment_verified_by VARCHAR(20),
+        gateway_response TEXT,
+        payment_note TEXT,
+        stock_reserved BOOLEAN NOT NULL DEFAULT TRUE,
+        stock_released BOOLEAN NOT NULL DEFAULT FALSE,
+        sms_sent BOOLEAN NOT NULL DEFAULT FALSE
+      );
+    `;
+
+    // One payment reference can only ever belong to one order.
+    await sql`
+      CREATE UNIQUE INDEX IF NOT EXISTS orders_payment_reference_uidx
+      ON orders (payment_reference) WHERE payment_reference IS NOT NULL
+    `;
+
+    await sql`
+      CREATE INDEX IF NOT EXISTS orders_payment_status_idx
+      ON orders (payment_status, created_at DESC)
+    `;
+
+    // 5.6 Migration bookkeeping, so one-time backfills stay one-time.
+    await sql`
+      CREATE TABLE IF NOT EXISTS schema_migrations (
+        name VARCHAR(160) PRIMARY KEY,
+        applied_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
       );
     `;
 

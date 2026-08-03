@@ -11,7 +11,15 @@ import { calcOrderTotal, calcServiceCharge, formatCurrency } from '@/lib/format'
 import { useWishlistStore } from '@/store/wishlist.store';
 import { useCartStore } from '@/store/cart.store';
 import type { Product } from '@/types/product';
-import { loadPaystackScript } from '@/lib/paystack';
+import {
+  claimPendingCheckoutRecovery,
+  confirmPayment,
+  forgetPendingCheckout,
+  reportCheckoutClosed,
+  runPaystackCheckout,
+  startCheckout,
+  type CheckoutSession
+} from '@/lib/checkout-client';
 import { getVariantStockLabel, getVariantStockLimit, isVariantInStock } from '@/lib/inventory';
 import styles from './ProductDetail.module.css';
 
@@ -124,8 +132,43 @@ export function ProductDetail({ product }: ProductDetailProps) {
   // Checkout flow states
   const [showCheckout, setShowCheckout] = useState(false);
   const [checkoutLoading, setCheckoutLoading] = useState(false);
+  const [checkoutStage, setCheckoutStage] = useState('');
   const [checkoutSuccess, setCheckoutSuccess] = useState<any>(null);
-  
+  /** Payment went through, but this browser never got the confirmation back. */
+  const [pendingNotice, setPendingNotice] = useState<{ orderNumber: string; reference: string } | null>(null);
+
+  /**
+   * Recovers a checkout this browser walked away from — a reload mid-payment, a
+   * crashed tab, a phone that lost signal on the callback. The reference was
+   * stored before Paystack opened, so the receipt is still reachable.
+   */
+  useEffect(() => {
+    // One recovery per page load, shared with the cart drawer.
+    const pending = claimPendingCheckoutRecovery();
+    if (!pending) return;
+
+    let cancelled = false;
+
+    (async () => {
+      const result = await confirmPayment(pending.reference, undefined, 1);
+      if (cancelled) return;
+
+      if (result.paid && result.order) {
+        forgetPendingCheckout();
+        setCheckoutSuccess(result.order);
+        setPendingNotice(null);
+      } else if (result.settled) {
+        forgetPendingCheckout();
+      } else {
+        setPendingNotice({ orderNumber: pending.orderNumber, reference: pending.reference });
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const [formData, setFormData] = useState({
     fullName: '',
     phone: '',
@@ -231,47 +274,47 @@ export function ProductDetail({ product }: ProductDetailProps) {
     openCart();
   };
 
-  const completeOrderSubmit = async (paymentRef?: string) => {
-    try {
-      const response = await fetch('/api/orders', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          productId: product.id,
-          productName: product.name,
-          productSlug: product.slug,
-          selectedColor: selectedColorString,
-          selectedSize,
-          customerName: formData.fullName,
-          customerPhone: formData.phone,
-          customerEmail: formData.email,
-          shippingAddress: formData.address,
-          shippingCity: formData.city,
-          paymentMethod: formData.paymentMethod,
-          momoNetwork: formData.paymentMethod === 'MOMO' ? formData.momoNetwork : undefined,
-          momoNumber: formData.paymentMethod === 'MOMO' ? formData.momoNumber : undefined,
-          paymentReference: formData.paymentMethod === 'PAYSTACK' ? paymentRef : undefined,
-          items: selectedItems
-        })
-      });
+  const clearLocalSelection = () => {
+    setQuantities({});
+    localStorage.removeItem(`redox_sel_qty_${product.id}`);
+    setShowCheckout(false);
+  };
 
-      const resData = await response.json();
-      if (!response.ok) {
-        throw new Error(resData.error || 'Failed to place order.');
-      }
+  /**
+   * Confirms a completed payment and shows the receipt.
+   *
+   * A confirmation that never arrives is not treated as a failure: the order
+   * row was written before Paystack opened, and the gateway's webhook settles
+   * it server-side regardless of what happens to this page.
+   */
+  const finishPayment = async (session: CheckoutSession, reference: string) => {
+    setCheckoutStage('Confirming your payment…');
 
-      // The confirmed order carries its own line items, so clearing the local
-      // selection here no longer blanks out the success summary.
-      setCheckoutSuccess(resData.order);
-      setQuantities({});
-      localStorage.removeItem(`redox_sel_qty_${product.id}`);
-      setShowCheckout(false);
-    } catch (err: any) {
-      console.error(err);
-      setError(err.message || 'Failed to submit order. Please try again.');
-    } finally {
-      setCheckoutLoading(false);
+    const result = await confirmPayment(reference, (attempt) => {
+      if (attempt > 2) setCheckoutStage(`Still confirming with Paystack… (${attempt})`);
+    });
+
+    setCheckoutLoading(false);
+    setCheckoutStage('');
+
+    if (result.paid && result.order) {
+      forgetPendingCheckout();
+      setPendingNotice(null);
+      setError('');
+      setCheckoutSuccess(result.order);
+      clearLocalSelection();
+      return;
     }
+
+    if (result.outcome === 'failed' || result.outcome === 'abandoned') {
+      forgetPendingCheckout();
+      setError(result.message || 'That payment did not go through. Nothing was charged — you can try again.');
+      return;
+    }
+
+    setPendingNotice({ orderNumber: session.orderNumber, reference });
+    setError('');
+    clearLocalSelection();
   };
 
   const handleOrderSubmit = async (e: React.FormEvent) => {
@@ -283,51 +326,69 @@ export function ProductDetail({ product }: ProductDetailProps) {
 
     setCheckoutLoading(true);
     setError('');
+    setCheckoutStage('Reserving your items…');
 
-    const paystackKey = process.env.NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY;
+    let session: CheckoutSession;
 
-    if (formData.paymentMethod === 'PAYSTACK') {
-      if (!paystackKey || paystackKey === 'your_paystack_public_key_here') {
-        setError('Live checkout is currently disabled. Please configure your public key.');
-        setCheckoutLoading(false);
-        return;
-      }
-
-      try {
-        const paystack = await loadPaystackScript();
-        if (!paystack) {
-          throw new Error('Paystack secure payment library failed to load. Please check your internet connection or disable ad-blockers.');
-        }
-
-        const handler = paystack.setup({
-          key: paystackKey,
+    try {
+      // The order is recorded server-side here, before any money moves.
+      session = await startCheckout(
+        {
+          fullName: formData.fullName,
+          phone: formData.phone,
           email: formData.email,
-          amount: Math.round(calcOrderTotal(totalPrice) * 100), // pesewas — includes 2% service charge
-          currency: 'GHS',
-          reference: 'RDX-' + Math.floor(Math.random() * 1000000000 + 1),
-          callback: (response: any) => {
-            completeOrderSubmit(response.reference).catch((err) => {
-              console.error('Failed to complete order post-payment:', err);
-            });
-          },
-          onClose: () => {
-            setCheckoutLoading(false);
-            setError('Paystack transaction was cancelled by the user.');
-          }
-        });
-
-        handler.openIframe();
-        return;
-      } catch (err: any) {
-        console.error(err);
-        setError(err.message || 'Paystack initialization failed. Please use another method.');
-        setCheckoutLoading(false);
-        return;
-      }
+          address: formData.address,
+          city: formData.city
+        },
+        selectedItems.map((item) => ({
+          productId: item.productId,
+          productSlug: item.productSlug,
+          variantId: item.variantId,
+          color: item.color,
+          size: item.size,
+          quantity: item.quantity
+        }))
+      );
+    } catch (err: any) {
+      setError(err.message || 'We could not start your checkout. Please try again.');
+      setCheckoutLoading(false);
+      setCheckoutStage('');
+      return;
     }
 
-    // Default flow for COD / MOMO
-    await completeOrderSubmit();
+    setCheckoutStage('Opening secure payment…');
+
+    await runPaystackCheckout(
+      session,
+      {
+        fullName: formData.fullName,
+        phone: formData.phone,
+        email: formData.email,
+        address: formData.address,
+        city: formData.city
+      },
+      {
+        onPaid: (reference) => {
+          void finishPayment(session, reference);
+        },
+        onCancelled: (reference) => {
+          reportCheckoutClosed(reference);
+          forgetPendingCheckout();
+          setCheckoutLoading(false);
+          setCheckoutStage('');
+          setError('Payment was cancelled. Your selection is untouched — you can try again anytime.');
+        },
+        onError: (message) => {
+          forgetPendingCheckout();
+          setCheckoutLoading(false);
+          setCheckoutStage('');
+          setError(message);
+        },
+        onRedirect: () => {
+          setCheckoutStage('Taking you to Paystack…');
+        }
+      }
+    );
   };
 
   return (
@@ -757,8 +818,55 @@ export function ProductDetail({ product }: ProductDetailProps) {
             </div>
           )}
 
+          {/* Payment taken, confirmation not received in this browser.
+              The order is already recorded server-side and the Paystack webhook
+              settles it, so this reads as reassurance rather than an error. */}
+          {pendingNotice && !checkoutSuccess && (
+            <div className={styles.successCard} style={{ borderColor: 'rgba(245, 158, 11, 0.35)' }}>
+              <div className={styles.successIcon}>
+                <svg viewBox="0 0 24 24" width="40" height="40" fill="none" stroke="#f59e0b" strokeWidth="2.5">
+                  <circle cx="12" cy="12" r="9" />
+                  <polyline points="12 7 12 12 15 14" />
+                </svg>
+              </div>
+              <h2 className={styles.successTitle}>YOUR ORDER IS SAVED</h2>
+              <p className={styles.successMessage}>
+                Order <span className={styles.refCode}>#{pendingNotice.orderNumber}</span> is recorded
+                and we&apos;re finalising the payment confirmation with Paystack. You&apos;ll get an SMS
+                as soon as it clears — there is nothing more to do, and you will not be charged twice.
+              </p>
+              <div className={styles.successSummary}>
+                <p><strong>Payment reference:</strong> {pendingNotice.reference}</p>
+              </div>
+              <p className={styles.successFooter}>
+                Keep this reference — you can check the live status any time on the{' '}
+                <Link href={`/track-order?ref=${pendingNotice.orderNumber}`}>track order</Link> page.
+              </p>
+              <button
+                onClick={async () => {
+                  setCheckoutStage('Checking…');
+                  const result = await confirmPayment(pendingNotice.reference);
+                  setCheckoutStage('');
+                  if (result.paid && result.order) {
+                    forgetPendingCheckout();
+                    setPendingNotice(null);
+                    setCheckoutSuccess(result.order);
+                  } else if (result.settled) {
+                    forgetPendingCheckout();
+                    setPendingNotice(null);
+                    setError(result.message);
+                  }
+                }}
+                className={styles.resetButton}
+                type="button"
+              >
+                {checkoutStage || 'Check payment status'}
+              </button>
+            </div>
+          )}
+
           {/* Direct Checkout Form (Unfolds smoothly when active) */}
-          {showCheckout && !checkoutSuccess && (
+          {showCheckout && !checkoutSuccess && !pendingNotice && (
             <div className={styles.directCheckout} ref={checkoutRef}>
               <div className={styles.checkoutHeader}>
                 SECURE CHECKOUT — {formatCurrency(calcOrderTotal(totalPrice))}
@@ -871,7 +979,9 @@ export function ProductDetail({ product }: ProductDetailProps) {
                   disabled={checkoutLoading}
                   className={styles.placeOrderButton}
                 >
-                  {checkoutLoading ? 'Processing Secure Order...' : `Confirm & Pay ${formatCurrency(calcOrderTotal(totalPrice))}`}
+                  {checkoutLoading
+                    ? checkoutStage || 'Processing Secure Order…'
+                    : `Confirm & Pay ${formatCurrency(calcOrderTotal(totalPrice))}`}
                 </button>
               </form>
             </div>
@@ -899,7 +1009,15 @@ export function ProductDetail({ product }: ProductDetailProps) {
                 ))}
                 <p><strong>Total:</strong> {formatCurrency(checkoutSuccess.price)}</p>
                 <p><strong>Shipping to:</strong> {checkoutSuccess.shippingAddress}, {checkoutSuccess.shippingCity}</p>
-                <p><strong>Payment:</strong> Paystack Secure Checkout</p>
+                <p>
+                  <strong>Payment:</strong>{' '}
+                  {checkoutSuccess.paymentStatus === 'paid'
+                    ? `Paid via Paystack${checkoutSuccess.paymentChannel ? ` (${String(checkoutSuccess.paymentChannel).replace(/_/g, ' ')})` : ''}`
+                    : 'Awaiting confirmation'}
+                </p>
+                {checkoutSuccess.reference && (
+                  <p><strong>Payment ref:</strong> {checkoutSuccess.reference}</p>
+                )}
               </div>
               <p className={styles.successFooter}>
                 Our sales team will contact you via <strong>{checkoutSuccess.customerPhone}</strong> shortly to finalize dispatch and shipping details!
