@@ -14,6 +14,7 @@ export interface CustomerReceipt {
   totalQuantity: number;
   subtotal: number;
   serviceCharge: number;
+  discount: number;
   price: number;
   customerName: string;
   customerPhone: string;
@@ -102,6 +103,7 @@ export function toCustomerReceipt(order: Order): CustomerReceipt {
     totalQuantity: order.totalQuantity,
     subtotal: order.subtotal,
     serviceCharge: order.serviceCharge,
+    discount: order.discount,
     price: order.price,
     customerName: order.customerName,
     customerPhone: order.customerPhone,

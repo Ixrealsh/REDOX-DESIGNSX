@@ -7,6 +7,7 @@ import type { OrderPaymentSummary } from '@/lib/order-receipt';
 import type { WaitlistSignup } from '@/lib/catalog-db';
 import { formatCurrency } from '@/lib/format';
 import { getProductStockSummary } from '@/lib/inventory';
+import { CreateOrderModal, type CreatedOrderResult } from './CreateOrderModal';
 import styles from './Admin.module.css';
 
 interface AdminDashboardProps {
@@ -68,7 +69,7 @@ function ghs(amount: number): string {
 // Payment presentation
 // ----------------------------------------------------------------
 
-export type PaymentFilter = 'all' | 'paid' | 'unpaid' | 'attention' | 'failed';
+export type PaymentFilter = 'all' | 'paid' | 'unpaid' | 'attention' | 'failed' | 'instore';
 
 interface PaymentBadgeStyle {
   label: string;
@@ -114,6 +115,8 @@ function matchesPaymentFilter(order: Order, filter: PaymentFilter): boolean {
       return needsAttention(order);
     case 'failed':
       return order.paymentStatus === 'failed' || order.paymentStatus === 'abandoned';
+    case 'instore':
+      return order.source === 'admin';
     default:
       return true;
   }
@@ -122,6 +125,28 @@ function matchesPaymentFilter(order: Order, filter: PaymentFilter): boolean {
 function formatChannel(channel?: string): string {
   if (!channel) return '';
   return channel.replace(/_/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+/**
+ * How the money was taken, in plain words. Manual orders introduced values the
+ * original three-way check did not know about, and an unlabelled method reads as
+ * a bug to whoever is scanning the table.
+ */
+function paymentMethodLabel(order: Order): string {
+  switch (order.paymentMethod) {
+    case 'PAYSTACK':
+      return `Paystack${order.paymentChannel ? ` · ${formatChannel(order.paymentChannel)}` : ''}`;
+    case 'COD':
+      return 'Cash on delivery';
+    case 'CASH':
+      return 'Cash (in person)';
+    case 'BANK':
+      return 'Bank transfer';
+    case 'MOMO':
+      return `Mobile money${order.momoNetwork ? ` · ${order.momoNetwork}` : ''}`;
+    default:
+      return order.paymentMethod || 'Unknown';
+  }
 }
 
 /** Build a self-contained, white, print-ready order slip for a single order. */
@@ -234,6 +259,21 @@ function buildOrderSlipHtml(order: Order, origin: string): string {
       </div>
     </div>
 
+    ${
+      order.discount > 0
+        ? `<div class="gap">
+      <div class="field">
+        <div class="l">Subtotal</div>
+        <div class="d">${ghs(order.subtotal)}</div>
+      </div>
+      <div class="field">
+        <div class="l">Discount</div>
+        <div class="d">- ${ghs(order.discount)}</div>
+      </div>
+    </div>`
+        : ''
+    }
+
     <div class="total">
       <span class="k">Total Amount</span>
       <span class="v">${ghs(order.price)}</span>
@@ -278,6 +318,9 @@ export function AdminDashboard({
   const [busyOrderId, setBusyOrderId] = useState<number | null>(null);
   
   // Form Modal States
+  const [showCreateOrderModal, setShowCreateOrderModal] = useState(false);
+  /** Newly created order, briefly highlighted in the table so it is easy to find. */
+  const [highlightOrderId, setHighlightOrderId] = useState<number | null>(null);
   const [showProductModal, setShowProductModal] = useState(false);
   const [showDropModal, setShowDropModal] = useState(false);
   const [showCollectionModal, setShowCollectionModal] = useState(false);
@@ -529,6 +572,38 @@ export function AdminDashboard({
     }
   };
 
+  /**
+   * Folds a hand-written order into the table the moment it exists, so the
+   * merchant sees it land rather than having to trust that it did.
+   */
+  const handleOrderCreated = async (result: CreatedOrderResult) => {
+    setActiveTab('orders');
+    setPaymentFilter('all');
+    setHighlightOrderId(result.order.id);
+    await refreshOrders({ silent: true });
+
+    triggerNotification(
+      result.duplicate
+        ? `Order #RD-${result.order.id} already existed — it was not created twice.`
+        : `Order #RD-${result.order.id} created.${result.smsSent ? ' Customer notified by SMS.' : ' SMS not delivered.'}`,
+      result.smsSent || result.duplicate ? 'success' : 'error'
+    );
+  };
+
+  /** Sends the confirmation again for an order whose text never arrived. */
+  const handleResendSms = async (order: Order) => {
+    setBusyOrderId(order.id);
+    try {
+      const data = await postOrderAction({ action: 'resendSms', orderId: order.id });
+      patchOrder(data.order, order.id);
+      triggerNotification(data.message, data.smsSent ? 'success' : 'error');
+    } catch (err: any) {
+      triggerNotification(err.message || 'Could not send that text.', 'error');
+    } finally {
+      setBusyOrderId(null);
+    }
+  };
+
   const handlePrintOrder = (order: Order) => {
     const html = buildOrderSlipHtml(order, window.location.origin);
     const printWindow = window.open('', '_blank', 'width=820,height=1000');
@@ -578,6 +653,14 @@ export function AdminDashboard({
     refreshOrders();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // The green flash on a freshly created order is a "here it is" cue, not a
+  // permanent state — leave it up and the table slowly fills with them.
+  useEffect(() => {
+    if (highlightOrderId === null) return;
+    const timer = setTimeout(() => setHighlightOrderId(null), 6000);
+    return () => clearTimeout(timer);
+  }, [highlightOrderId]);
 
   // Initialize and Seed Database
   const handleInitDb = async () => {
@@ -1436,8 +1519,16 @@ export function AdminDashboard({
       {activeTab === 'orders' && (
         <div>
           <div className={styles.sectionHeader}>
-            <h2 className={styles.sectionTitle}>Customer Placed Orders (Direct Checkout)</h2>
+            <h2 className={styles.sectionTitle}>Customer Orders</h2>
             <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+              <button
+                className={styles.saveButton}
+                onClick={() => setShowCreateOrderModal(true)}
+                style={{ background: '#10b981', color: '#04140e' }}
+                title="Record an order taken in person — no payment gateway, SMS sent to the customer."
+              >
+                + New Order
+              </button>
               <button
                 className={styles.saveButton}
                 onClick={handleReconcilePayments}
@@ -1521,7 +1612,8 @@ export function AdminDashboard({
                 ['paid', `Paid (${orders.filter((o) => o.paymentStatus === 'paid').length})`],
                 ['unpaid', `Unpaid (${orders.filter((o) => o.paymentStatus === 'unpaid').length})`],
                 ['attention', `Needs checking (${orders.filter(needsAttention).length})`],
-                ['failed', `Failed (${orders.filter((o) => o.paymentStatus === 'failed' || o.paymentStatus === 'abandoned').length})`]
+                ['failed', `Failed (${orders.filter((o) => o.paymentStatus === 'failed' || o.paymentStatus === 'abandoned').length})`],
+                ['instore', `In-store (${orders.filter((o) => o.source === 'admin').length})`]
               ] as [PaymentFilter, string][]).map(([key, label]) => (
                 <button
                   key={key}
@@ -1550,7 +1642,8 @@ export function AdminDashboard({
           {orders.length === 0 ? (
             <div style={{ padding: 'var(--space-8) var(--space-4)', textAlign: 'center', background: '#090909', border: '1px dashed rgba(255,255,255,0.08)', borderRadius: '4px' }}>
               <p style={{ color: '#888', fontSize: '0.9rem' }}>
-                Zero customer orders parsed yet. Customer direct checkout orders placed on the product pages will appear here live!
+                No orders yet. Checkouts from the website land here live — and you can record an
+                in-person sale yourself with <strong style={{ color: '#10b981' }}>+ New Order</strong>.
               </p>
             </div>
           ) : (
@@ -1579,12 +1672,38 @@ export function AdminDashboard({
                         // An unpaid card order left hanging gets a red rail down
                         // its left edge so it cannot be missed while scanning.
                         borderLeft: needsAttention(o) ? '3px solid #ef4444' : '3px solid transparent',
-                        background: o.paymentStatus === 'paid' ? 'transparent' : 'rgba(245, 158, 11, 0.03)',
+                        background:
+                          highlightOrderId === o.id
+                            ? 'rgba(16, 185, 129, 0.1)'
+                            : o.paymentStatus === 'paid'
+                            ? 'transparent'
+                            : 'rgba(245, 158, 11, 0.03)',
                         opacity: busyOrderId === o.id ? 0.55 : 1,
-                        transition: 'opacity 0.15s'
+                        transition: 'opacity 0.15s, background 0.3s'
                       }}
                     >
-                      <td style={{ padding: 'var(--space-3)', color: '#555' }}>#RD-{o.id}</td>
+                      <td style={{ padding: 'var(--space-3)', color: '#555' }}>
+                        <div>#RD-{o.id}</div>
+                        {o.source === 'admin' && (
+                          <div
+                            style={{
+                              display: 'inline-block',
+                              marginTop: '4px',
+                              background: 'rgba(16, 185, 129, 0.14)',
+                              color: '#10b981',
+                              border: '1px solid rgba(16, 185, 129, 0.35)',
+                              borderRadius: '3px',
+                              padding: '1px 5px',
+                              fontSize: '0.58rem',
+                              fontWeight: 'bold',
+                              letterSpacing: '0.08em'
+                            }}
+                            title="Recorded by hand in the admin panel"
+                          >
+                            IN-STORE
+                          </div>
+                        )}
+                      </td>
                       <td style={{ padding: 'var(--space-3)' }}>
                         <div style={{ fontWeight: 'bold', color: '#fff' }}>{o.customerName}</div>
                         <div style={{ color: '#aaa', fontSize: '0.75rem' }}>{o.customerPhone}</div>
@@ -1619,7 +1738,12 @@ export function AdminDashboard({
                       <td style={{ padding: 'var(--space-3)', color: '#fff', fontWeight: 'bold', whiteSpace: 'nowrap' }}>
                         GH₵{o.price.toFixed(2)}
                         <div style={{ color: '#666', fontSize: '0.7rem', fontWeight: 'normal', marginTop: '2px' }}>
-                          sub GH₵{o.subtotal.toFixed(2)} + fee GH₵{o.serviceCharge.toFixed(2)}
+                          sub GH₵{o.subtotal.toFixed(2)}
+                          {o.discount > 0 ? (
+                            <span style={{ color: '#10b981' }}> − disc GH₵{o.discount.toFixed(2)}</span>
+                          ) : (
+                            <> + fee GH₵{o.serviceCharge.toFixed(2)}</>
+                          )}
                         </div>
                       </td>
                       <td style={{ padding: 'var(--space-3)' }}>
@@ -1651,13 +1775,7 @@ export function AdminDashboard({
                               </span>
 
                               <div style={{ color: '#999', fontSize: '0.7rem', lineHeight: 1.6 }}>
-                                <div>
-                                  {o.paymentMethod === 'PAYSTACK'
-                                    ? `Paystack${o.paymentChannel ? ` · ${formatChannel(o.paymentChannel)}` : ''}`
-                                    : o.paymentMethod === 'COD'
-                                    ? 'Cash on delivery'
-                                    : `Mobile money${o.momoNetwork ? ` · ${o.momoNetwork}` : ''}`}
-                                </div>
+                                <div>{paymentMethodLabel(o)}</div>
 
                                 {o.paymentStatus === 'paid' && (
                                   <div style={{ color: '#10b981' }}>
@@ -1761,6 +1879,37 @@ export function AdminDashboard({
                                     Undo paid
                                   </button>
                                 )}
+
+                                {/* An undelivered confirmation is invisible unless
+                                    it is surfaced here — the customer simply never
+                                    hears from us.
+
+                                    Offered only where a confirmation is truthful:
+                                    money received, or an order the merchant took
+                                    themselves. Texting "order confirmed" to someone
+                                    who abandoned checkout would be a lie. */}
+                                {!o.smsSent && (o.paymentStatus === 'paid' || o.source === 'admin') && (
+                                  <button
+                                    onClick={() => handleResendSms(o)}
+                                    disabled={busy}
+                                    title="Send this order's confirmation text to the customer again."
+                                    style={{
+                                      background: 'rgba(245, 158, 11, 0.15)',
+                                      color: '#f59e0b',
+                                      border: '1px solid rgba(245, 158, 11, 0.35)',
+                                      padding: '4px 8px',
+                                      fontSize: '0.66rem',
+                                      borderRadius: '4px',
+                                      cursor: busy ? 'wait' : 'pointer',
+                                      fontWeight: 'bold',
+                                      fontFamily: 'var(--font-mono), monospace',
+                                      whiteSpace: 'nowrap'
+                                    }}
+                                    type="button"
+                                  >
+                                    ✉ Send SMS
+                                  </button>
+                                )}
                               </div>
                             </div>
                           );
@@ -1855,6 +2004,16 @@ export function AdminDashboard({
             </div>
           )}
         </div>
+      )}
+
+      {/* In-person order creation */}
+      {showCreateOrderModal && (
+        <CreateOrderModal
+          onClose={() => setShowCreateOrderModal(false)}
+          onCreated={handleOrderCreated}
+          onPrint={handlePrintOrder}
+          products={products}
+        />
       )}
 
       {/* Product Creation / Edition Modal */}

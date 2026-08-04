@@ -784,6 +784,505 @@
   border: 1px solid rgba(215, 38, 56, 0.25);
 }
 
+/* ============================================================
+   NEW ORDER (in-person sale)
+
+   Phone-first: the merchant is usually standing with a customer,
+   so every target is thumb-sized and the whole flow is one column.
+   ============================================================ */
+.orderModal {
+  max-width: 720px;
+  max-height: 92vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.orderModalBody {
+  padding: var(--space-5) var(--space-6);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+.orderModalFooter {
+  padding: var(--space-4) var(--space-6);
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
+  background: #0b0b0b;
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.orderBlockTitle {
+  font-size: 0.65rem;
+  font-weight: 700;
+  font-family: var(--font-mono), monospace;
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  color: var(--color-steel);
+  margin: 0 0 var(--space-3);
+}
+
+/* --- Product picker --- */
+.pickerList {
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 6px;
+  max-height: 320px;
+  overflow-y: auto;
+  background: rgba(255, 255, 255, 0.01);
+}
+
+.pickerRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  padding: 10px var(--space-3);
+  background: none;
+  border: none;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  cursor: pointer;
+  text-align: left;
+  transition: background var(--duration-fast) var(--ease-out);
+}
+
+.pickerRow:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.pickerRowActive {
+  background: rgba(215, 38, 56, 0.08);
+}
+
+.pickerThumb {
+  position: relative;
+  width: 42px;
+  height: 42px;
+  flex-shrink: 0;
+  border-radius: 4px;
+  overflow: hidden;
+  background: #141414;
+}
+
+.pickerInfo {
+  min-width: 0;
+  flex: 1;
+}
+
+.pickerName {
+  display: block;
+  color: var(--color-white);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pickerMeta {
+  display: block;
+  color: var(--color-text-muted, #777);
+  font-size: 0.68rem;
+  font-family: var(--font-mono), monospace;
+  margin: 2px 0 0;
+}
+
+.pickerPrice {
+  margin-left: auto;
+  color: var(--color-white);
+  font-family: var(--font-mono), monospace;
+  font-size: var(--text-sm);
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.pickerEmpty {
+  padding: var(--space-5);
+  text-align: center;
+  color: #777;
+  font-size: var(--text-sm);
+}
+
+/* --- Colour / size chips --- */
+.variantPanel {
+  padding: var(--space-3);
+  background: rgba(255, 255, 255, 0.02);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.chipRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: var(--space-3);
+}
+
+.chipRow:last-child {
+  margin-bottom: 0;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: #ddd;
+  border-radius: 4px;
+  padding: 7px 11px;
+  font-size: 0.72rem;
+  font-family: var(--font-mono), monospace;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  transition: all var(--duration-fast) var(--ease-out);
+}
+
+.chip:hover {
+  border-color: rgba(255, 255, 255, 0.35);
+  color: #fff;
+}
+
+.chipActive {
+  background: var(--color-white);
+  border-color: var(--color-white);
+  color: var(--color-void);
+}
+
+.chipSoldOut {
+  color: #6b6b6b;
+  border-style: dashed;
+  border-color: rgba(239, 68, 68, 0.35);
+}
+
+.chipSoldOut:hover {
+  color: #ff8a94;
+  border-color: rgba(239, 68, 68, 0.6);
+}
+
+.chipSwatch {
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  flex-shrink: 0;
+}
+
+.chipHint {
+  font-size: 0.6rem;
+  opacity: 0.7;
+  font-weight: 400;
+}
+
+/* --- Basket --- */
+.basket {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.basketEmpty {
+  padding: var(--space-5);
+  text-align: center;
+  color: #666;
+  font-size: var(--text-sm);
+  border: 1px dashed rgba(255, 255, 255, 0.08);
+  border-radius: 6px;
+}
+
+.basketRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: 10px var(--space-3);
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 6px;
+}
+
+.basketInfo {
+  min-width: 0;
+  flex: 1;
+}
+
+.basketName {
+  color: var(--color-white);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.basketVariant {
+  color: #8b8b8b;
+  font-size: 0.68rem;
+  font-family: var(--font-mono), monospace;
+  margin: 2px 0 0;
+}
+
+.basketLineTotal {
+  color: var(--color-white);
+  font-family: var(--font-mono), monospace;
+  font-size: var(--text-sm);
+  font-weight: 700;
+  white-space: nowrap;
+  min-width: 74px;
+  text-align: right;
+}
+
+.qtyStepper {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 4px;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.qtyButton {
+  background: rgba(255, 255, 255, 0.04);
+  border: none;
+  color: var(--color-white);
+  width: 30px;
+  height: 30px;
+  font-size: 1rem;
+  line-height: 1;
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease-out);
+}
+
+.qtyButton:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.qtyValue {
+  min-width: 30px;
+  text-align: center;
+  font-family: var(--font-mono), monospace;
+  font-weight: 700;
+  font-size: 0.8rem;
+  color: var(--color-white);
+}
+
+.basketRemove {
+  background: none;
+  border: none;
+  color: #666;
+  cursor: pointer;
+  font-size: 1.1rem;
+  line-height: 1;
+  padding: 4px 2px;
+  flex-shrink: 0;
+}
+
+.basketRemove:hover {
+  color: #ef4444;
+}
+
+.overrideTag {
+  display: inline-block;
+  margin-left: 6px;
+  background: rgba(239, 68, 68, 0.15);
+  color: #ff8a94;
+  border-radius: 3px;
+  padding: 1px 5px;
+  font-size: 0.58rem;
+  letter-spacing: 0.06em;
+}
+
+/* --- Segmented controls --- */
+.segmented {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.segment {
+  flex: 1;
+  min-width: 110px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: #999;
+  border-radius: 4px;
+  padding: 11px var(--space-3);
+  font-size: 0.72rem;
+  font-family: var(--font-mono), monospace;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  cursor: pointer;
+  transition: all var(--duration-fast) var(--ease-out);
+}
+
+.segment:hover {
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
+.segmentActive {
+  background: var(--color-white);
+  border-color: var(--color-white);
+  color: var(--color-void);
+}
+
+.segmentActivePaid {
+  background: #10b981;
+  border-color: #10b981;
+  color: #04140e;
+}
+
+/* --- Inline hints --- */
+.hint {
+  font-size: 0.68rem;
+  font-family: var(--font-mono), monospace;
+  margin: 6px 0 0;
+  line-height: 1.5;
+}
+
+.hintOk {
+  color: #10b981;
+}
+
+.hintWarn {
+  color: #f59e0b;
+}
+
+/* --- Totals --- */
+.totalsBox {
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 6px;
+  padding: var(--space-4);
+}
+
+.totalsRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: var(--text-sm);
+  color: #999;
+  padding: 3px 0;
+}
+
+.totalsValue {
+  font-family: var(--font-mono), monospace;
+  color: #ddd;
+}
+
+.totalsGrand {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.totalsGrandLabel {
+  font-size: 0.7rem;
+  font-family: var(--font-mono), monospace;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--color-steel);
+}
+
+.totalsGrandValue {
+  font-family: var(--font-mono), monospace;
+  font-size: 1.5rem;
+  font-weight: 800;
+  color: var(--color-white);
+}
+
+.totalsNote {
+  color: #666;
+  font-size: 0.65rem;
+  margin: 8px 0 0;
+  line-height: 1.5;
+}
+
+/* --- Success panel --- */
+.successPanel {
+  padding: var(--space-8) var(--space-6);
+  text-align: center;
+}
+
+.successRef {
+  font-family: var(--font-mono), monospace;
+  font-size: 2rem;
+  font-weight: 800;
+  color: var(--color-white);
+  margin: var(--space-3) 0 0;
+}
+
+.successTotal {
+  font-family: var(--font-mono), monospace;
+  font-size: 1.1rem;
+  color: #10b981;
+  margin: 6px 0 0;
+}
+
+.successMeta {
+  color: #888;
+  font-size: var(--text-sm);
+  margin: var(--space-2) 0 0;
+  line-height: 1.6;
+}
+
+.successActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  justify-content: center;
+  margin-top: var(--space-6);
+}
+
+.smsBanner {
+  margin-top: var(--space-5);
+  border-radius: 6px;
+  padding: var(--space-3) var(--space-4);
+  font-size: var(--text-sm);
+  line-height: 1.55;
+  text-align: left;
+}
+
+.smsBannerOk {
+  background: rgba(16, 185, 129, 0.08);
+  border: 1px solid rgba(16, 185, 129, 0.28);
+  color: #7ee2bd;
+}
+
+.smsBannerWarn {
+  background: rgba(245, 158, 11, 0.08);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  color: #f6c667;
+}
+
+@media (max-width: 768px) {
+  .orderModalBody {
+    padding: var(--space-4);
+  }
+
+  .orderModalFooter {
+    padding: var(--space-3) var(--space-4);
+  }
+
+  .pickerList {
+    max-height: 260px;
+  }
+
+  .segment {
+    min-width: 0;
+  }
+}
+
 /* --- Custom Keyframes & Utility Animations --- */
 @keyframes fadeIn {
   from { opacity: 0; }

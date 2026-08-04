@@ -40,6 +40,20 @@ export type PricingResult =
   | { ok: true; draft: PricedOrderDraft }
   | { ok: false; status: number; error: string };
 
+export interface PricingOptions {
+  /**
+   * Whether the 2% service charge applies. It covers the payment gateway's cut,
+   * so an in-person sale settled in cash does not carry one. Defaults to true —
+   * every customer-facing path prices exactly as it always has.
+   */
+  applyServiceCharge?: boolean;
+  /**
+   * Prices variants the catalogue believes are sold out. Admin-only: the
+   * merchant is holding the piece and the recorded count is simply stale.
+   */
+  allowOutOfStock?: boolean;
+}
+
 /** Collapse duplicate variant lines so stock checks see the true total quantity. */
 export function mergeLines(lines: RequestedLine[]): RequestedLine[] {
   const merged = new Map<string, RequestedLine>();
@@ -82,7 +96,10 @@ function buildOrderItems(lines: RequestedLine[], productsBySlug: Map<string, Pro
  * Resolves every requested line against the live catalogue, refuses anything
  * out of stock, and prices the basket from the database.
  */
-export async function priceOrderDraft(requestedLines: RequestedLine[]): Promise<PricingResult> {
+export async function priceOrderDraft(
+  requestedLines: RequestedLine[],
+  options: PricingOptions = {}
+): Promise<PricingResult> {
   if (requestedLines.some((line) => !line.productSlug)) {
     return { ok: false, status: 400, error: 'Every order item needs a product.' };
   }
@@ -113,6 +130,10 @@ export async function priceOrderDraft(requestedLines: RequestedLine[]): Promise<
       };
     }
 
+    // The override only forgives a stale count — the variant itself must exist,
+    // which the check above has already established.
+    if (options.allowOutOfStock) continue;
+
     if (!isVariantInStock(variant)) {
       return {
         ok: false,
@@ -133,6 +154,7 @@ export async function priceOrderDraft(requestedLines: RequestedLine[]): Promise<
 
   const items = buildOrderItems(lines, productsBySlug);
   const subtotal = Math.round(items.reduce((sum, item) => sum + item.lineTotal, 0) * 100) / 100;
+  const chargesFee = options.applyServiceCharge !== false;
 
   return {
     ok: true,
@@ -141,8 +163,8 @@ export async function priceOrderDraft(requestedLines: RequestedLine[]): Promise<
       lines,
       uniqueSlugs,
       subtotal,
-      serviceCharge: calcServiceCharge(subtotal),
-      grandTotal: calcOrderTotal(subtotal),
+      serviceCharge: chargesFee ? calcServiceCharge(subtotal) : 0,
+      grandTotal: chargesFee ? calcOrderTotal(subtotal) : subtotal,
       totalQuantity: items.reduce((sum, item) => sum + item.quantity, 0),
       summaryColor: Array.from(new Set(items.map((item) => item.color))).join(', '),
       summarySize: items
@@ -167,7 +189,10 @@ export type ReservationResult =
  * handed back by `releaseOrderStock` (on cancellation, failure, or the
  * reconciliation sweep).
  */
-export async function reserveStockForDraft(draft: PricedOrderDraft): Promise<ReservationResult> {
+export async function reserveStockForDraft(
+  draft: PricedOrderDraft,
+  options: { allowShortfall?: boolean } = {}
+): Promise<ReservationResult> {
   const reserved: { slug: string; selections: StockSelection[] }[] = [];
 
   const rollback = async () => {
@@ -187,7 +212,7 @@ export async function reserveStockForDraft(draft: PricedOrderDraft): Promise<Res
       .map((line) => ({ color: line.color, size: line.size, quantity: line.quantity }));
 
     try {
-      await applyDbProductStockDelta(slug, selections);
+      await applyDbProductStockDelta(slug, selections, { allowShortfall: options.allowShortfall });
       reserved.push({ slug, selections });
     } catch (error: any) {
       await rollback();

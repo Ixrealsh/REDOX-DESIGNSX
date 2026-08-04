@@ -57,8 +57,68 @@ export const directOrderSchema = customerSchema
   })
   .superRefine(requireBasket);
 
+/**
+ * Body accepted by `POST /api/admin/orders/create` — an order the merchant
+ * recorded by hand for someone standing in front of them.
+ *
+ * Deliberately looser than `customerSchema`: only a name and a phone are
+ * required, because the point of this form is that it can be filled in during a
+ * conversation. Everything else the order needs is defaulted server-side.
+ *
+ * The money fields are inputs to a calculation, never the calculation's result.
+ * The server prices every line from the database and works the discount out
+ * itself, exactly as it does for a customer's own checkout.
+ */
+export const adminOrderSchema = z.object({
+  customerName: z.string().trim().min(2).max(255),
+  customerPhone: z.string().trim().min(8).max(100),
+  customerEmail: z.union([z.string().trim().email().max(255), z.literal('')]).optional(),
+  shippingAddress: z.string().trim().max(500).optional(),
+  shippingCity: z.string().trim().max(255).optional(),
+  // Unlike the storefront, there is no single-product fallback shape here, so
+  // every line must name its own product.
+  items: z.array(orderItemSchema.extend({ productSlug: z.string().trim().min(1).max(255) })).min(1).max(50),
+
+  /** True when the money is already in hand; false for pay-on-delivery. */
+  paidNow: z.boolean(),
+  paymentMethod: z.enum(['CASH', 'MOMO', 'BANK', 'COD']),
+  momoNetwork: z.enum(['MTN', 'Telecel', 'AT']).optional(),
+
+  discountType: z.enum(['amount', 'percent']).optional(),
+  discountValue: z.number().nonnegative().max(1_000_000).optional(),
+
+  /** Sells a variant the catalogue believes is sold out. */
+  allowOutOfStock: z.boolean().optional(),
+  fulfilmentStatus: z.enum(['Pending', 'Processing', 'Shipped', 'Delivered']).optional(),
+  note: z.string().trim().max(400).optional(),
+
+  /** Idempotency key. The same key can only ever produce one order. */
+  clientRequestId: z.string().trim().min(8).max(80)
+});
+
 export type CheckoutInitInput = z.infer<typeof checkoutInitSchema>;
 export type DirectOrderInput = z.infer<typeof directOrderSchema>;
+export type AdminOrderInput = z.infer<typeof adminOrderSchema>;
+
+/**
+ * Works out what comes off an order total.
+ *
+ * Lives here, next to the schema, because it is part of validating the request:
+ * a percentage is resolved against the server's own subtotal, and the result can
+ * never exceed it — an order can be free, never negative.
+ */
+export function resolveDiscount(
+  subtotal: number,
+  type: 'amount' | 'percent' | undefined,
+  value: number | undefined
+): number {
+  if (!value || value <= 0 || !Number.isFinite(value)) return 0;
+
+  const raw = type === 'percent' ? (subtotal * Math.min(value, 100)) / 100 : value;
+  const rounded = Math.round(raw * 100) / 100;
+
+  return Math.min(Math.max(rounded, 0), subtotal);
+}
 
 /** Flattens either basket shape into the line list the pricing engine expects. */
 export function toRequestedLines(data: {

@@ -14,7 +14,7 @@ import {
 } from '@/lib/catalog-db';
 import { releaseOrderStock, reserveStockForDraft } from '@/lib/order-pricing';
 import { adjudicatePayment, verifyPaystackTransaction } from '@/lib/paystack-server';
-import { sendOrderSms } from '@/lib/sms';
+import { sendOrderSms, type SmsResult } from '@/lib/sms';
 import type { Order, PaymentVerificationSource } from '@/types/product';
 
 /**
@@ -175,6 +175,33 @@ export async function notifyOrderOnce(order: Order): Promise<boolean> {
     console.error(`[payments] Order #RD-${order.id} SMS threw:`, error);
     await releaseDbOrderSmsClaim(order.id);
     return false;
+  }
+}
+
+/**
+ * Sends an order's confirmation again, on purpose, ignoring the once-only claim.
+ *
+ * The claim exists to stop the automatic paths from texting a customer twice; a
+ * merchant pressing "Resend" has decided the first attempt did not arrive, so it
+ * is deliberately bypassed. The claim is then left in the state that matches
+ * reality, which keeps the reconciliation sweep's retry pass correct: held on
+ * success, free again on failure.
+ */
+export async function resendOrderSms(order: Order): Promise<SmsResult> {
+  try {
+    const result = await sendOrderSms(order);
+
+    if (result.sent) {
+      await claimDbOrderSms(order.id);
+    } else {
+      await releaseDbOrderSmsClaim(order.id);
+    }
+
+    return result;
+  } catch (error) {
+    console.error(`[payments] Manual SMS resend for order #RD-${order.id} threw:`, error);
+    await releaseDbOrderSmsClaim(order.id);
+    return { sent: false, recipients: [], deliveries: [], reason: 'send_failed' };
   }
 }
 

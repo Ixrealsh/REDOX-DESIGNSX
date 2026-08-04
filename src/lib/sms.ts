@@ -252,8 +252,19 @@ export async function sendOrderSms(order: Order): Promise<SmsResult> {
   if (isValidGhanaPhone(customerMsisdn)) {
     recipients.push({ role: 'customer', msisdn: customerMsisdn });
   }
+
+  /**
+   * The admin copy is a heads-up that a sale just came in. An order the merchant
+   * typed into the panel themselves is not news to them, so that copy would be a
+   * paid SMS credit spent on something they already know.
+   *
+   * Read off the order rather than passed in, so a later retry — the
+   * reconciliation sweep's `listDbOrdersMissingSms` pass — makes the same call.
+   */
+  const wantsAdminCopy = order.source !== 'admin';
+
   // Dedupe so an admin ordering from their own number is not billed twice.
-  if (isValidGhanaPhone(adminMsisdn) && adminMsisdn !== customerMsisdn) {
+  if (wantsAdminCopy && isValidGhanaPhone(adminMsisdn) && adminMsisdn !== customerMsisdn) {
     recipients.push({ role: 'admin', msisdn: adminMsisdn });
   }
 

@@ -64,6 +64,15 @@ export type PaymentStatus = 'unpaid' | 'paid' | 'failed' | 'abandoned' | 'refund
 /** Which channel proved the payment. Kept for the admin audit trail. */
 export type PaymentVerificationSource = 'client' | 'webhook' | 'sweep' | 'admin' | 'legacy';
 
+/**
+ * How the order came into existence.
+ *
+ * - `web`   — the customer completed checkout on the site themselves.
+ * - `admin` — a merchant recorded it by hand in the admin panel (walk-in, phone
+ *             order, delivery arranged in person). No gateway was involved.
+ */
+export type OrderSource = 'web' | 'admin';
+
 /** Fulfilment states. `Awaiting Payment` is the entry state for card orders. */
 export const ORDER_STATUSES = [
   'Awaiting Payment',
@@ -90,7 +99,16 @@ export interface Order {
   totalQuantity: number;
   subtotal: number;
   serviceCharge: number;
-  /** Grand total actually charged (subtotal + service charge). */
+  /**
+   * Amount taken off the total. Only in-person orders carry one — web checkout
+   * always charges the catalogue price, so this is 0 there.
+   */
+  discount: number;
+  /**
+   * Grand total actually charged.
+   *   web   → subtotal + service charge
+   *   admin → subtotal − discount (no service charge on an in-person sale)
+   */
   price: number;
   customerName: string;
   customerPhone: string;
@@ -103,6 +121,13 @@ export interface Order {
   momoNumber?: string;
   status: string;
   createdAt: string;
+  source: OrderSource;
+  /**
+   * Caller-supplied key that makes order creation idempotent. A retried or
+   * double-tapped request carrying the same key returns the original order
+   * instead of minting a second one. Unique where present.
+   */
+  clientRequestId?: string;
 
   // ── Payment ledger ─────────────────────────────────────────────
   paymentStatus: PaymentStatus;

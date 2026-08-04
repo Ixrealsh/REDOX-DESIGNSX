@@ -212,8 +212,23 @@ async function persistProduct(product: Product, slug: string) {
   if (index > -1) mockProducts[index] = product;
 }
 
+export interface StockDeltaOptions {
+  /**
+   * Lets the sale go through even when the recorded stock does not cover it.
+   *
+   * Only ever set by the admin panel, where the merchant is holding the garment
+   * and the database is simply behind. The decrement below already floors at
+   * zero, so inventory can never go negative.
+   */
+  allowShortfall?: boolean;
+}
+
 /** Decrement stock for a purchase. Validates availability first and throws if short. */
-export async function applyDbProductStockDelta(slug: string, selections: StockSelection[]): Promise<Product | undefined> {
+export async function applyDbProductStockDelta(
+  slug: string,
+  selections: StockSelection[],
+  options: StockDeltaOptions = {}
+): Promise<Product | undefined> {
   const product = await getDbProduct(slug);
   if (!product) return undefined;
 
@@ -227,7 +242,15 @@ export async function applyDbProductStockDelta(slug: string, selections: StockSe
       (candidate) => candidate.color === selection.color && candidate.size === selection.size
     );
 
-    if (!variant || !isVariantInStock(variant)) {
+    // A colour/size that was never made is refused whatever the caller asks for
+    // — an override covers "the count is wrong", not "this product doesn't exist".
+    if (!variant) {
+      throw new Error(`${selection.color} / ${selection.size} is out of stock.`);
+    }
+
+    if (options.allowShortfall) continue;
+
+    if (!isVariantInStock(variant)) {
       throw new Error(`${selection.color} / ${selection.size} is out of stock.`);
     }
 
@@ -542,7 +565,10 @@ async function ensureOrdersSchema(): Promise<void> {
           ADD COLUMN IF NOT EXISTS payment_note TEXT,
           ADD COLUMN IF NOT EXISTS stock_reserved BOOLEAN NOT NULL DEFAULT TRUE,
           ADD COLUMN IF NOT EXISTS stock_released BOOLEAN NOT NULL DEFAULT FALSE,
-          ADD COLUMN IF NOT EXISTS sms_sent BOOLEAN NOT NULL DEFAULT FALSE
+          ADD COLUMN IF NOT EXISTS sms_sent BOOLEAN NOT NULL DEFAULT FALSE,
+          ADD COLUMN IF NOT EXISTS discount NUMERIC NOT NULL DEFAULT 0,
+          ADD COLUMN IF NOT EXISTS source VARCHAR(20) NOT NULL DEFAULT 'web',
+          ADD COLUMN IF NOT EXISTS client_request_id VARCHAR(80)
       `;
 
       await sql`
@@ -611,6 +637,17 @@ async function ensureOrdersSchema(): Promise<void> {
         `;
       } catch (error) {
         console.error('[orders] Could not create the payment_status index:', error);
+      }
+
+      // The guard that makes admin order creation idempotent: a retried or
+      // double-tapped request carrying the same key cannot insert twice.
+      try {
+        await sql`
+          CREATE UNIQUE INDEX IF NOT EXISTS orders_client_request_id_uidx
+          ON orders (client_request_id) WHERE client_request_id IS NOT NULL
+        `;
+      } catch (error) {
+        console.error('[orders] Could not create the unique client_request_id index:', error);
       }
     })().catch((error) => {
       // Let the next caller retry rather than caching a permanent failure.
@@ -702,6 +739,7 @@ function mapOrderRow(row: any): Order {
     totalQuantity,
     subtotal,
     serviceCharge,
+    discount: row.discount != null ? Number(row.discount) : 0,
     price,
     customerName: row.customer_name,
     customerPhone: row.customer_phone,
@@ -713,6 +751,8 @@ function mapOrderRow(row: any): Order {
     momoNumber: row.momo_number || undefined,
     status: row.status,
     createdAt: new Date(row.created_at).toISOString(),
+    source: row.source === 'admin' ? 'admin' : 'web',
+    clientRequestId: row.client_request_id || undefined,
 
     paymentStatus: (row.payment_status as PaymentStatus) || 'unpaid',
     paymentReference: row.payment_reference || row.momo_number || undefined,
@@ -771,6 +811,33 @@ export async function findDbOrderByPaymentRef(reference: string): Promise<Order 
   }
 }
 
+/**
+ * Looks an order up by the key its creator supplied, which is what makes admin
+ * order creation idempotent. A merchant double-tapping "Create order" on a phone
+ * with poor signal sends the same key twice; the second request finds this row
+ * and returns it instead of minting a second order and deducting stock again.
+ */
+export async function findDbOrderByClientRequestId(
+  clientRequestId: string
+): Promise<Order | undefined> {
+  if (!clientRequestId) return undefined;
+
+  if (!isDbConfigured) {
+    return sandboxOrders.find((order) => order.clientRequestId === clientRequestId);
+  }
+
+  try {
+    await ensureOrdersSchema();
+    const rows = await sql`
+      SELECT * FROM orders WHERE client_request_id = ${clientRequestId} LIMIT 1
+    `;
+    return rows.length > 0 ? mapOrderRow(rows[0]) : undefined;
+  } catch (error) {
+    console.error('Failed to look up order by client request id:', error);
+    return undefined;
+  }
+}
+
 export async function getDbOrderById(id: number): Promise<Order | undefined> {
   if (!Number.isFinite(id)) return undefined;
 
@@ -788,15 +855,22 @@ export async function getDbOrderById(id: number): Promise<Order | undefined> {
   }
 }
 
-export type NewOrderInput = Omit<Order, 'id' | 'createdAt' | 'paymentStatus' | 'stockReserved' | 'stockReleased' | 'smsSent'> &
-  Partial<Pick<Order, 'paymentStatus' | 'stockReserved' | 'stockReleased' | 'smsSent'>>;
+export type NewOrderInput = Omit<
+  Order,
+  'id' | 'createdAt' | 'paymentStatus' | 'stockReserved' | 'stockReleased' | 'smsSent' | 'discount' | 'source'
+> &
+  Partial<
+    Pick<Order, 'paymentStatus' | 'stockReserved' | 'stockReleased' | 'smsSent' | 'discount' | 'source'>
+  >;
 
 export async function addDbOrder(o: NewOrderInput): Promise<Order> {
   const defaults = {
     paymentStatus: o.paymentStatus || ('unpaid' as PaymentStatus),
     stockReserved: o.stockReserved !== false,
     stockReleased: o.stockReleased === true,
-    smsSent: o.smsSent === true
+    smsSent: o.smsSent === true,
+    discount: Number.isFinite(o.discount) ? Math.max(0, Number(o.discount)) : 0,
+    source: o.source === 'admin' ? ('admin' as const) : ('web' as const)
   };
 
   if (!isDbConfigured) {
@@ -820,7 +894,8 @@ export async function addDbOrder(o: NewOrderInput): Promise<Order> {
         items, total_quantity, subtotal, service_charge,
         payment_status, payment_reference, paid_at, amount_paid, payment_channel,
         paystack_transaction_id, last_verified_at, payment_verified_by, gateway_response,
-        stock_reserved, stock_released, sms_sent
+        stock_reserved, stock_released, sms_sent,
+        discount, source, client_request_id, payment_note
       ) VALUES (
         ${o.productId}, ${o.productName}, ${o.productSlug}, ${o.selectedColor}, ${o.selectedSize}, ${o.price},
         ${o.customerName}, ${o.customerPhone}, ${o.customerEmail}, ${o.shippingAddress}, ${o.shippingCity},
@@ -829,7 +904,8 @@ export async function addDbOrder(o: NewOrderInput): Promise<Order> {
         ${defaults.paymentStatus}, ${o.paymentReference || null}, ${o.paidAt || null}, ${o.amountPaid ?? null},
         ${o.paymentChannel || null}, ${o.paystackTransactionId || null}, ${o.lastVerifiedAt || null},
         ${o.paymentVerifiedBy || null}, ${o.gatewayResponse || null},
-        ${defaults.stockReserved}, ${defaults.stockReleased}, ${defaults.smsSent}
+        ${defaults.stockReserved}, ${defaults.stockReleased}, ${defaults.smsSent},
+        ${defaults.discount}, ${defaults.source}, ${o.clientRequestId || null}, ${o.paymentNote || null}
       )
       RETURNING *;
     `;
