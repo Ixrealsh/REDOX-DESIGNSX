@@ -255,13 +255,27 @@ export function TrackOrder() {
                       </div>
                     </div>
                   ))}
+
+                  {/* Services billed alongside the garments. Without these the
+                      items would not add up to the total the customer paid. */}
+                  {order.extras?.map((extra: any, index: number) => (
+                    <div key={`extra-${index}`}>
+                      <strong style={{ color: '#fff', fontSize: '0.88rem' }}>{extra.label}</strong>
+                      <div style={{ color: '#60a5fa', fontSize: '0.78rem', marginTop: '2px' }}>
+                        Service — GH₵{Number(extra.amount).toFixed(2)}
+                      </div>
+                    </div>
+                  ))}
                 </div>
               </div>
               <div>
                 <span style={{ color: '#666', display: 'block', fontSize: '0.7rem', letterSpacing: '0.05em' }}>ORDER PRICE</span>
                 <strong style={{ color: '#fff' }}>GH₵{Number(order.price).toFixed(2)}</strong>
                 <div style={{ color: '#666', fontSize: '0.72rem', marginTop: '2px' }}>
-                  {order.totalQuantity} item{order.totalQuantity === 1 ? '' : 's'} · incl. 2% service fee
+                  {order.totalQuantity} item{order.totalQuantity === 1 ? '' : 's'}
+                  {Number(order.discount) > 0 && ` · GH₵${Number(order.discount).toFixed(2)} discount applied`}
+                  {/* Only web orders carry the gateway fee; an in-person sale has none. */}
+                  {Number(order.serviceCharge) > 0 && ' · incl. 2% service fee'}
                 </div>
               </div>
               <div>

@@ -4,8 +4,13 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import Image from 'next/image';
 import type { Order, Product, Variant } from '@/types/product';
 import { formatCurrency } from '@/lib/format';
-import { getVariantStockLabel, getVariantStockLimit, isVariantInStock } from '@/lib/inventory';
-import { resolveDiscount } from '@/lib/order-schema';
+import {
+  canPurchaseVariant,
+  getVariantStockLabel,
+  getVariantStockLimit,
+  isProductAvailable
+} from '@/lib/inventory';
+import { resolveDiscount, sumOrderExtras } from '@/lib/order-schema';
 import { formatGhanaPhone, isValidGhanaPhone } from '@/lib/phone';
 import styles from './Admin.module.css';
 
@@ -42,6 +47,11 @@ const GHANA_REGIONS = [
 /** Rendering every product on each keystroke is wasted work on a phone. */
 const MAX_RESULTS = 40;
 
+/** One tap instead of typing the same word every time. */
+const EXTRA_PRESETS = ['Printing', 'Customisation', 'Embroidery', 'Delivery'];
+
+const MAX_EXTRAS = 20;
+
 export interface CreatedOrderResult {
   order: Order;
   smsSent: boolean;
@@ -63,6 +73,13 @@ interface DraftLine {
   stockLimit: number;
   /** Added past that limit, at the merchant's explicit confirmation. */
   override: boolean;
+}
+
+/** A non-product charge being typed in. Amount stays a string until submit. */
+interface DraftExtra {
+  id: string;
+  label: string;
+  amount: string;
 }
 
 interface CreateOrderModalProps {
@@ -114,6 +131,8 @@ export function CreateOrderModal({ products, onClose, onCreated, onPrint }: Crea
   const [paidNow, setPaidNow] = useState(true);
   const [paymentMethod, setPaymentMethod] = useState<'CASH' | 'MOMO' | 'BANK'>('CASH');
   const [note, setNote] = useState('');
+
+  const [extras, setExtras] = useState<DraftExtra[]>([]);
 
   const [discountType, setDiscountType] = useState<'amount' | 'percent'>('amount');
   const [discountValue, setDiscountValue] = useState('');
@@ -183,17 +202,21 @@ export function CreateOrderModal({ products, onClose, onCreated, onPrint }: Crea
 
   const addVariant = (product: Product, variant: Variant) => {
     const stockLimit = getVariantStockLimit(variant);
-    const inStock = isVariantInStock(variant);
+    const offSale = !isProductAvailable(product);
+    const inStock = canPurchaseVariant(product, variant);
     const key = lineKey(product.slug, variant.color, variant.size);
     const existing = lines.find((line) => line.key === key);
     const nextQuantity = (existing?.quantity ?? 0) + 1;
 
-    // One prompt covers both "we have none recorded" and "that is more than is
-    // recorded". Either way the merchant is asserting the count is stale.
+    // One prompt covers all three: the product is off sale, we have none
+    // recorded, or that is more than is recorded. Each time the merchant is
+    // overruling the catalogue about something they can physically see.
     const needsOverride = !inStock || nextQuantity > stockLimit;
 
     if (needsOverride && !existing?.override) {
-      const detail = inStock
+      const detail = offSale
+        ? `${product.name} is marked OUT OF STOCK for the whole product, so customers cannot buy it online.`
+        : inStock
         ? `Only ${stockLimit} of ${product.name} — ${variant.color} / ${variant.size} left in stock.`
         : `${product.name} — ${variant.color} / ${variant.size} is marked sold out.`;
 
@@ -273,10 +296,39 @@ export function CreateOrderModal({ products, onClose, onCreated, onPrint }: Crea
     setLines((previous) => previous.filter((line) => line.key !== key));
   };
 
+  // ── Extra charges ─────────────────────────────────────────────
+  const addExtra = (label = '') => {
+    if (extras.length >= MAX_EXTRAS) return;
+    setExtras((previous) => [...previous, { id: newRequestId(), label, amount: '' }]);
+  };
+
+  const updateExtra = (id: string, patch: Partial<Omit<DraftExtra, 'id'>>) => {
+    setExtras((previous) =>
+      previous.map((extra) => (extra.id === id ? { ...extra, ...patch } : extra))
+    );
+  };
+
+  const removeExtra = (id: string) => {
+    setExtras((previous) => previous.filter((extra) => extra.id !== id));
+  };
+
+  /** Only complete rows are money. A half-typed line must not move the total. */
+  const validExtras = extras
+    .map((extra) => ({ label: extra.label.trim(), amount: Number(extra.amount) }))
+    .filter((extra) => extra.label.length > 0 && Number.isFinite(extra.amount) && extra.amount > 0)
+    .map((extra) => ({ label: extra.label, amount: round2(extra.amount) }));
+
+  const incompleteExtras = extras.filter(
+    (extra) => extra.label.trim().length > 0 || extra.amount.trim().length > 0
+  ).length - validExtras.length;
+
   // ── Money ─────────────────────────────────────────────────────
   const subtotal = round2(lines.reduce((sum, line) => sum + line.unitPrice * line.quantity, 0));
-  const discount = resolveDiscount(subtotal, discountType, Number(discountValue) || 0);
-  const total = round2(subtotal - discount);
+  const extrasTotal = sumOrderExtras(validExtras);
+  // The discount comes off the whole bill, services included.
+  const billBeforeDiscount = round2(subtotal + extrasTotal);
+  const discount = resolveDiscount(billBeforeDiscount, discountType, Number(discountValue) || 0);
+  const total = round2(billBeforeDiscount - discount);
   const totalQuantity = lines.reduce((sum, line) => sum + line.quantity, 0);
   const hasOverride = lines.some((line) => line.override);
 
@@ -313,6 +365,7 @@ export function CreateOrderModal({ products, onClose, onCreated, onPrint }: Crea
           })),
           paidNow,
           paymentMethod: paidNow ? paymentMethod : 'COD',
+          extras: validExtras,
           discountType,
           discountValue: Number(discountValue) || 0,
           allowOutOfStock: hasOverride,
@@ -380,6 +433,7 @@ export function CreateOrderModal({ products, onClose, onCreated, onPrint }: Crea
     setCustomerEmail('');
     setShippingAddress('');
     setShippingCity('');
+    setExtras([]);
     setDiscountValue('');
     setDiscountType('amount');
     setNote('');
@@ -395,7 +449,7 @@ export function CreateOrderModal({ products, onClose, onCreated, onPrint }: Crea
   };
 
   function requestClose() {
-    if (!created && lines.length > 0) {
+    if (!created && (lines.length > 0 || extras.length > 0)) {
       if (!window.confirm('Discard this order? Nothing has been saved yet.')) return;
     }
     onClose();
@@ -536,7 +590,8 @@ export function CreateOrderModal({ products, onClose, onCreated, onPrint }: Crea
                 results.map((product) => {
                   const isOpen = openSlug === product.slug;
                   const colors = colorsOf(product);
-                  const available = product.variants.filter(isVariantInStock).length;
+                  const offSale = !isProductAvailable(product);
+                  const available = product.variants.filter((v) => canPurchaseVariant(product, v)).length;
 
                   return (
                     <div key={product.slug}>
@@ -560,7 +615,11 @@ export function CreateOrderModal({ products, onClose, onCreated, onPrint }: Crea
                           <span className={styles.pickerName}>{product.name}</span>
                           <span className={styles.pickerMeta}>
                             {colors.length} colour{colors.length === 1 ? '' : 's'} ·{' '}
-                            {available > 0 ? `${available} variants in stock` : 'SOLD OUT'}
+                            {offSale
+                              ? 'OFF SALE'
+                              : available > 0
+                              ? `${available} variants in stock`
+                              : 'SOLD OUT'}
                           </span>
                         </span>
                         <span className={styles.pickerPrice}>{formatCurrency(product.price)}</span>
@@ -598,7 +657,7 @@ export function CreateOrderModal({ products, onClose, onCreated, onPrint }: Crea
                                   <span className={styles.pickerMeta}>Pick a colour above.</span>
                                 ) : (
                                   openVariants.map((variant) => {
-                                    const soldOut = !isVariantInStock(variant);
+                                    const soldOut = !canPurchaseVariant(product, variant);
 
                                     return (
                                       <button
@@ -612,7 +671,11 @@ export function CreateOrderModal({ products, onClose, onCreated, onPrint }: Crea
                                       >
                                         {variant.size}
                                         <span className={styles.chipHint}>
-                                          {soldOut ? 'sold out' : getVariantStockLabel(variant)}
+                                          {offSale
+                                            ? 'off sale'
+                                            : soldOut
+                                            ? 'sold out'
+                                            : getVariantStockLabel(variant)}
                                         </span>
                                       </button>
                                     );
@@ -688,6 +751,77 @@ export function CreateOrderModal({ products, onClose, onCreated, onPrint }: Crea
                 ))
               )}
             </div>
+
+            {/* ── Extra charges ───────────────────────────── */}
+            <p className={styles.orderBlockTitle} style={{ marginTop: 'var(--space-5)' }}>
+              Extra charges{extrasTotal > 0 ? ` · ${formatCurrency(extrasTotal)}` : ''}
+            </p>
+
+            <div className={styles.basket}>
+              {extras.length === 0 ? (
+                <p className={styles.basketEmpty}>
+                  Printing, customisation, delivery — anything that is not a product. Tap one below.
+                </p>
+              ) : (
+                extras.map((extra) => (
+                  <div className={styles.extraRow} key={extra.id}>
+                    <input
+                      aria-label="What the charge is for"
+                      className={styles.input}
+                      onChange={(event) => updateExtra(extra.id, { label: event.target.value })}
+                      placeholder="e.g. Front print"
+                      style={{ flex: 1, minWidth: 0 }}
+                      type="text"
+                      value={extra.label}
+                    />
+                    <input
+                      aria-label="Amount"
+                      className={styles.input}
+                      inputMode="decimal"
+                      min="0"
+                      onChange={(event) => updateExtra(extra.id, { amount: event.target.value })}
+                      placeholder="0.00"
+                      step="0.01"
+                      style={{ width: '104px', flex: '0 0 auto' }}
+                      type="number"
+                      value={extra.amount}
+                    />
+                    <button
+                      aria-label={`Remove ${extra.label || 'charge'}`}
+                      className={styles.basketRemove}
+                      onClick={() => removeExtra(extra.id)}
+                      type="button"
+                    >
+                      &times;
+                    </button>
+                  </div>
+                ))
+              )}
+            </div>
+
+            <div className={styles.chipRow} style={{ marginTop: '8px' }}>
+              {EXTRA_PRESETS.map((preset) => (
+                <button
+                  className={styles.chip}
+                  key={preset}
+                  onClick={() => addExtra(preset)}
+                  type="button"
+                >
+                  + {preset}
+                </button>
+              ))}
+              <button className={styles.chip} onClick={() => addExtra()} type="button">
+                + Something else
+              </button>
+            </div>
+
+            {incompleteExtras > 0 && (
+              <p className={`${styles.hint} ${styles.hintWarn}`}>
+                ⚠ {incompleteExtras} charge{incompleteExtras === 1 ? '' : 's'} need
+                {incompleteExtras === 1 ? 's' : ''} both a name and an amount — until then{' '}
+                {incompleteExtras === 1 ? 'it is' : 'they are'} not counted in the total.
+              </p>
+            )}
           </div>
 
           {/* ── 3. Customer ───────────────────────────────── */}
@@ -866,9 +1000,17 @@ export function CreateOrderModal({ products, onClose, onCreated, onPrint }: Crea
           {/* ── Totals ────────────────────────────────────── */}
           <div className={styles.totalsBox}>
             <div className={styles.totalsRow}>
-              <span>Subtotal</span>
+              <span>Items</span>
               <span className={styles.totalsValue}>{formatCurrency(subtotal)}</span>
             </div>
+            {validExtras.map((extra, index) => (
+              <div className={styles.totalsRow} key={`${extra.label}-${index}`}>
+                <span style={{ color: '#60a5fa' }}>{extra.label}</span>
+                <span className={styles.totalsValue} style={{ color: '#60a5fa' }}>
+                  {formatCurrency(extra.amount)}
+                </span>
+              </div>
+            ))}
             {discount > 0 && (
               <div className={styles.totalsRow}>
                 <span>Discount{discountType === 'percent' ? ` (${Number(discountValue)}%)` : ''}</span>

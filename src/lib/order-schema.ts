@@ -12,6 +12,16 @@ export const orderItemSchema = z.object({
   quantity: z.number().int().min(1).max(99)
 });
 
+/**
+ * A non-product charge. The amount is set by the merchant rather than priced
+ * from a catalogue, so it is capped and rounded here — this is the only figure
+ * on an order the server cannot check against anything else.
+ */
+export const orderExtraSchema = z.object({
+  label: z.string().trim().min(1).max(80),
+  amount: z.number().positive().max(1_000_000)
+});
+
 export const customerSchema = z.object({
   customerName: z.string().trim().min(2).max(255),
   customerPhone: z.string().trim().min(8).max(100),
@@ -84,6 +94,9 @@ export const adminOrderSchema = z.object({
   paymentMethod: z.enum(['CASH', 'MOMO', 'BANK', 'COD']),
   momoNetwork: z.enum(['MTN', 'Telecel', 'AT']).optional(),
 
+  /** Printing, customisation, delivery — anything that is not a catalogue piece. */
+  extras: z.array(orderExtraSchema).max(20).optional(),
+
   discountType: z.enum(['amount', 'percent']).optional(),
   discountValue: z.number().nonnegative().max(1_000_000).optional(),
 
@@ -99,6 +112,23 @@ export const adminOrderSchema = z.object({
 export type CheckoutInitInput = z.infer<typeof checkoutInitSchema>;
 export type DirectOrderInput = z.infer<typeof directOrderSchema>;
 export type AdminOrderInput = z.infer<typeof adminOrderSchema>;
+
+/**
+ * Adds up the non-product charges, rounded to the cent.
+ *
+ * Shared by the form and the server so the figure the merchant reads to a
+ * customer is the figure that is charged.
+ */
+export function sumOrderExtras(extras: { amount: number }[] | undefined | null): number {
+  if (!Array.isArray(extras) || extras.length === 0) return 0;
+
+  const total = extras.reduce((sum, extra) => {
+    const amount = Number(extra?.amount);
+    return Number.isFinite(amount) && amount > 0 ? sum + amount : sum;
+  }, 0);
+
+  return Math.round(total * 100) / 100;
+}
 
 /**
  * Works out what comes off an order total.

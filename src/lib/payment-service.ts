@@ -140,7 +140,10 @@ async function restockAfterLatePayment(order: Order): Promise<void> {
     summarySize: order.selectedSize
   };
 
-  const result = await reserveStockForDraft(draft);
+  // This customer has already paid. Whatever the catalogue says now — the size
+  // sold out, or the whole product was taken off sale in the meantime — their
+  // units come back out of inventory.
+  const result = await reserveStockForDraft(draft, { allowShortfall: true });
 
   if (result.ok) {
     await reclaimDbOrderStockReservation(order.id);

@@ -20,7 +20,12 @@ import {
   startCheckout,
   type CheckoutSession
 } from '@/lib/checkout-client';
-import { getVariantStockLabel, getVariantStockLimit, isVariantInStock } from '@/lib/inventory';
+import {
+  canPurchaseVariant,
+  getVariantStockLabel,
+  getVariantStockLimit,
+  isProductAvailable
+} from '@/lib/inventory';
 import styles from './ProductDetail.module.css';
 
 interface ProductDetailProps {
@@ -188,6 +193,17 @@ export function ProductDetail({ product }: ProductDetailProps) {
   const addItem = useCartStore((state) => state.addItem);
   const openCart = useCartStore((state) => state.openCart);
 
+  /**
+   * Whether this piece can go in a bag at all, decided once so the size list,
+   * both buy buttons and the sticky bar can never disagree about it.
+   *
+   * `soldOut` is the merchant's master switch: the page stays fully browsable —
+   * images, story, sizes, price — but nothing here can be bought.
+   */
+  const soldOut = !isProductAvailable(product);
+  const comingSoon = product.badge === 'COMING SOON';
+  const canBuy = !soldOut && !comingSoon;
+
   // Dynamically resolve color-specific picture list
   const colorSpecificImages = useMemo(() => {
     if (product.colorImages && product.colorImages[selectedColor] && product.colorImages[selectedColor].length > 0) {
@@ -220,6 +236,13 @@ export function ProductDetail({ product }: ProductDetailProps) {
   };
 
   const handleBuyNowClick = () => {
+    // A page opened before the merchant flipped the switch would still have a
+    // live button. The server refuses the order too, but there is no reason to
+    // let someone get as far as a payment screen.
+    if (!canBuy) {
+      setError(soldOut ? 'This piece is sold out.' : 'This piece is not on sale yet.');
+      return;
+    }
     if (!selectedColor) {
       setError('Please select product type / color first.');
       setShaking(true);
@@ -240,6 +263,10 @@ export function ProductDetail({ product }: ProductDetailProps) {
   };
 
   const handleAddToCart = () => {
+    if (!canBuy) {
+      setError(soldOut ? 'This piece is sold out.' : 'This piece is not on sale yet.');
+      return;
+    }
     if (!selectedColor) {
       setError('Please select product type / color first.');
       setShaking(true);
@@ -259,7 +286,7 @@ export function ProductDetail({ product }: ProductDetailProps) {
       Object.entries(sizes).forEach(([size, qty]) => {
         if (qty > 0) {
           const variant = product.variants.find(
-            (v) => v.size === size && v.color === color && isVariantInStock(v)
+            (v) => v.size === size && v.color === color && canPurchaseVariant(product, v)
           );
           if (variant) {
             const colorImg = product.colorImages?.[color]?.[0] || product.image;
@@ -502,7 +529,8 @@ export function ProductDetail({ product }: ProductDetailProps) {
                     const size = variant.size;
                     const qty = quantities[selectedColor]?.[size] || 0;
                     const stockLimit = getVariantStockLimit(variant);
-                    const inStock = isVariantInStock(variant);
+                    // The product's master switch overrules the size's own count.
+                    const inStock = canPurchaseVariant(product, variant);
 
                     return (
                       <div 
@@ -521,7 +549,8 @@ export function ProductDetail({ product }: ProductDetailProps) {
                         <div style={{ display: 'flex', flexDirection: 'column' }}>
                           <span style={{ fontWeight: 700, fontSize: '0.9rem', color: '#fff' }}>Size {size}</span>
                           <span style={{ fontSize: '0.75rem', color: '#888', marginTop: 2 }}>
-                            {formatCurrency(product.price)} - {getVariantStockLabel(variant)}
+                            {formatCurrency(product.price)} -{' '}
+                            {isProductAvailable(product) ? getVariantStockLabel(variant) : 'Sold out'}
                           </span>
                         </div>
                         
@@ -786,10 +815,10 @@ export function ProductDetail({ product }: ProductDetailProps) {
           {!checkoutSuccess && (
             <div className={styles.actions}>
               <div className={styles.mainButtons}>
-                <Button disabled={product.badge === 'COMING SOON'} fullWidth onClick={handleBuyNowClick}>
-                  {product.badge === 'COMING SOON' ? 'Coming soon' : 'Buy & Place Order Now'}
+                <Button disabled={!canBuy} fullWidth onClick={handleBuyNowClick}>
+                  {soldOut ? 'Sold out' : comingSoon ? 'Coming soon' : 'Buy & Place Order Now'}
                 </Button>
-                {product.badge !== 'COMING SOON' && (
+                {canBuy && (
                   <button className={styles.addToCartButton} onClick={handleAddToCart} type="button">
                     Add to Cart
                   </button>
@@ -1054,8 +1083,8 @@ export function ProductDetail({ product }: ProductDetailProps) {
               {selectedSize || 'Select size'} / {formatCurrency(product.price)}
             </p>
           </div>
-          <Button disabled={product.badge === 'COMING SOON'} onClick={handleBuyNowClick}>
-            {product.badge === 'COMING SOON' ? 'Coming soon' : 'Buy Now'}
+          <Button disabled={!canBuy} onClick={handleBuyNowClick}>
+            {soldOut ? 'Sold out' : comingSoon ? 'Coming soon' : 'Buy Now'}
           </Button>
         </div>
       )}

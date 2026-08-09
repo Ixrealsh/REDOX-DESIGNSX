@@ -4,6 +4,8 @@ import { formatGhanaPhone, isValidGhanaPhone } from './phone';
 const HUBTEL_ENDPOINT = 'https://smsc.hubtel.com/v1/messages/send';
 const SMS_TIMEOUT_MS = 8_000;
 const MAX_ITEM_LINES = 5;
+/** Kept tight: every listed service costs characters, and characters are segments. */
+const MAX_EXTRA_LINES = 3;
 const MAX_NAME_LENGTH = 28;
 
 /** Hard ceiling on billable segments per recipient, whatever the catalogue contains. */
@@ -90,6 +92,17 @@ export function buildOrderSms(order: Order): string {
 
   if (hidden > 0) {
     lines.push(`+${hidden} more item${hidden === 1 ? '' : 's'}`);
+  }
+
+  // Services the customer paid for but cannot see in the item list. Without
+  // these a total that is larger than the garments becomes a phone call.
+  for (const extra of (order.extras || []).slice(0, MAX_EXTRA_LINES)) {
+    lines.push(`- ${truncate(extra.label, MAX_NAME_LENGTH)} ${money(extra.amount)}`);
+  }
+
+  const hiddenExtras = (order.extras || []).length - MAX_EXTRA_LINES;
+  if (hiddenExtras > 0) {
+    lines.push(`+${hiddenExtras} more service${hiddenExtras === 1 ? '' : 's'}`);
   }
 
   // The fee breakdown is deliberately omitted: it is on the receipt, the track-order

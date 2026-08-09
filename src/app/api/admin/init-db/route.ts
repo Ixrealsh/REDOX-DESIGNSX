@@ -41,6 +41,7 @@ export async function POST() {
         rating NUMERIC NOT NULL,
         review_count INTEGER NOT NULL,
         color_images JSONB DEFAULT '{}'::jsonb,
+        availability VARCHAR(20) NOT NULL DEFAULT 'in_stock',
         created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
       );
     `;

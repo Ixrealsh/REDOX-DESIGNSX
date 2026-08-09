@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { requireAdminSession } from '@/lib/admin-auth';
 import { addDbOrder, findDbOrderByClientRequestId } from '@/lib/catalog-db';
 import { priceOrderDraft, reserveStockForDraft } from '@/lib/order-pricing';
-import { adminOrderSchema, resolveDiscount } from '@/lib/order-schema';
+import { adminOrderSchema, resolveDiscount, sumOrderExtras } from '@/lib/order-schema';
 import { notifyOrderOnce } from '@/lib/payment-service';
 import { formatGhanaPhone, isValidGhanaPhone } from '@/lib/phone';
 
@@ -102,8 +102,20 @@ export async function POST(request: Request) {
     }
 
     const draft = pricing.draft;
-    const discount = resolveDiscount(draft.subtotal, input.discountType, input.discountValue);
-    const grandTotal = Math.round((draft.subtotal - discount) * 100) / 100;
+
+    // Non-product work — printing, customisation, delivery. Rounded and summed
+    // server-side; the browser's arithmetic is never taken on trust.
+    const extras = (input.extras || []).map((extra) => ({
+      label: extra.label.trim(),
+      amount: Math.round(extra.amount * 100) / 100
+    }));
+    const extrasTotal = sumOrderExtras(extras);
+
+    // A discount is off the whole bill, services included — that is what "10%
+    // off" means to the person being quoted it.
+    const billBeforeDiscount = Math.round((draft.subtotal + extrasTotal) * 100) / 100;
+    const discount = resolveDiscount(billBeforeDiscount, input.discountType, input.discountValue);
+    const grandTotal = Math.round((billBeforeDiscount - discount) * 100) / 100;
 
     // 3. RESERVE STOCK, so the shop cannot sell online what was just handed over
     //    in person. `allowShortfall` mirrors the pricing override: the merchant
@@ -141,6 +153,7 @@ export async function POST(request: Request) {
         totalQuantity: draft.totalQuantity,
         subtotal: draft.subtotal,
         serviceCharge: 0,
+        extras,
         discount,
         price: grandTotal,
         customerName: input.customerName,
@@ -215,6 +228,7 @@ export async function POST(request: Request) {
 
     console.log(
       `[admin-order] Order #RD-${order.id} created in the panel — GH₵${grandTotal.toFixed(2)}` +
+        `${extrasTotal > 0 ? ` (incl. GH₵${extrasTotal.toFixed(2)} services)` : ''}` +
         `${discount > 0 ? ` (GH₵${discount.toFixed(2)} off)` : ''}, ` +
         `${paidNow ? 'paid' : 'unpaid'}, SMS ${smsSent ? 'sent' : 'not sent'}.`
     );

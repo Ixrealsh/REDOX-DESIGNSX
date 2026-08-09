@@ -9,6 +9,16 @@ export interface Variant {
   sku: string;
 }
 
+/**
+ * A master switch over the whole product, independent of any size's count.
+ *
+ * `out_of_stock` keeps the piece on the site — it still has a page, still shows
+ * in the shop, still ranks — but nobody can buy it. That is what a merchant
+ * means by "sold out": visible, not purchasable. Flipping it back does not
+ * disturb the per-size stock numbers underneath.
+ */
+export type ProductAvailability = 'in_stock' | 'out_of_stock';
+
 export interface Product {
   id: string;
   slug: string;
@@ -17,6 +27,8 @@ export interface Product {
   collectionName: string;
   category: ProductCategory;
   price: number;
+  /** Defaults to `in_stock` when absent, so existing products stay buyable. */
+  availability?: ProductAvailability;
   compareAtPrice?: number;
   badge?: 'NEW' | 'SALE' | 'LIMITED' | 'SOLD OUT' | 'COMING SOON';
   image: string;
@@ -47,6 +59,19 @@ export interface OrderItem {
   quantity: number;
   unitPrice: number;
   lineTotal: number;
+}
+
+/**
+ * A charge on an order that is not a catalogue product — printing a design,
+ * customisation, an alteration, a delivery run.
+ *
+ * These have no SKU, no stock and no slug: the merchant names the work and sets
+ * the price when they take the order. Only orders raised in the admin panel can
+ * carry them.
+ */
+export interface OrderExtra {
+  label: string;
+  amount: number;
 }
 
 /**
@@ -97,8 +122,11 @@ export interface Order {
   selectedSize: string;
   items: OrderItem[];
   totalQuantity: number;
+  /** Sum of the product lines alone. Extras and discounts sit outside it. */
   subtotal: number;
   serviceCharge: number;
+  /** Non-product charges: printing, customisation, delivery. Empty for web orders. */
+  extras: OrderExtra[];
   /**
    * Amount taken off the total. Only in-person orders carry one — web checkout
    * always charges the catalogue price, so this is 0 there.
@@ -107,7 +135,7 @@ export interface Order {
   /**
    * Grand total actually charged.
    *   web   → subtotal + service charge
-   *   admin → subtotal − discount (no service charge on an in-person sale)
+   *   admin → subtotal + extras − discount (no service charge on an in-person sale)
    */
   price: number;
   customerName: string;

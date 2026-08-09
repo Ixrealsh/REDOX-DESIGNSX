@@ -46,10 +46,19 @@ export async function POST(request: Request) {
 
     const normalizedVariants = Array.isArray(body.variants) ? body.variants.map(normalizeVariantStock) : [];
     const hasSellableVariant = normalizedVariants.some(isVariantInStock);
+    const availability: Product['availability'] =
+      body.availability === 'out_of_stock' ? 'out_of_stock' : 'in_stock';
 
-    if (!hasSellableVariant) {
+    // A product with nothing in stock is normally a mistake worth catching. It
+    // is not a mistake when the merchant has deliberately marked the whole
+    // product out of stock — that is exactly what they asked for.
+    if (!hasSellableVariant && availability !== 'out_of_stock') {
       return NextResponse.json(
-        { error: 'Add at least one in-stock size before saving.' },
+        {
+          error:
+            'Add at least one in-stock size before saving — or set Availability to ' +
+            '"Out of stock" to take the whole product off sale.'
+        },
         { status: 400 }
       );
     }
@@ -62,6 +71,7 @@ export async function POST(request: Request) {
       collectionName: String(body.collectionName || ''),
       category: body.category || 'Tops',
       price: Number(body.price),
+      availability,
       compareAtPrice: body.compareAtPrice ? Number(body.compareAtPrice) : undefined,
       badge: body.badge || undefined,
       image: String(body.image),

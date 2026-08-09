@@ -1,4 +1,4 @@
-import type { Order, PaymentStatus } from '@/types/product';
+import type { Order, OrderExtra, PaymentStatus } from '@/types/product';
 
 /**
  * The view of an order that is safe to hand back to the browser.
@@ -14,6 +14,8 @@ export interface CustomerReceipt {
   totalQuantity: number;
   subtotal: number;
   serviceCharge: number;
+  /** Printing, customisation and the like — the customer paid for these too. */
+  extras: OrderExtra[];
   discount: number;
   price: number;
   customerName: string;
@@ -103,6 +105,7 @@ export function toCustomerReceipt(order: Order): CustomerReceipt {
     totalQuantity: order.totalQuantity,
     subtotal: order.subtotal,
     serviceCharge: order.serviceCharge,
+    extras: order.extras,
     discount: order.discount,
     price: order.price,
     customerName: order.customerName,

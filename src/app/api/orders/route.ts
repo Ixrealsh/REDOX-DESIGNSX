@@ -224,6 +224,7 @@ export async function GET(request: Request) {
         totalQuantity: order.totalQuantity,
         subtotal: order.subtotal,
         serviceCharge: order.serviceCharge,
+        extras: order.extras,
         discount: order.discount,
         price: order.price,
         customerName: order.customerName,

@@ -4,7 +4,7 @@ import {
   restoreDbProductStock,
   type StockSelection
 } from '@/lib/catalog-db';
-import { getVariantStockLimit, isVariantInStock } from '@/lib/inventory';
+import { getVariantStockLimit, isProductAvailable, isVariantInStock } from '@/lib/inventory';
 import { calcOrderTotal, calcServiceCharge } from '@/lib/format';
 import type { Order, OrderItem, Product } from '@/types/product';
 
@@ -113,6 +113,18 @@ export async function priceOrderDraft(
     if (!product) {
       return { ok: false, status: 404, error: `Product "${slug}" was not found.` };
     }
+
+    // The merchant's master switch, checked before any size is looked at. This
+    // is the gate every order path passes through — web checkout, the legacy
+    // direct-order route and the admin panel all price through here.
+    if (!options.allowOutOfStock && !isProductAvailable(product)) {
+      return {
+        ok: false,
+        status: 400,
+        error: `${product.name} is currently out of stock.`
+      };
+    }
+
     productsBySlug.set(slug, product);
   }
 

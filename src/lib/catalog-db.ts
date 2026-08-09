@@ -5,7 +5,7 @@ import {
   collections as mockCollections,
   lookbooks as mockLookbooks
 } from '@/data/catalog';
-import { isVariantInStock, normalizeVariantStock } from '@/lib/inventory';
+import { isProductAvailable, isVariantInStock, normalizeVariantStock } from '@/lib/inventory';
 import { SERVICE_CHARGE_RATE } from '@/lib/format';
 import type {
   Product,
@@ -13,6 +13,7 @@ import type {
   Collection,
   LookbookIssue,
   Order,
+  OrderExtra,
   OrderItem,
   PaymentStatus,
   PaymentVerificationSource
@@ -39,6 +40,7 @@ function mapProductRow(row: any): Product {
     collectionName: row.collection_name,
     category: row.category,
     price: Number(row.price),
+    availability: row.availability === 'out_of_stock' ? 'out_of_stock' : 'in_stock',
     badge: row.badge || undefined,
     image: row.image,
     secondaryImage: row.secondary_image || undefined,
@@ -104,9 +106,41 @@ function mapLookbookRow(row: any): LookbookIssue {
 // ----------------------------------------------------
 // Products Getters / Setters
 // ----------------------------------------------------
+
+/**
+ * Brings the products table up to date. Mirrors `ensureOrdersSchema`: additive,
+ * idempotent, and memoised so it costs one round trip per process rather than
+ * one per request.
+ *
+ * The table itself is created by the admin panel's "Initialize Database" button,
+ * so this only ever adds what a later build needs — it must never be the thing
+ * that creates the table, or a fresh deploy would race the seeder.
+ */
+let productsSchemaPromise: Promise<void> | null = null;
+
+async function ensureProductsSchema(): Promise<void> {
+  if (!isDbConfigured) return;
+
+  if (!productsSchemaPromise) {
+    productsSchemaPromise = (async () => {
+      await sql`
+        ALTER TABLE products
+          ADD COLUMN IF NOT EXISTS availability VARCHAR(20) NOT NULL DEFAULT 'in_stock'
+      `;
+    })().catch((error) => {
+      // Let the next caller retry rather than caching a permanent failure.
+      productsSchemaPromise = null;
+      throw error;
+    });
+  }
+
+  return productsSchemaPromise;
+}
+
 export async function getDbProducts(): Promise<Product[]> {
   if (!isDbConfigured) return mockProducts;
   try {
+    await ensureProductsSchema();
     const rows = await sql`SELECT * FROM products ORDER BY created_at DESC`;
     return rows.map(mapProductRow);
   } catch (error) {
@@ -118,6 +152,7 @@ export async function getDbProducts(): Promise<Product[]> {
 export async function getDbProduct(slug: string): Promise<Product | undefined> {
   if (!isDbConfigured) return mockProducts.find((p) => p.slug === slug);
   try {
+    await ensureProductsSchema();
     const rows = await sql`SELECT * FROM products WHERE slug = ${slug} LIMIT 1`;
     if (!rows || rows.length === 0) return undefined;
     return mapProductRow(rows[0]);
@@ -135,24 +170,30 @@ export async function getDbCollectionProducts(collectionSlug: string): Promise<P
 export async function saveDbProduct(p: Product): Promise<boolean> {
   if (!isDbConfigured) return false;
   try {
+    await ensureProductsSchema();
+
     const normalizedProduct = {
       ...p,
+      availability: p.availability === 'out_of_stock' ? 'out_of_stock' : 'in_stock',
       variants: (p.variants || []).map(normalizeVariantStock)
     };
 
     await sql`
       INSERT INTO products (
-        id, slug, name, collection_slug, collection_name, category, price, badge, 
-        image, secondary_image, image_alt, colors, color_hex, variants, 
-        description, story, details, care, material, fit, rating, review_count, color_images
+        id, slug, name, collection_slug, collection_name, category, price, badge,
+        image, secondary_image, image_alt, colors, color_hex, variants,
+        description, story, details, care, material, fit, rating, review_count, color_images,
+        availability
       ) VALUES (
-        ${normalizedProduct.id}, ${normalizedProduct.slug}, ${normalizedProduct.name}, ${normalizedProduct.collectionSlug}, ${normalizedProduct.collectionName}, ${normalizedProduct.category}, 
-        ${normalizedProduct.price}, ${normalizedProduct.badge || null}, ${normalizedProduct.image}, ${normalizedProduct.secondaryImage || null}, ${normalizedProduct.imageAlt}, 
-        ${normalizedProduct.colors}, ${JSON.stringify(normalizedProduct.colorHex)}, ${JSON.stringify(normalizedProduct.variants)}, 
-        ${normalizedProduct.description}, ${normalizedProduct.story}, ${normalizedProduct.details}, ${normalizedProduct.care}, ${normalizedProduct.material}, ${normalizedProduct.fit}, 
-        ${normalizedProduct.rating}, ${normalizedProduct.reviewCount}, ${JSON.stringify(normalizedProduct.colorImages || {})}
+        ${normalizedProduct.id}, ${normalizedProduct.slug}, ${normalizedProduct.name}, ${normalizedProduct.collectionSlug}, ${normalizedProduct.collectionName}, ${normalizedProduct.category},
+        ${normalizedProduct.price}, ${normalizedProduct.badge || null}, ${normalizedProduct.image}, ${normalizedProduct.secondaryImage || null}, ${normalizedProduct.imageAlt},
+        ${normalizedProduct.colors}, ${JSON.stringify(normalizedProduct.colorHex)}, ${JSON.stringify(normalizedProduct.variants)},
+        ${normalizedProduct.description}, ${normalizedProduct.story}, ${normalizedProduct.details}, ${normalizedProduct.care}, ${normalizedProduct.material}, ${normalizedProduct.fit},
+        ${normalizedProduct.rating}, ${normalizedProduct.reviewCount}, ${JSON.stringify(normalizedProduct.colorImages || {})},
+        ${normalizedProduct.availability}
       )
       ON CONFLICT (id) DO UPDATE SET
+        availability = EXCLUDED.availability,
         slug = EXCLUDED.slug,
         name = EXCLUDED.name,
         collection_slug = EXCLUDED.collection_slug,
@@ -231,6 +272,12 @@ export async function applyDbProductStockDelta(
 ): Promise<Product | undefined> {
   const product = await getDbProduct(slug);
   if (!product) return undefined;
+
+  // The last gate before inventory moves. A product the merchant has taken off
+  // sale cannot be bought here either, whatever its per-size counts say.
+  if (!options.allowShortfall && !isProductAvailable(product)) {
+    throw new Error(`${product.name} is currently out of stock.`);
+  }
 
   const normalizedSelections = selections.map((selection) => ({
     ...selection,
@@ -568,7 +615,8 @@ async function ensureOrdersSchema(): Promise<void> {
           ADD COLUMN IF NOT EXISTS sms_sent BOOLEAN NOT NULL DEFAULT FALSE,
           ADD COLUMN IF NOT EXISTS discount NUMERIC NOT NULL DEFAULT 0,
           ADD COLUMN IF NOT EXISTS source VARCHAR(20) NOT NULL DEFAULT 'web',
-          ADD COLUMN IF NOT EXISTS client_request_id VARCHAR(80)
+          ADD COLUMN IF NOT EXISTS client_request_id VARCHAR(80),
+          ADD COLUMN IF NOT EXISTS extras JSONB NOT NULL DEFAULT '[]'::jsonb
       `;
 
       await sql`
@@ -710,6 +758,27 @@ function toIso(value: any): string | undefined {
   return Number.isNaN(date.getTime()) ? undefined : date.toISOString();
 }
 
+/** Reads the extras column defensively — a malformed value must not break an order. */
+function parseOrderExtras(value: any): OrderExtra[] {
+  const raw = typeof value === 'string' ? safeJsonParse(value) : value;
+  if (!Array.isArray(raw)) return [];
+
+  return raw
+    .map((entry: any) => ({
+      label: String(entry?.label ?? '').trim(),
+      amount: Number(entry?.amount)
+    }))
+    .filter((extra) => extra.label.length > 0 && Number.isFinite(extra.amount) && extra.amount > 0);
+}
+
+function safeJsonParse(value: string): any {
+  try {
+    return JSON.parse(value);
+  } catch {
+    return null;
+  }
+}
+
 function mapOrderRow(row: any): Order {
   const price = Number(row.price);
   const rawItems = typeof row.items === 'string' ? JSON.parse(row.items) : row.items;
@@ -739,6 +808,7 @@ function mapOrderRow(row: any): Order {
     totalQuantity,
     subtotal,
     serviceCharge,
+    extras: parseOrderExtras(row.extras),
     discount: row.discount != null ? Number(row.discount) : 0,
     price,
     customerName: row.customer_name,
@@ -857,10 +927,21 @@ export async function getDbOrderById(id: number): Promise<Order | undefined> {
 
 export type NewOrderInput = Omit<
   Order,
-  'id' | 'createdAt' | 'paymentStatus' | 'stockReserved' | 'stockReleased' | 'smsSent' | 'discount' | 'source'
+  | 'id'
+  | 'createdAt'
+  | 'paymentStatus'
+  | 'stockReserved'
+  | 'stockReleased'
+  | 'smsSent'
+  | 'discount'
+  | 'source'
+  | 'extras'
 > &
   Partial<
-    Pick<Order, 'paymentStatus' | 'stockReserved' | 'stockReleased' | 'smsSent' | 'discount' | 'source'>
+    Pick<
+      Order,
+      'paymentStatus' | 'stockReserved' | 'stockReleased' | 'smsSent' | 'discount' | 'source' | 'extras'
+    >
   >;
 
 export async function addDbOrder(o: NewOrderInput): Promise<Order> {
@@ -870,7 +951,8 @@ export async function addDbOrder(o: NewOrderInput): Promise<Order> {
     stockReleased: o.stockReleased === true,
     smsSent: o.smsSent === true,
     discount: Number.isFinite(o.discount) ? Math.max(0, Number(o.discount)) : 0,
-    source: o.source === 'admin' ? ('admin' as const) : ('web' as const)
+    source: o.source === 'admin' ? ('admin' as const) : ('web' as const),
+    extras: parseOrderExtras(o.extras)
   };
 
   if (!isDbConfigured) {
@@ -895,7 +977,7 @@ export async function addDbOrder(o: NewOrderInput): Promise<Order> {
         payment_status, payment_reference, paid_at, amount_paid, payment_channel,
         paystack_transaction_id, last_verified_at, payment_verified_by, gateway_response,
         stock_reserved, stock_released, sms_sent,
-        discount, source, client_request_id, payment_note
+        discount, source, client_request_id, payment_note, extras
       ) VALUES (
         ${o.productId}, ${o.productName}, ${o.productSlug}, ${o.selectedColor}, ${o.selectedSize}, ${o.price},
         ${o.customerName}, ${o.customerPhone}, ${o.customerEmail}, ${o.shippingAddress}, ${o.shippingCity},
@@ -905,7 +987,8 @@ export async function addDbOrder(o: NewOrderInput): Promise<Order> {
         ${o.paymentChannel || null}, ${o.paystackTransactionId || null}, ${o.lastVerifiedAt || null},
         ${o.paymentVerifiedBy || null}, ${o.gatewayResponse || null},
         ${defaults.stockReserved}, ${defaults.stockReleased}, ${defaults.smsSent},
-        ${defaults.discount}, ${defaults.source}, ${o.clientRequestId || null}, ${o.paymentNote || null}
+        ${defaults.discount}, ${defaults.source}, ${o.clientRequestId || null}, ${o.paymentNote || null},
+        ${JSON.stringify(defaults.extras)}
       )
       RETURNING *;
     `;

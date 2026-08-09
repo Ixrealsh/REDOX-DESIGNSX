@@ -7,6 +7,7 @@ import type { OrderPaymentSummary } from '@/lib/order-receipt';
 import type { WaitlistSignup } from '@/lib/catalog-db';
 import { formatCurrency } from '@/lib/format';
 import { getProductStockSummary } from '@/lib/inventory';
+import { sumOrderExtras } from '@/lib/order-schema';
 import { CreateOrderModal, type CreatedOrderResult } from './CreateOrderModal';
 import styles from './Admin.module.css';
 
@@ -260,16 +261,29 @@ function buildOrderSlipHtml(order: Order, origin: string): string {
     </div>
 
     ${
-      order.discount > 0
+      order.extras.length > 0 || order.discount > 0
         ? `<div class="gap">
+      <div class="section-title">Breakdown</div>
       <div class="field">
-        <div class="l">Subtotal</div>
+        <div class="l">Items</div>
         <div class="d">${ghs(order.subtotal)}</div>
       </div>
-      <div class="field">
+      ${order.extras
+        .map(
+          (extra) => `<div class="field">
+        <div class="l">${escapeHtml(extra.label)}</div>
+        <div class="d">${ghs(extra.amount)}</div>
+      </div>`
+        )
+        .join('')}
+      ${
+        order.discount > 0
+          ? `<div class="field">
         <div class="l">Discount</div>
         <div class="d">- ${ghs(order.discount)}</div>
-      </div>
+      </div>`
+          : ''
+      }
     </div>`
         : ''
     }
@@ -343,6 +357,7 @@ export function AdminDashboard({
     collectionSlug: '',
     collectionName: '',
     badge: '',
+    availability: 'in_stock' as 'in_stock' | 'out_of_stock',
     image: '',
     description: '',
     story: '',
@@ -965,6 +980,7 @@ export function AdminDashboard({
       details: productForm.details.split('\n').filter(Boolean),
       care: productForm.care.split('\n').filter(Boolean),
       badge: (productForm.badge || undefined) as Product['badge'],
+      availability: productForm.availability,
       secondaryImage: finalColorImages[finalColors[0]]?.[0] || productForm.image,
       imageAlt: productForm.name,
       rating: 4.8,
@@ -1206,6 +1222,7 @@ export function AdminDashboard({
       collectionSlug: p.collectionSlug,
       collectionName: p.collectionName,
       badge: p.badge || '',
+      availability: p.availability === 'out_of_stock' ? 'out_of_stock' : 'in_stock',
       image: p.image,
       description: p.description,
       story: p.story,
@@ -1438,6 +1455,7 @@ export function AdminDashboard({
                   collectionSlug: '',
                   collectionName: '',
                   badge: '',
+                  availability: 'in_stock',
                   image: '',
                   description: '',
                   story: '',
@@ -1480,8 +1498,14 @@ export function AdminDashboard({
                   <p className={styles.cardCategory}>{p.category} / {p.collectionName}</p>
                   <h3 className={styles.cardTitle}>{p.name}</h3>
                   <div className={styles.stockPills}>
+                    {/* "Taken off sale" and "nothing left" both stop sales, but
+                        they are different decisions and want different fixes. */}
                     <span className={stock.isSoldOut ? styles.stockPillDanger : styles.stockPill}>
-                      {stock.isSoldOut ? 'Out of stock' : 'In stock'}
+                      {p.availability === 'out_of_stock'
+                        ? 'Off sale · out of stock'
+                        : stock.isSoldOut
+                        ? 'No stock left'
+                        : 'In stock'}
                     </span>
                     <span className={styles.stockPill}>{p.variants.length} size variants</span>
                     {!stock.isSoldOut && !stock.hasUnlimitedStock && stock.totalKnownStock > 0 && (
@@ -1739,12 +1763,25 @@ export function AdminDashboard({
                         GH₵{o.price.toFixed(2)}
                         <div style={{ color: '#666', fontSize: '0.7rem', fontWeight: 'normal', marginTop: '2px' }}>
                           sub GH₵{o.subtotal.toFixed(2)}
+                          {o.extras.length > 0 && (
+                            <span style={{ color: '#60a5fa' }}>
+                              {' '}
+                              + svc GH₵{sumOrderExtras(o.extras).toFixed(2)}
+                            </span>
+                          )}
                           {o.discount > 0 ? (
                             <span style={{ color: '#10b981' }}> − disc GH₵{o.discount.toFixed(2)}</span>
-                          ) : (
+                          ) : o.extras.length === 0 ? (
                             <> + fee GH₵{o.serviceCharge.toFixed(2)}</>
-                          )}
+                          ) : null}
                         </div>
+                        {/* Named, not just totalled: "what is this GH₵50 for?" is
+                            the question a merchant gets asked days later. */}
+                        {o.extras.length > 0 && (
+                          <div style={{ color: '#60a5fa', fontSize: '0.66rem', fontWeight: 'normal', marginTop: '3px' }}>
+                            {o.extras.map((extra) => `${extra.label} GH₵${extra.amount.toFixed(2)}`).join(', ')}
+                          </div>
+                        )}
                       </td>
                       <td style={{ padding: 'var(--space-3)' }}>
                         <div style={{ color: '#f5f3ee' }}>{o.shippingAddress}</div>
@@ -2027,6 +2064,40 @@ export function AdminDashboard({
             
             <form onSubmit={handleProductSubmit} className={styles.form}>
               <div className={styles.formGrid}>
+                {/* Availability — the master switch over every size */}
+                <div className={`${styles.field} ${styles.formGridFull}`}>
+                  <label className={styles.fieldLabel}>Availability</label>
+                  <div className={styles.segmented}>
+                    <button
+                      className={`${styles.segment} ${
+                        productForm.availability === 'in_stock' ? styles.segmentActivePaid : ''
+                      }`}
+                      onClick={() => setProductForm((p) => ({ ...p, availability: 'in_stock' }))}
+                      type="button"
+                    >
+                      ✓ On sale
+                    </button>
+                    <button
+                      className={`${styles.segment} ${
+                        productForm.availability === 'out_of_stock' ? styles.segmentActiveDanger : ''
+                      }`}
+                      onClick={() => setProductForm((p) => ({ ...p, availability: 'out_of_stock' }))}
+                      type="button"
+                    >
+                      ✕ Out of stock
+                    </button>
+                  </div>
+                  <p
+                    className={`${styles.hint} ${
+                      productForm.availability === 'out_of_stock' ? styles.hintWarn : styles.hintOk
+                    }`}
+                  >
+                    {productForm.availability === 'out_of_stock'
+                      ? 'The product stays on the site — page, photos, sizes and price all visible — but nobody can buy it, at any size. Your stock numbers below are kept, so switching back on sale restores them exactly.'
+                      : 'Customers can buy any size that has stock. Switch to “Out of stock” to keep the product visible but stop all sales.'}
+                  </p>
+                </div>
+
                 {/* Product Name */}
                 <div className={styles.field}>
                   <label className={styles.fieldLabel}>Product Name *</label>
