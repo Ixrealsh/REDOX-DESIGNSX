@@ -1,5 +1,5 @@
 import type { MetadataRoute } from 'next';
-import { getDbProducts, getDbCollections, getDbLookbooks } from '@/lib/catalog-db';
+import { getVisibleDbProducts, getDbCollections, getDbLookbooks } from '@/lib/catalog-db';
 import { siteMeta } from '@/lib/metadata';
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
@@ -17,7 +17,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     '/search'
   ];
 
-  const products = await getDbProducts();
+  const products = await getVisibleDbProducts();
   const collections = await getDbCollections();
   const lookbooks = await getDbLookbooks();
 

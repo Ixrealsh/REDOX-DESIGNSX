@@ -5,10 +5,10 @@ import Image from 'next/image';
 import type { Order, Product, Variant } from '@/types/product';
 import { formatCurrency } from '@/lib/format';
 import {
-  canPurchaseVariant,
   getVariantStockLabel,
   getVariantStockLimit,
-  isProductAvailable
+  isProductVisible,
+  isVariantInStock
 } from '@/lib/inventory';
 import { resolveDiscount, sumOrderExtras } from '@/lib/order-schema';
 import { formatGhanaPhone, isValidGhanaPhone } from '@/lib/phone';
@@ -202,20 +202,20 @@ export function CreateOrderModal({ products, onClose, onCreated, onPrint }: Crea
 
   const addVariant = (product: Product, variant: Variant) => {
     const stockLimit = getVariantStockLimit(variant);
-    const offSale = !isProductAvailable(product);
-    const inStock = canPurchaseVariant(product, variant);
+    const hidden = !isProductVisible(product);
+    const inStock = isVariantInStock(variant);
     const key = lineKey(product.slug, variant.color, variant.size);
     const existing = lines.find((line) => line.key === key);
     const nextQuantity = (existing?.quantity ?? 0) + 1;
 
-    // One prompt covers all three: the product is off sale, we have none
-    // recorded, or that is more than is recorded. Each time the merchant is
+    // One prompt covers all three: the product is hidden from the site, we have
+    // none recorded, or that is more than is recorded. Each time the merchant is
     // overruling the catalogue about something they can physically see.
-    const needsOverride = !inStock || nextQuantity > stockLimit;
+    const needsOverride = hidden || !inStock || nextQuantity > stockLimit;
 
     if (needsOverride && !existing?.override) {
-      const detail = offSale
-        ? `${product.name} is marked OUT OF STOCK for the whole product, so customers cannot buy it online.`
+      const detail = hidden
+        ? `${product.name} is HIDDEN from the website, so customers cannot see or buy it.`
         : inStock
         ? `Only ${stockLimit} of ${product.name} — ${variant.color} / ${variant.size} left in stock.`
         : `${product.name} — ${variant.color} / ${variant.size} is marked sold out.`;
@@ -590,8 +590,8 @@ export function CreateOrderModal({ products, onClose, onCreated, onPrint }: Crea
                 results.map((product) => {
                   const isOpen = openSlug === product.slug;
                   const colors = colorsOf(product);
-                  const offSale = !isProductAvailable(product);
-                  const available = product.variants.filter((v) => canPurchaseVariant(product, v)).length;
+                  const hidden = !isProductVisible(product);
+                  const available = product.variants.filter(isVariantInStock).length;
 
                   return (
                     <div key={product.slug}>
@@ -614,12 +614,9 @@ export function CreateOrderModal({ products, onClose, onCreated, onPrint }: Crea
                         <span className={styles.pickerInfo}>
                           <span className={styles.pickerName}>{product.name}</span>
                           <span className={styles.pickerMeta}>
+                            {hidden && <span style={{ color: '#a78bfa' }}>HIDDEN · </span>}
                             {colors.length} colour{colors.length === 1 ? '' : 's'} ·{' '}
-                            {offSale
-                              ? 'OFF SALE'
-                              : available > 0
-                              ? `${available} variants in stock`
-                              : 'SOLD OUT'}
+                            {available > 0 ? `${available} variants in stock` : 'SOLD OUT'}
                           </span>
                         </span>
                         <span className={styles.pickerPrice}>{formatCurrency(product.price)}</span>
@@ -657,7 +654,7 @@ export function CreateOrderModal({ products, onClose, onCreated, onPrint }: Crea
                                   <span className={styles.pickerMeta}>Pick a colour above.</span>
                                 ) : (
                                   openVariants.map((variant) => {
-                                    const soldOut = !canPurchaseVariant(product, variant);
+                                    const soldOut = !isVariantInStock(variant);
 
                                     return (
                                       <button
@@ -671,11 +668,7 @@ export function CreateOrderModal({ products, onClose, onCreated, onPrint }: Crea
                                       >
                                         {variant.size}
                                         <span className={styles.chipHint}>
-                                          {offSale
-                                            ? 'off sale'
-                                            : soldOut
-                                            ? 'sold out'
-                                            : getVariantStockLabel(variant)}
+                                          {getVariantStockLabel(variant)}
                                         </span>
                                       </button>
                                     );

@@ -1,11 +1,11 @@
 import { ProductCard } from '@/components/product/ProductCard';
-import { getDbProducts } from '@/lib/catalog-db';
+import { getVisibleDbProducts } from '@/lib/catalog-db';
 import styles from './pages.module.css';
 
 export const dynamic = 'force-dynamic';
 
 export default async function HomePage() {
-  const products = await getDbProducts();
+  const products = await getVisibleDbProducts();
 
   return (
     <main className={styles.homePage}>

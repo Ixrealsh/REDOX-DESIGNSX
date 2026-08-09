@@ -10,14 +10,18 @@ export interface Variant {
 }
 
 /**
- * A master switch over the whole product, independent of any size's count.
+ * Whether the product exists on the public site at all.
  *
- * `out_of_stock` keeps the piece on the site — it still has a page, still shows
- * in the shop, still ranks — but nobody can buy it. That is what a merchant
- * means by "sold out": visible, not purchasable. Flipping it back does not
- * disturb the per-size stock numbers underneath.
+ * `hidden` takes it off the shop, search, the homepage and the sitemap, and its
+ * own page stops resolving — as far as a customer is concerned it is not there.
+ * It stays fully intact in the admin panel, so hiding is a reversible decision
+ * that costs nothing: the piece, its photos and its stock counts all come back
+ * exactly as they were.
+ *
+ * This is separate from stock. A visible product with every size out of stock
+ * still shows, and reads as sold out.
  */
-export type ProductAvailability = 'in_stock' | 'out_of_stock';
+export type ProductVisibility = 'visible' | 'hidden';
 
 export interface Product {
   id: string;
@@ -27,8 +31,8 @@ export interface Product {
   collectionName: string;
   category: ProductCategory;
   price: number;
-  /** Defaults to `in_stock` when absent, so existing products stay buyable. */
-  availability?: ProductAvailability;
+  /** Defaults to `visible` when absent, so existing products stay on the site. */
+  visibility?: ProductVisibility;
   compareAtPrice?: number;
   badge?: 'NEW' | 'SALE' | 'LIMITED' | 'SOLD OUT' | 'COMING SOON';
   image: string;

@@ -4,7 +4,7 @@ import {
   restoreDbProductStock,
   type StockSelection
 } from '@/lib/catalog-db';
-import { getVariantStockLimit, isProductAvailable, isVariantInStock } from '@/lib/inventory';
+import { getVariantStockLimit, isProductVisible, isVariantInStock } from '@/lib/inventory';
 import { calcOrderTotal, calcServiceCharge } from '@/lib/format';
 import type { Order, OrderItem, Product } from '@/types/product';
 
@@ -48,8 +48,9 @@ export interface PricingOptions {
    */
   applyServiceCharge?: boolean;
   /**
-   * Prices variants the catalogue believes are sold out. Admin-only: the
-   * merchant is holding the piece and the recorded count is simply stale.
+   * Prices variants the catalogue believes are sold out, and products hidden
+   * from the site. Admin-only: the merchant is holding the piece, and whether
+   * the public can see it has no bearing on a sale made in person.
    */
   allowOutOfStock?: boolean;
 }
@@ -114,14 +115,15 @@ export async function priceOrderDraft(
       return { ok: false, status: 404, error: `Product "${slug}" was not found.` };
     }
 
-    // The merchant's master switch, checked before any size is looked at. This
-    // is the gate every order path passes through — web checkout, the legacy
-    // direct-order route and the admin panel all price through here.
-    if (!options.allowOutOfStock && !isProductAvailable(product)) {
+    // A hidden product is not on the site, so no customer can legitimately be
+    // checking one out — a stale tab or a hand-made request is all that reaches
+    // here. This is the gate every order path passes through: web checkout, the
+    // legacy direct-order route and the admin panel all price through it.
+    if (!options.allowOutOfStock && !isProductVisible(product)) {
       return {
         ok: false,
-        status: 400,
-        error: `${product.name} is currently out of stock.`
+        status: 404,
+        error: `${product.name} is no longer available.`
       };
     }
 

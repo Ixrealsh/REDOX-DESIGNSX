@@ -34,36 +34,21 @@ export function getVariantStockLabel(variant: Variant) {
 }
 
 /**
- * The merchant's master switch. A product turned off here cannot be bought at
- * any size, however much stock the counts claim.
+ * Whether the product appears on the public site at all.
  *
- * Absent means available: every product that existed before this switch did
- * stays on sale.
+ * Absent means visible: every product that existed before this switch did stays
+ * exactly where it was.
  */
-export function isProductAvailable(product: Pick<Product, 'availability'>): boolean {
-  return product.availability !== 'out_of_stock';
+export function isProductVisible(product: Pick<Product, 'visibility'>): boolean {
+  return product.visibility !== 'hidden';
 }
 
-/**
- * The one question every buy path should ask: can this exact piece be bought
- * right now? The product switch wins over the size's count.
- */
-export function canPurchaseVariant(product: Pick<Product, 'availability'>, variant: Variant): boolean {
-  return isProductAvailable(product) && isVariantInStock(variant);
+/** Keeps only what a customer is allowed to see. */
+export function visibleProducts(products: Product[]): Product[] {
+  return products.filter(isProductVisible);
 }
 
 export function getProductStockSummary(product: Product) {
-  // Off sale is reported as sold out, so every card, badge, pill and piece of
-  // structured data that already reads this summary updates on its own.
-  if (!isProductAvailable(product)) {
-    return {
-      availableCount: 0,
-      isSoldOut: true,
-      totalKnownStock: 0,
-      hasUnlimitedStock: false
-    };
-  }
-
   const variants = product.variants || [];
   const available = variants.filter(isVariantInStock);
   const finiteInventory = available

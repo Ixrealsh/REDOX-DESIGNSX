@@ -1,6 +1,6 @@
 import { ShopGrid } from '@/components/commerce/ShopGrid';
 import { Button } from '@/components/ui/Button';
-import { getDbProducts, getDbCollections } from '@/lib/catalog-db';
+import { getVisibleDbProducts, getDbCollections } from '@/lib/catalog-db';
 import { buildMetadata } from '@/lib/metadata';
 import styles from '../pages.module.css';
 
@@ -16,7 +16,7 @@ export const metadata = buildMetadata({
 
 export default async function SearchPage({ searchParams }: SearchPageProps) {
   const query = searchParams?.q || '';
-  const products = await getDbProducts();
+  const products = await getVisibleDbProducts();
   const collections = await getDbCollections();
 
   return (

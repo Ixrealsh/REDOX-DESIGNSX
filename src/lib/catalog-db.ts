@@ -5,7 +5,12 @@ import {
   collections as mockCollections,
   lookbooks as mockLookbooks
 } from '@/data/catalog';
-import { isProductAvailable, isVariantInStock, normalizeVariantStock } from '@/lib/inventory';
+import {
+  isProductVisible,
+  isVariantInStock,
+  normalizeVariantStock,
+  visibleProducts
+} from '@/lib/inventory';
 import { SERVICE_CHARGE_RATE } from '@/lib/format';
 import type {
   Product,
@@ -40,7 +45,7 @@ function mapProductRow(row: any): Product {
     collectionName: row.collection_name,
     category: row.category,
     price: Number(row.price),
-    availability: row.availability === 'out_of_stock' ? 'out_of_stock' : 'in_stock',
+    visibility: row.visibility === 'hidden' ? 'hidden' : 'visible',
     badge: row.badge || undefined,
     image: row.image,
     secondaryImage: row.secondary_image || undefined,
@@ -125,7 +130,7 @@ async function ensureProductsSchema(): Promise<void> {
     productsSchemaPromise = (async () => {
       await sql`
         ALTER TABLE products
-          ADD COLUMN IF NOT EXISTS availability VARCHAR(20) NOT NULL DEFAULT 'in_stock'
+          ADD COLUMN IF NOT EXISTS visibility VARCHAR(20) NOT NULL DEFAULT 'visible'
       `;
     })().catch((error) => {
       // Let the next caller retry rather than caching a permanent failure.
@@ -162,8 +167,19 @@ export async function getDbProduct(slug: string): Promise<Product | undefined> {
   }
 }
 
+/**
+ * Everything a customer is allowed to see.
+ *
+ * Storefront pages must read through here rather than `getDbProducts`, which
+ * deliberately returns hidden products too — the admin panel needs them, and so
+ * does anything resolving a past order's line items.
+ */
+export async function getVisibleDbProducts(): Promise<Product[]> {
+  return visibleProducts(await getDbProducts());
+}
+
 export async function getDbCollectionProducts(collectionSlug: string): Promise<Product[]> {
-  const allProducts = await getDbProducts();
+  const allProducts = await getVisibleDbProducts();
   return allProducts.filter((p) => p.collectionSlug === collectionSlug);
 }
 
@@ -174,7 +190,7 @@ export async function saveDbProduct(p: Product): Promise<boolean> {
 
     const normalizedProduct = {
       ...p,
-      availability: p.availability === 'out_of_stock' ? 'out_of_stock' : 'in_stock',
+      visibility: p.visibility === 'hidden' ? 'hidden' : 'visible',
       variants: (p.variants || []).map(normalizeVariantStock)
     };
 
@@ -183,17 +199,17 @@ export async function saveDbProduct(p: Product): Promise<boolean> {
         id, slug, name, collection_slug, collection_name, category, price, badge,
         image, secondary_image, image_alt, colors, color_hex, variants,
         description, story, details, care, material, fit, rating, review_count, color_images,
-        availability
+        visibility
       ) VALUES (
         ${normalizedProduct.id}, ${normalizedProduct.slug}, ${normalizedProduct.name}, ${normalizedProduct.collectionSlug}, ${normalizedProduct.collectionName}, ${normalizedProduct.category},
         ${normalizedProduct.price}, ${normalizedProduct.badge || null}, ${normalizedProduct.image}, ${normalizedProduct.secondaryImage || null}, ${normalizedProduct.imageAlt},
         ${normalizedProduct.colors}, ${JSON.stringify(normalizedProduct.colorHex)}, ${JSON.stringify(normalizedProduct.variants)},
         ${normalizedProduct.description}, ${normalizedProduct.story}, ${normalizedProduct.details}, ${normalizedProduct.care}, ${normalizedProduct.material}, ${normalizedProduct.fit},
         ${normalizedProduct.rating}, ${normalizedProduct.reviewCount}, ${JSON.stringify(normalizedProduct.colorImages || {})},
-        ${normalizedProduct.availability}
+        ${normalizedProduct.visibility}
       )
       ON CONFLICT (id) DO UPDATE SET
-        availability = EXCLUDED.availability,
+        visibility = EXCLUDED.visibility,
         slug = EXCLUDED.slug,
         name = EXCLUDED.name,
         collection_slug = EXCLUDED.collection_slug,
@@ -273,10 +289,10 @@ export async function applyDbProductStockDelta(
   const product = await getDbProduct(slug);
   if (!product) return undefined;
 
-  // The last gate before inventory moves. A product the merchant has taken off
-  // sale cannot be bought here either, whatever its per-size counts say.
-  if (!options.allowShortfall && !isProductAvailable(product)) {
-    throw new Error(`${product.name} is currently out of stock.`);
+  // The last gate before inventory moves. A product taken off the site is not
+  // something a customer can be holding a checkout for.
+  if (!options.allowShortfall && !isProductVisible(product)) {
+    throw new Error(`${product.name} is not available.`);
   }
 
   const normalizedSelections = selections.map((selection) => ({

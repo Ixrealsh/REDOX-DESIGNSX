@@ -1,5 +1,5 @@
 import { ProductCard } from '@/components/product/ProductCard';
-import { getDbProducts } from '@/lib/catalog-db';
+import { getVisibleDbProducts } from '@/lib/catalog-db';
 import { buildMetadata } from '@/lib/metadata';
 import styles from '../pages.module.css';
 
@@ -12,7 +12,7 @@ export const metadata = buildMetadata({
 });
 
 export default async function ShopPage() {
-  const products = await getDbProducts();
+  const products = await getVisibleDbProducts();
 
   return (
     <main className={styles.homePage}>

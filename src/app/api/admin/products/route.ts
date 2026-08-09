@@ -45,20 +45,14 @@ export async function POST(request: Request) {
     }
 
     const normalizedVariants = Array.isArray(body.variants) ? body.variants.map(normalizeVariantStock) : [];
-    const hasSellableVariant = normalizedVariants.some(isVariantInStock);
-    const availability: Product['availability'] =
-      body.availability === 'out_of_stock' ? 'out_of_stock' : 'in_stock';
+    const visibility: Product['visibility'] = body.visibility === 'hidden' ? 'hidden' : 'visible';
 
-    // A product with nothing in stock is normally a mistake worth catching. It
-    // is not a mistake when the merchant has deliberately marked the whole
-    // product out of stock — that is exactly what they asked for.
-    if (!hasSellableVariant && availability !== 'out_of_stock') {
+    // A product needs sizes to be a product. It does not need any of them to be
+    // in stock — marking every size sold out is a normal thing to do, and the
+    // storefront already reads that as SOLD OUT.
+    if (normalizedVariants.length === 0) {
       return NextResponse.json(
-        {
-          error:
-            'Add at least one in-stock size before saving — or set Availability to ' +
-            '"Out of stock" to take the whole product off sale.'
-        },
+        { error: 'Add at least one colour and size before saving.' },
         { status: 400 }
       );
     }
@@ -71,7 +65,7 @@ export async function POST(request: Request) {
       collectionName: String(body.collectionName || ''),
       category: body.category || 'Tops',
       price: Number(body.price),
-      availability,
+      visibility,
       compareAtPrice: body.compareAtPrice ? Number(body.compareAtPrice) : undefined,
       badge: body.badge || undefined,
       image: String(body.image),

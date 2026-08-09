@@ -1,7 +1,7 @@
 import { notFound } from 'next/navigation';
 import { ProductDetail } from '@/components/product/ProductDetail';
 import { getDbProduct } from '@/lib/catalog-db';
-import { getProductStockSummary } from '@/lib/inventory';
+import { getProductStockSummary, isProductVisible } from '@/lib/inventory';
 import { buildMetadata, siteMeta } from '@/lib/metadata';
 
 // Always resolve products from the database so admin-created items are available immediately.
@@ -14,7 +14,8 @@ interface ProductPageProps {
 export async function generateMetadata({ params }: ProductPageProps) {
   const product = await getDbProduct(params.slug);
 
-  if (!product) {
+  // A hidden product must not leak its name or photo into a link preview.
+  if (!product || !isProductVisible(product)) {
     return buildMetadata({ title: 'Product' });
   }
 
@@ -29,7 +30,9 @@ export async function generateMetadata({ params }: ProductPageProps) {
 export default async function ProductPage({ params }: ProductPageProps) {
   const product = await getDbProduct(params.slug);
 
-  if (!product) {
+  // Hidden reads exactly like deleted from the outside: someone holding an old
+  // link, or guessing a slug, gets the same 404 as for a piece that never was.
+  if (!product || !isProductVisible(product)) {
     notFound();
   }
 

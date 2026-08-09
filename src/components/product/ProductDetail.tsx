@@ -21,10 +21,10 @@ import {
   type CheckoutSession
 } from '@/lib/checkout-client';
 import {
-  canPurchaseVariant,
+  getProductStockSummary,
   getVariantStockLabel,
   getVariantStockLimit,
-  isProductAvailable
+  isVariantInStock
 } from '@/lib/inventory';
 import styles from './ProductDetail.module.css';
 
@@ -197,10 +197,10 @@ export function ProductDetail({ product }: ProductDetailProps) {
    * Whether this piece can go in a bag at all, decided once so the size list,
    * both buy buttons and the sticky bar can never disagree about it.
    *
-   * `soldOut` is the merchant's master switch: the page stays fully browsable —
-   * images, story, sizes, price — but nothing here can be bought.
+   * `soldOut` means every size is out of stock — there is nothing left to sell,
+   * so a live "Buy now" would only lead to a dead end.
    */
-  const soldOut = !isProductAvailable(product);
+  const soldOut = getProductStockSummary(product).isSoldOut;
   const comingSoon = product.badge === 'COMING SOON';
   const canBuy = !soldOut && !comingSoon;
 
@@ -286,7 +286,7 @@ export function ProductDetail({ product }: ProductDetailProps) {
       Object.entries(sizes).forEach(([size, qty]) => {
         if (qty > 0) {
           const variant = product.variants.find(
-            (v) => v.size === size && v.color === color && canPurchaseVariant(product, v)
+            (v) => v.size === size && v.color === color && isVariantInStock(v)
           );
           if (variant) {
             const colorImg = product.colorImages?.[color]?.[0] || product.image;
@@ -530,7 +530,7 @@ export function ProductDetail({ product }: ProductDetailProps) {
                     const qty = quantities[selectedColor]?.[size] || 0;
                     const stockLimit = getVariantStockLimit(variant);
                     // The product's master switch overrules the size's own count.
-                    const inStock = canPurchaseVariant(product, variant);
+                    const inStock = isVariantInStock(variant);
 
                     return (
                       <div 
@@ -550,7 +550,7 @@ export function ProductDetail({ product }: ProductDetailProps) {
                           <span style={{ fontWeight: 700, fontSize: '0.9rem', color: '#fff' }}>Size {size}</span>
                           <span style={{ fontSize: '0.75rem', color: '#888', marginTop: 2 }}>
                             {formatCurrency(product.price)} -{' '}
-                            {isProductAvailable(product) ? getVariantStockLabel(variant) : 'Sold out'}
+                            {getVariantStockLabel(variant)}
                           </span>
                         </div>
                         

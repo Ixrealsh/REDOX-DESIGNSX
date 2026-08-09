@@ -357,7 +357,7 @@ export function AdminDashboard({
     collectionSlug: '',
     collectionName: '',
     badge: '',
-    availability: 'in_stock' as 'in_stock' | 'out_of_stock',
+    visibility: 'visible' as 'visible' | 'hidden',
     image: '',
     description: '',
     story: '',
@@ -980,7 +980,7 @@ export function AdminDashboard({
       details: productForm.details.split('\n').filter(Boolean),
       care: productForm.care.split('\n').filter(Boolean),
       badge: (productForm.badge || undefined) as Product['badge'],
-      availability: productForm.availability,
+      visibility: productForm.visibility,
       secondaryImage: finalColorImages[finalColors[0]]?.[0] || productForm.image,
       imageAlt: productForm.name,
       rating: 4.8,
@@ -1222,7 +1222,7 @@ export function AdminDashboard({
       collectionSlug: p.collectionSlug,
       collectionName: p.collectionName,
       badge: p.badge || '',
-      availability: p.availability === 'out_of_stock' ? 'out_of_stock' : 'in_stock',
+      visibility: p.visibility === 'hidden' ? 'hidden' : 'visible',
       image: p.image,
       description: p.description,
       story: p.story,
@@ -1455,7 +1455,7 @@ export function AdminDashboard({
                   collectionSlug: '',
                   collectionName: '',
                   badge: '',
-                  availability: 'in_stock',
+                  visibility: 'visible',
                   image: '',
                   description: '',
                   story: '',
@@ -1498,14 +1498,13 @@ export function AdminDashboard({
                   <p className={styles.cardCategory}>{p.category} / {p.collectionName}</p>
                   <h3 className={styles.cardTitle}>{p.name}</h3>
                   <div className={styles.stockPills}>
-                    {/* "Taken off sale" and "nothing left" both stop sales, but
-                        they are different decisions and want different fixes. */}
+                    {/* Two independent facts: whether the site shows it, and
+                        whether there is anything left to sell. */}
+                    {p.visibility === 'hidden' && (
+                      <span className={styles.stockPillHidden}>⊘ Hidden from site</span>
+                    )}
                     <span className={stock.isSoldOut ? styles.stockPillDanger : styles.stockPill}>
-                      {p.availability === 'out_of_stock'
-                        ? 'Off sale · out of stock'
-                        : stock.isSoldOut
-                        ? 'No stock left'
-                        : 'In stock'}
+                      {stock.isSoldOut ? 'Out of stock' : 'In stock'}
                     </span>
                     <span className={styles.stockPill}>{p.variants.length} size variants</span>
                     {!stock.isSoldOut && !stock.hasUnlimitedStock && stock.totalKnownStock > 0 && (
@@ -2064,37 +2063,37 @@ export function AdminDashboard({
             
             <form onSubmit={handleProductSubmit} className={styles.form}>
               <div className={styles.formGrid}>
-                {/* Availability — the master switch over every size */}
+                {/* Visibility — whether the product is on the public site at all */}
                 <div className={`${styles.field} ${styles.formGridFull}`}>
-                  <label className={styles.fieldLabel}>Availability</label>
+                  <label className={styles.fieldLabel}>Visibility</label>
                   <div className={styles.segmented}>
                     <button
                       className={`${styles.segment} ${
-                        productForm.availability === 'in_stock' ? styles.segmentActivePaid : ''
+                        productForm.visibility === 'visible' ? styles.segmentActivePaid : ''
                       }`}
-                      onClick={() => setProductForm((p) => ({ ...p, availability: 'in_stock' }))}
+                      onClick={() => setProductForm((p) => ({ ...p, visibility: 'visible' }))}
                       type="button"
                     >
-                      ✓ On sale
+                      👁 Visible
                     </button>
                     <button
                       className={`${styles.segment} ${
-                        productForm.availability === 'out_of_stock' ? styles.segmentActiveDanger : ''
+                        productForm.visibility === 'hidden' ? styles.segmentActiveHidden : ''
                       }`}
-                      onClick={() => setProductForm((p) => ({ ...p, availability: 'out_of_stock' }))}
+                      onClick={() => setProductForm((p) => ({ ...p, visibility: 'hidden' }))}
                       type="button"
                     >
-                      ✕ Out of stock
+                      ⊘ Hidden
                     </button>
                   </div>
                   <p
                     className={`${styles.hint} ${
-                      productForm.availability === 'out_of_stock' ? styles.hintWarn : styles.hintOk
+                      productForm.visibility === 'hidden' ? styles.hintWarn : styles.hintOk
                     }`}
                   >
-                    {productForm.availability === 'out_of_stock'
-                      ? 'The product stays on the site — page, photos, sizes and price all visible — but nobody can buy it, at any size. Your stock numbers below are kept, so switching back on sale restores them exactly.'
-                      : 'Customers can buy any size that has stock. Switch to “Out of stock” to keep the product visible but stop all sales.'}
+                    {productForm.visibility === 'hidden'
+                      ? 'Completely off the website — gone from the shop, search, the homepage and Google, and its page returns “not found”. It stays here in full, so showing it again brings back the photos, sizes and stock exactly as they are.'
+                      : 'Live on the website. Sizes marked “Out of stock” below still show as sold out — hide the product only when you want it gone from the site entirely.'}
                   </p>
                 </div>
 
