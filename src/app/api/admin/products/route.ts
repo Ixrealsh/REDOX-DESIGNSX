@@ -3,7 +3,8 @@ import { revalidatePath } from 'next/cache';
 import { isDbConfigured } from '@/lib/db';
 import { deleteDbProduct, getDbProducts, saveDbProduct } from '@/lib/catalog-db';
 import { requireAdminSession } from '@/lib/admin-auth';
-import { isVariantInStock, normalizeVariantStock } from '@/lib/inventory';
+import { normalizeVariantStock } from '@/lib/inventory';
+import { MIN_WHOLESALE_QUANTITY, normalizeWholesaleRule } from '@/lib/wholesale';
 import type { Product } from '@/types/product';
 
 export async function GET() {
@@ -57,6 +58,30 @@ export async function POST(request: Request) {
       );
     }
 
+    // A wholesale rule that does not undercut the normal price would charge bulk
+    // buyers the same or more. Rejected loudly rather than silently dropped, so
+    // the merchant never believes a deal is live when it is not.
+    const price = Number(body.price);
+    const wholesale = normalizeWholesaleRule(body.wholesale, price);
+
+    if (body.wholesale && !wholesale) {
+      const requested = body.wholesale as { minQuantity?: unknown; unitPrice?: unknown };
+      const minQuantity = Number(requested.minQuantity);
+      const unitPrice = Number(requested.unitPrice);
+
+      const reason =
+        !Number.isFinite(minQuantity) || minQuantity < MIN_WHOLESALE_QUANTITY
+          ? `the trigger must be ${MIN_WHOLESALE_QUANTITY} pieces or more`
+          : !Number.isFinite(unitPrice) || unitPrice <= 0
+          ? 'the wholesale price must be above zero'
+          : `GH₵${unitPrice.toFixed(2)} is not below the normal price of GH₵${price.toFixed(2)}`;
+
+      return NextResponse.json(
+        { error: `That wholesale rule would not work — ${reason}.` },
+        { status: 400 }
+      );
+    }
+
     const product: Product = {
       id: String(body.id),
       slug: String(body.slug),
@@ -64,8 +89,9 @@ export async function POST(request: Request) {
       collectionSlug: String(body.collectionSlug || ''),
       collectionName: String(body.collectionName || ''),
       category: body.category || 'Tops',
-      price: Number(body.price),
+      price,
       visibility,
+      wholesale,
       compareAtPrice: body.compareAtPrice ? Number(body.compareAtPrice) : undefined,
       badge: body.badge || undefined,
       image: String(body.image),

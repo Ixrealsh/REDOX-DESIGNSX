@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Image from 'next/image';
-import type { Order, Product, Variant } from '@/types/product';
+import type { Order, Product, Variant, WholesaleRule } from '@/types/product';
 import { formatCurrency } from '@/lib/format';
 import {
   getVariantStockLabel,
@@ -11,6 +11,7 @@ import {
   isVariantInStock
 } from '@/lib/inventory';
 import { resolveDiscount, sumOrderExtras } from '@/lib/order-schema';
+import { effectiveUnitPrice, quantityByProduct } from '@/lib/wholesale';
 import { formatGhanaPhone, isValidGhanaPhone } from '@/lib/phone';
 import styles from './Admin.module.css';
 
@@ -67,7 +68,10 @@ interface DraftLine {
   color: string;
   size: string;
   colorHex?: string;
+  /** The normal catalogue price. */
   unitPrice: number;
+  /** The product's bulk rule, so this screen prices exactly as the server will. */
+  wholesale?: WholesaleRule | null;
   quantity: number;
   /** How many the catalogue believes are left. */
   stockLimit: number;
@@ -249,6 +253,7 @@ export function CreateOrderModal({ products, onClose, onCreated, onPrint }: Crea
         size: variant.size,
         colorHex: product.colorHex?.[variant.color],
         unitPrice: product.price,
+        wholesale: product.wholesale ?? null,
         quantity: 1,
         stockLimit,
         override: needsOverride
@@ -323,7 +328,25 @@ export function CreateOrderModal({ products, onClose, onCreated, onPrint }: Crea
   ).length - validExtras.length;
 
   // ── Money ─────────────────────────────────────────────────────
-  const subtotal = round2(lines.reduce((sum, line) => sum + line.unitPrice * line.quantity, 0));
+  // Bulk pricing applies to in-person orders too, and the server will apply it
+  // whether or not this screen does — so it has to be shown here, or the
+  // merchant would quote a price that is not the one charged.
+  const bulkQuantities = quantityByProduct(lines);
+
+  const pricedLines = lines.map((line) => {
+    const unit = effectiveUnitPrice(
+      { price: line.unitPrice, wholesale: line.wholesale },
+      bulkQuantities.get(line.productSlug) || 0
+    );
+    return { ...line, effectiveUnitPrice: unit, bulkApplied: unit < line.unitPrice };
+  });
+
+  const subtotal = round2(
+    pricedLines.reduce((sum, line) => sum + line.effectiveUnitPrice * line.quantity, 0)
+  );
+  const bulkSaving = round2(
+    pricedLines.reduce((sum, line) => sum + (line.unitPrice - line.effectiveUnitPrice) * line.quantity, 0)
+  );
   const extrasTotal = sumOrderExtras(validExtras);
   // The discount comes off the whole bill, services included.
   const billBeforeDiscount = round2(subtotal + extrasTotal);
@@ -698,12 +721,13 @@ export function CreateOrderModal({ products, onClose, onCreated, onPrint }: Crea
                   Nothing added yet. Search above, tap a colour, then tap a size.
                 </p>
               ) : (
-                lines.map((line) => (
+                pricedLines.map((line) => (
                   <div className={styles.basketRow} key={line.key}>
                     <div className={styles.basketInfo}>
                       <p className={styles.basketName}>{line.productName}</p>
                       <p className={styles.basketVariant}>
-                        {line.color} / {line.size} @ {formatCurrency(line.unitPrice)}
+                        {line.color} / {line.size} @ {formatCurrency(line.effectiveUnitPrice)}
+                        {line.bulkApplied && <span className={styles.bulkTag}>WHOLESALE</span>}
                         {line.override && <span className={styles.overrideTag}>OVER STOCK</span>}
                       </p>
                     </div>
@@ -729,7 +753,7 @@ export function CreateOrderModal({ products, onClose, onCreated, onPrint }: Crea
                     </div>
 
                     <span className={styles.basketLineTotal}>
-                      {formatCurrency(round2(line.unitPrice * line.quantity))}
+                      {formatCurrency(round2(line.effectiveUnitPrice * line.quantity))}
                     </span>
 
                     <button
@@ -996,6 +1020,14 @@ export function CreateOrderModal({ products, onClose, onCreated, onPrint }: Crea
               <span>Items</span>
               <span className={styles.totalsValue}>{formatCurrency(subtotal)}</span>
             </div>
+            {bulkSaving > 0 && (
+              <div className={styles.totalsRow}>
+                <span style={{ color: '#f6c667' }}>Wholesale price applied</span>
+                <span className={styles.totalsValue} style={{ color: '#f6c667' }}>
+                  −{formatCurrency(bulkSaving)}
+                </span>
+              </div>
+            )}
             {validExtras.map((extra, index) => (
               <div className={styles.totalsRow} key={`${extra.label}-${index}`}>
                 <span style={{ color: '#60a5fa' }}>{extra.label}</span>

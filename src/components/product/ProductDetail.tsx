@@ -26,6 +26,14 @@ import {
   getVariantStockLimit,
   isVariantInStock
 } from '@/lib/inventory';
+import {
+  effectiveUnitPrice,
+  getWholesaleRule,
+  isWholesaleApplied,
+  savingPerUnit,
+  savingPercent,
+  unitsUntilWholesale
+} from '@/lib/wholesale';
 import styles from './ProductDetail.module.css';
 
 interface ProductDetailProps {
@@ -104,9 +112,20 @@ export function ProductDetail({ product }: ProductDetailProps) {
     return sum;
   }, [quantities]);
 
+  /**
+   * Bulk pricing counts every size and colour of this product together, which is
+   * exactly what `totalQuantity` already is. Deriving the unit price here means
+   * the selection summary, the checkout panel and both pay buttons all quote the
+   * same figure without any of them knowing bulk pricing exists.
+   */
+  const bulkRule = getWholesaleRule(product);
+  const bulkApplied = isWholesaleApplied(product, totalQuantity);
+  const unitPrice = effectiveUnitPrice(product, totalQuantity);
+  const bulkUnitsAway = unitsUntilWholesale(product, totalQuantity);
+
   const totalPrice = useMemo(() => {
-    return totalQuantity * product.price;
-  }, [totalQuantity, product.price]);
+    return Math.round(unitPrice * totalQuantity * 100) / 100;
+  }, [totalQuantity, unitPrice]);
 
   const selectedItems = useMemo(() => {
     return Object.entries(quantities).flatMap(([color, sizes]) =>
@@ -508,6 +527,36 @@ export function ProductDetail({ product }: ProductDetailProps) {
               })}
             </div>
           </div>
+
+          {/* Bulk pricing. Advertised before the sizes, because it is a reason
+              to pick more of them — and it turns into a live confirmation the
+              moment the customer reaches the threshold. */}
+          {bulkRule && canBuy && (
+            <div className={bulkApplied ? styles.bulkBannerActive : styles.bulkBanner}>
+              {bulkApplied ? (
+                <>
+                  <strong>✓ Wholesale price applied</strong>
+                  <span>
+                    All {totalQuantity} pieces at {formatCurrency(bulkRule.unitPrice)} each — you’re
+                    saving {formatCurrency(savingPerUnit(product) * totalQuantity)}.
+                  </span>
+                </>
+              ) : (
+                <>
+                  <strong>
+                    Buy {bulkRule.minQuantity}+ and pay {formatCurrency(bulkRule.unitPrice)} each
+                  </strong>
+                  <span>
+                    Save {formatCurrency(savingPerUnit(product))} per piece ({savingPercent(product)}%
+                    off). Mix any sizes and colours
+                    {totalQuantity > 0 && bulkUnitsAway > 0
+                      ? ` — add ${bulkUnitsAway} more to unlock it.`
+                      : '.'}
+                  </span>
+                </>
+              )}
+            </div>
+          )}
 
           {/* Size Multi-Quantity Selector Row List */}
           <div className={`${styles.optionGroup} ${shaking ? styles.shaking : ''}`}>

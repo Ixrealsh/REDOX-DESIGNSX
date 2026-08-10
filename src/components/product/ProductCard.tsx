@@ -7,6 +7,7 @@ import { Badge } from '@/components/ui/Badge';
 import { HeartIcon } from '@/components/ui/Icons';
 import { formatCurrency } from '@/lib/format';
 import { getProductStockSummary } from '@/lib/inventory';
+import { getWholesaleRule } from '@/lib/wholesale';
 import { useWishlistStore } from '@/store/wishlist.store';
 import type { Product } from '@/types/product';
 import styles from './ProductCard.module.css';
@@ -20,6 +21,7 @@ export function ProductCard({ product, priority = false }: ProductCardProps) {
   const toggleWishlist = useWishlistStore((state) => state.toggleItem);
   const isWishlisted = useWishlistStore((state) => state.isWishlisted(product.id));
   const stock = useMemo(() => getProductStockSummary(product), [product]);
+  const bulkRule = useMemo(() => getWholesaleRule(product), [product]);
   const badgeLabel: Product['badge'] = stock.isSoldOut ? 'SOLD OUT' : product.badge;
 
   return (
@@ -75,6 +77,12 @@ export function ProductCard({ product, priority = false }: ProductCardProps) {
                   ? `${stock.totalKnownStock} available`
                   : 'In stock'}
           </p>
+          {/* One short line — enough to make a browsing customer open the page. */}
+          {bulkRule && !stock.isSoldOut && (
+            <p className={styles.bulkHint}>
+              {bulkRule.minQuantity}+ for {formatCurrency(bulkRule.unitPrice)} each
+            </p>
+          )}
         </div>
         <div className={styles.priceWrap}>
           <span className={product.compareAtPrice ? styles.salePrice : styles.price}>

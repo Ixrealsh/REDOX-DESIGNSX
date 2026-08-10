@@ -358,6 +358,9 @@ export function AdminDashboard({
     collectionName: '',
     badge: '',
     visibility: 'visible' as 'visible' | 'hidden',
+    wholesaleEnabled: false,
+    wholesaleMinQuantity: '',
+    wholesalePrice: '',
     image: '',
     description: '',
     story: '',
@@ -981,6 +984,12 @@ export function AdminDashboard({
       care: productForm.care.split('\n').filter(Boolean),
       badge: (productForm.badge || undefined) as Product['badge'],
       visibility: productForm.visibility,
+      wholesale: productForm.wholesaleEnabled
+        ? {
+            minQuantity: Number(productForm.wholesaleMinQuantity),
+            unitPrice: Number(productForm.wholesalePrice)
+          }
+        : null,
       secondaryImage: finalColorImages[finalColors[0]]?.[0] || productForm.image,
       imageAlt: productForm.name,
       rating: 4.8,
@@ -1223,6 +1232,9 @@ export function AdminDashboard({
       collectionName: p.collectionName,
       badge: p.badge || '',
       visibility: p.visibility === 'hidden' ? 'hidden' : 'visible',
+      wholesaleEnabled: Boolean(p.wholesale),
+      wholesaleMinQuantity: p.wholesale ? String(p.wholesale.minQuantity) : '',
+      wholesalePrice: p.wholesale ? String(p.wholesale.unitPrice) : '',
       image: p.image,
       description: p.description,
       story: p.story,
@@ -1456,6 +1468,9 @@ export function AdminDashboard({
                   collectionName: '',
                   badge: '',
                   visibility: 'visible',
+                  wholesaleEnabled: false,
+                  wholesaleMinQuantity: '',
+                  wholesalePrice: '',
                   image: '',
                   description: '',
                   story: '',
@@ -1507,6 +1522,11 @@ export function AdminDashboard({
                       {stock.isSoldOut ? 'Out of stock' : 'In stock'}
                     </span>
                     <span className={styles.stockPill}>{p.variants.length} size variants</span>
+                    {p.wholesale && (
+                      <span className={styles.stockPillBulk}>
+                        {p.wholesale.minQuantity}+ @ {formatCurrency(p.wholesale.unitPrice)}
+                      </span>
+                    )}
                     {!stock.isSoldOut && !stock.hasUnlimitedStock && stock.totalKnownStock > 0 && (
                       <span className={styles.stockPill}>{stock.totalKnownStock} pieces</span>
                     )}
@@ -2095,6 +2115,111 @@ export function AdminDashboard({
                       ? 'Completely off the website — gone from the shop, search, the homepage and Google, and its page returns “not found”. It stays here in full, so showing it again brings back the photos, sizes and stock exactly as they are.'
                       : 'Live on the website. Sizes marked “Out of stock” below still show as sold out — hide the product only when you want it gone from the site entirely.'}
                   </p>
+                </div>
+
+                {/* Wholesale — buy N or more, pay less per piece */}
+                <div className={`${styles.field} ${styles.formGridFull}`}>
+                  <label className={styles.fieldLabel}>Wholesale / Bulk Price</label>
+                  <div className={styles.segmented}>
+                    <button
+                      className={`${styles.segment} ${
+                        !productForm.wholesaleEnabled ? styles.segmentActive : ''
+                      }`}
+                      onClick={() => setProductForm((p) => ({ ...p, wholesaleEnabled: false }))}
+                      type="button"
+                    >
+                      Off
+                    </button>
+                    <button
+                      className={`${styles.segment} ${
+                        productForm.wholesaleEnabled ? styles.segmentActivePaid : ''
+                      }`}
+                      onClick={() => setProductForm((p) => ({ ...p, wholesaleEnabled: true }))}
+                      type="button"
+                    >
+                      ✓ On
+                    </button>
+                  </div>
+
+                  {productForm.wholesaleEnabled && (
+                    <div style={{ marginTop: 'var(--space-3)' }}>
+                      <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                        <span className={styles.fieldLabel} style={{ margin: 0 }}>From</span>
+                        <input
+                          className={styles.input}
+                          min="2"
+                          onChange={(e) =>
+                            setProductForm((p) => ({ ...p, wholesaleMinQuantity: e.target.value }))
+                          }
+                          placeholder="5"
+                          step="1"
+                          style={{ width: '90px' }}
+                          type="number"
+                          value={productForm.wholesaleMinQuantity}
+                        />
+                        <span className={styles.fieldLabel} style={{ margin: 0 }}>pieces · each costs GH₵</span>
+                        <input
+                          className={styles.input}
+                          min="0"
+                          onChange={(e) =>
+                            setProductForm((p) => ({ ...p, wholesalePrice: e.target.value }))
+                          }
+                          placeholder="200"
+                          step="0.01"
+                          style={{ width: '120px' }}
+                          type="number"
+                          value={productForm.wholesalePrice}
+                        />
+                      </div>
+
+                      {/* The preview is the whole safety net: the merchant reads
+                          the deal back in the customer's words before saving. */}
+                      {(() => {
+                        const base = Number(productForm.price);
+                        const min = Number(productForm.wholesaleMinQuantity);
+                        const unit = Number(productForm.wholesalePrice);
+
+                        if (!productForm.price) {
+                          return <p className={`${styles.hint} ${styles.hintWarn}`}>Set the normal price first.</p>;
+                        }
+                        if (!productForm.wholesaleMinQuantity || !productForm.wholesalePrice) {
+                          return <p className={styles.hint}>Fill both boxes to see the deal.</p>;
+                        }
+                        if (!Number.isFinite(min) || min < 2) {
+                          return (
+                            <p className={`${styles.hint} ${styles.hintWarn}`}>
+                              ⚠ The trigger must be 2 pieces or more — 1 would just be a lower price.
+                            </p>
+                          );
+                        }
+                        if (!Number.isFinite(unit) || unit <= 0) {
+                          return <p className={`${styles.hint} ${styles.hintWarn}`}>⚠ Enter a wholesale price above zero.</p>;
+                        }
+                        if (unit >= base) {
+                          return (
+                            <p className={`${styles.hint} ${styles.hintWarn}`}>
+                              ⚠ GH₵{unit.toFixed(2)} is not below the normal GH₵{base.toFixed(2)} — bulk buyers
+                              would pay the same or more. Lower it, or turn wholesale off.
+                            </p>
+                          );
+                        }
+
+                        const saving = base - unit;
+                        const percent = Math.round((saving / base) * 100);
+
+                        return (
+                          <p className={`${styles.hint} ${styles.hintOk}`}>
+                            ✓ Customers see: <strong>“Buy {min}+ and pay GH₵{unit.toFixed(2)} each”</strong>
+                            <br />
+                            Saves them GH₵{saving.toFixed(2)} per piece ({percent}% off) · {min} pieces ={' '}
+                            GH₵{(unit * min).toFixed(2)} instead of GH₵{(base * min).toFixed(2)}
+                            <br />
+                            Any mix of sizes and colours of this product counts toward the {min}.
+                          </p>
+                        );
+                      })()}
+                    </div>
+                  )}
                 </div>
 
                 {/* Product Name */}

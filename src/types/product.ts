@@ -23,6 +23,21 @@ export interface Variant {
  */
 export type ProductVisibility = 'visible' | 'hidden';
 
+/**
+ * Bulk pricing for one product: buy `minQuantity` or more and every piece costs
+ * `unitPrice` instead of the normal price.
+ *
+ * The quantity is counted across the whole product — all colours, all sizes —
+ * because that is how someone actually buys a run of shirts. Three mediums and
+ * two larges is five shirts.
+ */
+export interface WholesaleRule {
+  /** Pieces of this product needed to unlock the price. Always at least 2. */
+  minQuantity: number;
+  /** What each piece costs once unlocked. Always below the normal price. */
+  unitPrice: number;
+}
+
 export interface Product {
   id: string;
   slug: string;
@@ -33,6 +48,8 @@ export interface Product {
   price: number;
   /** Defaults to `visible` when absent, so existing products stay on the site. */
   visibility?: ProductVisibility;
+  /** Bulk pricing. Absent or incomplete means the normal price always applies. */
+  wholesale?: WholesaleRule | null;
   compareAtPrice?: number;
   badge?: 'NEW' | 'SALE' | 'LIMITED' | 'SOLD OUT' | 'COMING SOON';
   image: string;

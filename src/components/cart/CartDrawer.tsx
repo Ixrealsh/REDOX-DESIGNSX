@@ -9,6 +9,13 @@ import { LinkButton } from '@/components/ui/LinkButton';
 import { formatCurrency } from '@/lib/format';
 import { getCartTotals, useCartStore } from '@/store/cart.store';
 import {
+  effectiveUnitPrice,
+  getWholesaleRule,
+  isWholesaleApplied,
+  savingIfUnlocked,
+  unitsUntilWholesale
+} from '@/lib/wholesale';
+import {
   claimPendingCheckoutRecovery,
   confirmPayment,
   forgetPendingCheckout,
@@ -29,7 +36,36 @@ export function CartDrawer() {
   const updateQty = useCartStore((state) => state.updateQty);
   const clearCart = useCartStore((state) => state.clearCart);
 
-  const { totalItems, subtotal, serviceCharge, orderTotal } = getCartTotals(items);
+  const { totalItems, subtotal, serviceCharge, orderTotal, wholesaleSaving, quantityByProductSlug } =
+    getCartTotals(items);
+
+  /**
+   * Products in the bag that have a bulk price the customer has not reached yet,
+   * nearest first. Capped at two — this is a helpful nudge, not a wall of
+   * upsells, and one line per product is enough to make the offer.
+   */
+  const wholesaleNudges = Array.from(
+    items
+      .reduce((byProduct, item) => {
+        if (byProduct.has(item.productSlug)) return byProduct;
+
+        const inBag = quantityByProductSlug.get(item.productSlug) || 0;
+        const needed = unitsUntilWholesale(item, inBag);
+        if (needed <= 0) return byProduct;
+
+        byProduct.set(item.productSlug, {
+          slug: item.productSlug,
+          name: item.name,
+          needed,
+          saving: savingIfUnlocked(item, inBag),
+          rule: getWholesaleRule(item)
+        });
+        return byProduct;
+      }, new Map<string, { slug: string; name: string; needed: number; saving: number; rule: ReturnType<typeof getWholesaleRule> }>())
+      .values()
+  )
+    .sort((a, b) => a.needed - b.needed)
+    .slice(0, 2);
 
   const [showCheckout, setShowCheckout] = useState(false);
   const [checkoutLoading, setCheckoutLoading] = useState(false);
@@ -601,7 +637,23 @@ export function CartDrawer() {
                         </button>
                       </div>
                       <div className={styles.itemBottom}>
-                        <p className={styles.price}>{formatCurrency(item.price)}</p>
+                        {(() => {
+                          const inBag = quantityByProductSlug.get(item.productSlug) || 0;
+                          const applied = isWholesaleApplied(item, inBag);
+
+                          // The old price stays visible next to the new one —
+                          // a price that simply changed would read as an error.
+                          return applied ? (
+                            <p className={styles.price}>
+                              <span className={styles.priceWas}>{formatCurrency(item.price)}</span>{' '}
+                              <span className={styles.priceBulk}>
+                                {formatCurrency(effectiveUnitPrice(item, inBag))}
+                              </span>
+                            </p>
+                          ) : (
+                            <p className={styles.price}>{formatCurrency(item.price)}</p>
+                          );
+                        })()}
                         <div aria-label={`Quantity for ${item.name}`} className={styles.quantity}>
                           <button
                             aria-label="Decrease quantity"
@@ -631,6 +683,22 @@ export function CartDrawer() {
 
             {items.length > 0 && (
               <div className={styles.footer}>
+                {/* Nearly there — the only place the offer can still change
+                    what they do about it. */}
+                {wholesaleNudges.map((nudge) => (
+                  <div className={styles.bulkNudge} key={nudge.slug}>
+                    <strong>Add {nudge.needed} more</strong> {nudge.name} to unlock{' '}
+                    {formatCurrency(nudge.rule?.unitPrice || 0)} each — save{' '}
+                    {formatCurrency(nudge.saving)}
+                  </div>
+                ))}
+
+                {wholesaleSaving > 0 && (
+                  <div className={styles.bulkApplied}>
+                    ✓ Wholesale price applied — you’re saving {formatCurrency(wholesaleSaving)}
+                  </div>
+                )}
+
                 <div className={styles.summaryRow}>
                   <span className={styles.summaryLabel}>Subtotal</span>
                   <span className={styles.summaryValue}>{formatCurrency(subtotal)}</span>

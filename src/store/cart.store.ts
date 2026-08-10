@@ -2,15 +2,21 @@
 
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
-import type { Product, Variant } from '@/types/product';
+import type { Product, Variant, WholesaleRule } from '@/types/product';
 import { calcOrderTotal, calcServiceCharge, clamp, FREE_SHIPPING_THRESHOLD } from '@/lib/format';
 import { getVariantStockLimit, UNTRACKED_STOCK_LIMIT } from '@/lib/inventory';
+import {
+  basketWholesaleSaving,
+  effectiveUnitPrice,
+  quantityByProduct
+} from '@/lib/wholesale';
 
 export interface CartItem {
   productId: string;
   productSlug: string;
   name: string;
   image: string;
+  /** The normal price, captured when the piece was added. */
   price: number;
   variantId: string;
   size: string;
@@ -18,6 +24,12 @@ export interface CartItem {
   sku: string;
   quantity: number;
   stockLimit?: number;
+  /**
+   * The product's bulk rule, captured alongside the price. A rule the merchant
+   * changes afterwards will not reach an already-open bag until checkout, where
+   * the server re-prices from the catalogue — the same way `price` already works.
+   */
+  wholesale?: WholesaleRule | null;
 }
 
 interface CartStore {
@@ -71,7 +83,8 @@ export const useCartStore = create<CartStore>()(
                 color: variant.color,
                 sku: variant.sku,
                 quantity: clamp(quantity, 1, stockLimit),
-                stockLimit
+                stockLimit,
+                wholesale: product.wholesale ?? null
               }
             ]
           };
@@ -104,7 +117,20 @@ export const useCartStore = create<CartStore>()(
 
 export function getCartTotals(items: CartItem[]) {
   const totalItems = items.reduce((sum, item) => sum + item.quantity, 0);
-  const subtotal = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
+
+  // Bulk pricing is per product across its sizes and colours, so the quantities
+  // have to be totalled before anything is priced.
+  const quantities = quantityByProduct(items);
+
+  const subtotal =
+    Math.round(
+      items.reduce(
+        (sum, item) =>
+          sum + effectiveUnitPrice(item, quantities.get(item.productSlug) || 0) * item.quantity,
+        0
+      ) * 100
+    ) / 100;
+
   const serviceCharge = calcServiceCharge(subtotal);
   const orderTotal = calcOrderTotal(subtotal);
   const freeShippingProgress = clamp((subtotal / FREE_SHIPPING_THRESHOLD) * 100, 0, 100);
@@ -116,6 +142,10 @@ export function getCartTotals(items: CartItem[]) {
     serviceCharge,
     orderTotal,
     freeShippingProgress,
-    remainingForFreeShipping
+    remainingForFreeShipping,
+    /** What bulk pricing is taking off this bag right now. */
+    wholesaleSaving: basketWholesaleSaving(items),
+    /** Per-product totals, so the drawer can show which lines qualified. */
+    quantityByProductSlug: quantities
   };
 }

@@ -12,6 +12,7 @@ import {
   visibleProducts
 } from '@/lib/inventory';
 import { SERVICE_CHARGE_RATE } from '@/lib/format';
+import { normalizeWholesaleRule } from '@/lib/wholesale';
 import type {
   Product,
   Drop,
@@ -36,6 +37,7 @@ export interface WaitlistSignup {
 // ----------------------------------------------------
 function mapProductRow(row: any): Product {
   const variants = typeof row.variants === 'string' ? JSON.parse(row.variants) : row.variants;
+  const price = Number(row.price);
 
   return {
     id: row.id,
@@ -44,8 +46,15 @@ function mapProductRow(row: any): Product {
     collectionSlug: row.collection_slug,
     collectionName: row.collection_name,
     category: row.category,
-    price: Number(row.price),
+    price,
     visibility: row.visibility === 'hidden' ? 'hidden' : 'visible',
+    // Validated on the way out as well as in: a rule that no longer undercuts
+    // the price (because the price was lowered later) is dropped rather than
+    // silently overcharging a bulk buyer.
+    wholesale: normalizeWholesaleRule(
+      { minQuantity: row.wholesale_min_quantity, unitPrice: row.wholesale_price },
+      price
+    ),
     badge: row.badge || undefined,
     image: row.image,
     secondaryImage: row.secondary_image || undefined,
@@ -130,7 +139,9 @@ async function ensureProductsSchema(): Promise<void> {
     productsSchemaPromise = (async () => {
       await sql`
         ALTER TABLE products
-          ADD COLUMN IF NOT EXISTS visibility VARCHAR(20) NOT NULL DEFAULT 'visible'
+          ADD COLUMN IF NOT EXISTS visibility VARCHAR(20) NOT NULL DEFAULT 'visible',
+          ADD COLUMN IF NOT EXISTS wholesale_min_quantity INTEGER,
+          ADD COLUMN IF NOT EXISTS wholesale_price NUMERIC
       `;
     })().catch((error) => {
       // Let the next caller retry rather than caching a permanent failure.
@@ -188,6 +199,8 @@ export async function saveDbProduct(p: Product): Promise<boolean> {
   try {
     await ensureProductsSchema();
 
+    const wholesale = normalizeWholesaleRule(p.wholesale, Number(p.price));
+
     const normalizedProduct = {
       ...p,
       visibility: p.visibility === 'hidden' ? 'hidden' : 'visible',
@@ -199,17 +212,19 @@ export async function saveDbProduct(p: Product): Promise<boolean> {
         id, slug, name, collection_slug, collection_name, category, price, badge,
         image, secondary_image, image_alt, colors, color_hex, variants,
         description, story, details, care, material, fit, rating, review_count, color_images,
-        visibility
+        visibility, wholesale_min_quantity, wholesale_price
       ) VALUES (
         ${normalizedProduct.id}, ${normalizedProduct.slug}, ${normalizedProduct.name}, ${normalizedProduct.collectionSlug}, ${normalizedProduct.collectionName}, ${normalizedProduct.category},
         ${normalizedProduct.price}, ${normalizedProduct.badge || null}, ${normalizedProduct.image}, ${normalizedProduct.secondaryImage || null}, ${normalizedProduct.imageAlt},
         ${normalizedProduct.colors}, ${JSON.stringify(normalizedProduct.colorHex)}, ${JSON.stringify(normalizedProduct.variants)},
         ${normalizedProduct.description}, ${normalizedProduct.story}, ${normalizedProduct.details}, ${normalizedProduct.care}, ${normalizedProduct.material}, ${normalizedProduct.fit},
         ${normalizedProduct.rating}, ${normalizedProduct.reviewCount}, ${JSON.stringify(normalizedProduct.colorImages || {})},
-        ${normalizedProduct.visibility}
+        ${normalizedProduct.visibility}, ${wholesale?.minQuantity ?? null}, ${wholesale?.unitPrice ?? null}
       )
       ON CONFLICT (id) DO UPDATE SET
         visibility = EXCLUDED.visibility,
+        wholesale_min_quantity = EXCLUDED.wholesale_min_quantity,
+        wholesale_price = EXCLUDED.wholesale_price,
         slug = EXCLUDED.slug,
         name = EXCLUDED.name,
         collection_slug = EXCLUDED.collection_slug,

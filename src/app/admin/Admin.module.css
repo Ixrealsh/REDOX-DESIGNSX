@@ -1096,6 +1096,17 @@
   color: #ef4444;
 }
 
+.bulkTag {
+  display: inline-block;
+  margin-left: 6px;
+  background: rgba(245, 158, 11, 0.15);
+  color: #f6c667;
+  border-radius: 3px;
+  padding: 1px 5px;
+  font-size: 0.58rem;
+  letter-spacing: 0.06em;
+}
+
 .overrideTag {
   display: inline-block;
   margin-left: 6px;
@@ -1152,6 +1163,19 @@
   background: #a78bfa;
   border-color: #a78bfa;
   color: #16091f;
+}
+
+.stockPillBulk {
+  display: inline-block;
+  background: rgba(245, 158, 11, 0.14);
+  color: #f6c667;
+  border: 1px solid rgba(245, 158, 11, 0.38);
+  border-radius: 3px;
+  padding: 3px 8px;
+  font-size: 0.65rem;
+  font-family: var(--font-mono), monospace;
+  font-weight: 700;
+  letter-spacing: 0.04em;
 }
 
 .stockPillHidden {

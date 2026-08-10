@@ -198,6 +198,44 @@
   color: var(--color-white);
 }
 
+/* --- Bulk / wholesale pricing --- */
+.priceWas {
+  color: var(--color-text-muted, #777);
+  text-decoration: line-through;
+  font-weight: 400;
+}
+
+.priceBulk {
+  color: #10b981;
+}
+
+.bulkNudge {
+  background: rgba(245, 158, 11, 0.08);
+  border: 1px solid rgba(245, 158, 11, 0.28);
+  border-radius: 6px;
+  padding: 10px 12px;
+  margin-bottom: var(--space-2);
+  font-size: 0.78rem;
+  line-height: 1.5;
+  color: #f6c667;
+}
+
+.bulkNudge strong {
+  color: #fff;
+}
+
+.bulkApplied {
+  background: rgba(16, 185, 129, 0.1);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+  border-radius: 6px;
+  padding: 10px 12px;
+  margin-bottom: var(--space-2);
+  font-size: 0.78rem;
+  font-weight: 600;
+  line-height: 1.5;
+  color: #7ee2bd;
+}
+
 .quantity {
   display: inline-flex;
   align-items: center;

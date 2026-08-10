@@ -6,6 +6,7 @@ import {
 } from '@/lib/catalog-db';
 import { getVariantStockLimit, isProductVisible, isVariantInStock } from '@/lib/inventory';
 import { calcOrderTotal, calcServiceCharge } from '@/lib/format';
+import { effectiveUnitPrice, quantityByProduct } from '@/lib/wholesale';
 import type { Order, OrderItem, Product } from '@/types/product';
 
 /**
@@ -73,11 +74,19 @@ export function mergeLines(lines: RequestedLine[]): RequestedLine[] {
 }
 
 function buildOrderItems(lines: RequestedLine[], productsBySlug: Map<string, Product>): OrderItem[] {
+  // Bulk pricing is decided per product, across every colour and size of it in
+  // the basket — three mediums and two larges are five shirts. The totals are
+  // taken before any line is priced, so every line of a qualifying product gets
+  // the same unit price.
+  const totals = quantityByProduct(lines);
+
   return lines.map((line) => {
     const product = productsBySlug.get(line.productSlug)!;
     const variant = product.variants.find(
       (candidate) => candidate.color === line.color && candidate.size === line.size
     );
+
+    const unitPrice = effectiveUnitPrice(product, totals.get(line.productSlug) || 0);
 
     return {
       productId: product.id,
@@ -87,8 +96,8 @@ function buildOrderItems(lines: RequestedLine[], productsBySlug: Map<string, Pro
       size: line.size,
       sku: variant?.sku || '',
       quantity: line.quantity,
-      unitPrice: product.price,
-      lineTotal: Math.round(product.price * line.quantity * 100) / 100
+      unitPrice,
+      lineTotal: Math.round(unitPrice * line.quantity * 100) / 100
     };
   });
 }

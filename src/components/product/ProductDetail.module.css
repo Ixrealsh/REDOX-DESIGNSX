@@ -105,6 +105,50 @@
   color: var(--color-text-secondary);
 }
 
+/* --- Bulk / wholesale pricing banner --- */
+.bulkBanner,
+.bulkBannerActive {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  border-radius: 8px;
+  padding: 14px 16px;
+  margin-bottom: var(--space-5);
+  font-size: 0.82rem;
+  line-height: 1.5;
+}
+
+.bulkBanner {
+  background: rgba(245, 158, 11, 0.07);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  color: #d9a441;
+}
+
+.bulkBannerActive {
+  background: rgba(16, 185, 129, 0.09);
+  border: 1px solid rgba(16, 185, 129, 0.35);
+  color: #7ee2bd;
+}
+
+.bulkBanner strong,
+.bulkBannerActive strong {
+  font-size: 0.95rem;
+  letter-spacing: 0.01em;
+}
+
+.bulkBanner strong {
+  color: #f6c667;
+}
+
+.bulkBannerActive strong {
+  color: #10b981;
+}
+
+.bulkBanner span,
+.bulkBannerActive span {
+  color: var(--color-text-secondary, #999);
+}
+
 .optionGroup {
   margin-bottom: var(--space-6);
 }

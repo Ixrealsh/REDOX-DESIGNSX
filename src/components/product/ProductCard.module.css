@@ -102,6 +102,16 @@
   color: var(--color-text-muted);
 }
 
+.bulkHint {
+  margin: 3px 0 0;
+  color: #f6c667;
+  font-family: var(--font-mono), monospace;
+  font-size: 0.62rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
 .priceWrap {
   display: grid;
   justify-items: end;
