@@ -320,7 +320,7 @@ export function AdminDashboard({
   const [waitlist, setWaitlist] = useState<WaitlistSignup[]>(initialWaitlist);
   const [orders, setOrders] = useState<Order[]>([]);
   const [paymentSummary, setPaymentSummary] = useState<OrderPaymentSummary | null>(null);
-  const [paymentFilter, setPaymentFilter] = useState<PaymentFilter>('all');
+  const [paymentFilter, setPaymentFilter] = useState<PaymentFilter>('paid');
   const [isDbConnected, setIsDbConnected] = useState(initialDbStatus);
 
   // Database Initializing State
@@ -339,6 +339,7 @@ export function AdminDashboard({
   const [showDropModal, setShowDropModal] = useState(false);
   const [showCollectionModal, setShowCollectionModal] = useState(false);
   const [showLookbookModal, setShowLookbookModal] = useState(false);
+  const [detailProduct, setDetailProduct] = useState<Product | null>(null);
   
   // Notification State
   const [notification, setNotification] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
@@ -596,7 +597,7 @@ export function AdminDashboard({
    */
   const handleOrderCreated = async (result: CreatedOrderResult) => {
     setActiveTab('orders');
-    setPaymentFilter('all');
+    setPaymentFilter(result.order.paymentStatus === 'paid' ? 'paid' : 'unpaid');
     setHighlightOrderId(result.order.id);
     await refreshOrders({ silent: true });
 
@@ -1431,6 +1432,87 @@ export function AdminDashboard({
         onChange={handleVariantFileUpload}
       />
 
+      {/* ── Quick-glance Dashboard ─────────────────────────────────── */}
+      <section
+        style={{
+          background: 'rgba(10,10,10,0.5)',
+          border: '1px solid rgba(255,255,255,0.06)',
+          borderRadius: '10px',
+          padding: 'var(--space-5) var(--space-6)',
+          marginBottom: 'var(--space-6)',
+          position: 'relative',
+          overflow: 'hidden'
+        }}
+      >
+        {/* red accent line top */}
+        <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '2px', background: 'linear-gradient(90deg, #d72638, transparent 60%)' }} />
+
+        <p style={{ fontSize: '0.62rem', fontFamily: 'var(--font-mono), monospace', letterSpacing: '0.18em', textTransform: 'uppercase', color: '#555', margin: '0 0 var(--space-4) 0' }}>
+          Dashboard Overview
+        </p>
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '10px' }}>
+          {/* Revenue confirmed */}
+          <div style={{ background: '#0a0a0a', border: '1px solid rgba(16,185,129,0.2)', borderRadius: '7px', padding: '12px 14px' }}>
+            <div style={{ fontSize: '0.6rem', fontFamily: 'monospace', letterSpacing: '0.12em', textTransform: 'uppercase', color: '#555', marginBottom: '6px' }}>Revenue</div>
+            <div style={{ fontSize: '1.35rem', fontWeight: 800, fontFamily: 'monospace', color: '#10b981', lineHeight: 1 }}>
+              GH₵{orders.filter(o => o.paymentStatus === 'paid').reduce((s, o) => s + o.price, 0).toFixed(2)}
+            </div>
+            <div style={{ fontSize: '0.62rem', color: '#444', marginTop: '4px' }}>from {orders.filter(o => o.paymentStatus === 'paid').length} paid order{orders.filter(o => o.paymentStatus === 'paid').length !== 1 ? 's' : ''}</div>
+          </div>
+
+          {/* Pending value */}
+          <div style={{ background: '#0a0a0a', border: '1px solid rgba(245,158,11,0.2)', borderRadius: '7px', padding: '12px 14px' }}>
+            <div style={{ fontSize: '0.6rem', fontFamily: 'monospace', letterSpacing: '0.12em', textTransform: 'uppercase', color: '#555', marginBottom: '6px' }}>Outstanding</div>
+            <div style={{ fontSize: '1.35rem', fontWeight: 800, fontFamily: 'monospace', color: '#f59e0b', lineHeight: 1 }}>
+              GH₵{orders.filter(o => o.paymentStatus === 'unpaid').reduce((s, o) => s + o.price, 0).toFixed(2)}
+            </div>
+            <div style={{ fontSize: '0.62rem', color: '#444', marginTop: '4px' }}>{orders.filter(o => o.paymentStatus === 'unpaid').length} awaiting payment</div>
+          </div>
+
+          {/* Total orders */}
+          <div style={{ background: '#0a0a0a', border: '1px solid rgba(255,255,255,0.07)', borderRadius: '7px', padding: '12px 14px' }}>
+            <div style={{ fontSize: '0.6rem', fontFamily: 'monospace', letterSpacing: '0.12em', textTransform: 'uppercase', color: '#555', marginBottom: '6px' }}>Total Orders</div>
+            <div style={{ fontSize: '1.35rem', fontWeight: 800, fontFamily: 'monospace', color: '#fff', lineHeight: 1 }}>{orders.length}</div>
+            <div style={{ fontSize: '0.62rem', color: '#444', marginTop: '4px' }}>{orders.filter(o => o.source === 'admin').length} in-store · {orders.filter(o => o.source !== 'admin').length} online</div>
+          </div>
+
+          {/* Items sold */}
+          <div style={{ background: '#0a0a0a', border: '1px solid rgba(255,255,255,0.07)', borderRadius: '7px', padding: '12px 14px' }}>
+            <div style={{ fontSize: '0.6rem', fontFamily: 'monospace', letterSpacing: '0.12em', textTransform: 'uppercase', color: '#555', marginBottom: '6px' }}>Units Sold</div>
+            <div style={{ fontSize: '1.35rem', fontWeight: 800, fontFamily: 'monospace', color: '#fff', lineHeight: 1 }}>
+              {orders.filter(o => o.paymentStatus === 'paid').reduce((s, o) => s + o.totalQuantity, 0)}
+            </div>
+            <div style={{ fontSize: '0.62rem', color: '#444', marginTop: '4px' }}>confirmed paid orders only</div>
+          </div>
+
+          {/* Needs attention */}
+          {(() => {
+            const attention = orders.filter(needsAttention).length;
+            return (
+              <div style={{ background: '#0a0a0a', border: `1px solid ${attention > 0 ? 'rgba(239,68,68,0.35)' : 'rgba(255,255,255,0.07)'}`, borderRadius: '7px', padding: '12px 14px' }}>
+                <div style={{ fontSize: '0.6rem', fontFamily: 'monospace', letterSpacing: '0.12em', textTransform: 'uppercase', color: '#555', marginBottom: '6px' }}>Needs Checking</div>
+                <div style={{ fontSize: '1.35rem', fontWeight: 800, fontFamily: 'monospace', color: attention > 0 ? '#ef4444' : '#666', lineHeight: 1 }}>{attention}</div>
+                <div style={{ fontSize: '0.62rem', color: '#444', marginTop: '4px' }}>unpaid card orders &gt;1h</div>
+              </div>
+            );
+          })()}
+
+          {/* Products */}
+          {(() => {
+            const inStock = products.filter(p => !getProductStockSummary(p).isSoldOut).length;
+            const soldOut = products.filter(p => getProductStockSummary(p).isSoldOut).length;
+            return (
+              <div style={{ background: '#0a0a0a', border: '1px solid rgba(255,255,255,0.07)', borderRadius: '7px', padding: '12px 14px' }}>
+                <div style={{ fontSize: '0.6rem', fontFamily: 'monospace', letterSpacing: '0.12em', textTransform: 'uppercase', color: '#555', marginBottom: '6px' }}>Products</div>
+                <div style={{ fontSize: '1.35rem', fontWeight: 800, fontFamily: 'monospace', color: '#fff', lineHeight: 1 }}>{products.length}</div>
+                <div style={{ fontSize: '0.62rem', color: '#444', marginTop: '4px' }}>{inStock} in stock · <span style={{ color: soldOut > 0 ? '#ef4444' : '#444' }}>{soldOut} sold out</span></div>
+              </div>
+            );
+          })()}
+        </div>
+      </section>
+
       {/* Tabs Layout */}
       <div className={styles.tabs}>
         <button 
@@ -1541,6 +1623,9 @@ export function AdminDashboard({
                     >
                       View live
                     </a>
+                    <button className={styles.editButton} onClick={() => setDetailProduct(p)}>
+                      Details
+                    </button>
                     <button className={styles.editButton} onClick={() => openEditProduct(p)}>
                       Edit / Update
                     </button>
@@ -1651,12 +1736,12 @@ export function AdminDashboard({
           {orders.length > 0 && (
             <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: 'var(--space-3)' }}>
               {([
-                ['all', `All (${orders.length})`],
                 ['paid', `Paid (${orders.filter((o) => o.paymentStatus === 'paid').length})`],
                 ['unpaid', `Unpaid (${orders.filter((o) => o.paymentStatus === 'unpaid').length})`],
                 ['attention', `Needs checking (${orders.filter(needsAttention).length})`],
                 ['failed', `Failed (${orders.filter((o) => o.paymentStatus === 'failed' || o.paymentStatus === 'abandoned').length})`],
-                ['instore', `In-store (${orders.filter((o) => o.source === 'admin').length})`]
+                ['instore', `In-store (${orders.filter((o) => o.source === 'admin').length})`],
+                ['all', `All (${orders.length})`]
               ] as [PaymentFilter, string][]).map(([key, label]) => (
                 <button
                   key={key}
@@ -2071,6 +2156,278 @@ export function AdminDashboard({
           products={products}
         />
       )}
+
+      {/* Product Detail Modal ─ clean info sheet, easy to screenshot or print */}
+      {detailProduct && (() => {
+        const p = detailProduct;
+        const stock = getProductStockSummary(p);
+        // Group variants by colour
+        const byColor = p.variants.reduce<Record<string, typeof p.variants>>((acc, v) => {
+          if (!acc[v.color]) acc[v.color] = [];
+          acc[v.color].push(v);
+          return acc;
+        }, {});
+
+        const handlePrintDetail = () => {
+          const origin = window.location.origin;
+          const logoSrc = `${origin}/assets/icons/redoxlogo.jpg`;
+          const colorRows = Object.entries(byColor).map(([color, variants]) => `
+            <tr style="border-bottom:1px solid #f0f0f0">
+              <td style="padding:8px 12px;font-weight:700;color:#111">${color}</td>
+              <td style="padding:8px 12px">
+                ${variants.map(v => `<span style="display:inline-block;margin:2px 3px;padding:3px 8px;border-radius:3px;font-size:11px;font-weight:700;background:${v.stockStatus==='in_stock'?'#e8f8f0':'#fdf0f0'};color:${v.stockStatus==='in_stock'?'#0b7a45':'#c0392b'}">${v.size} ${v.inventory != null ? `(${v.inventory})` : ''}</span>`).join('')}
+              </td>
+            </tr>`).join('');
+
+          const html = `<!DOCTYPE html><html><head><meta charset="utf-8"/><title>${p.name} — Product Sheet</title>
+          <style>*{box-sizing:border-box}body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;margin:0;padding:20px;background:#f5f5f5;color:#111}
+          .sheet{max-width:700px;margin:0 auto;background:#fff;border-radius:8px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.12)}
+          .header{background:#111;padding:20px 24px;display:flex;align-items:center;gap:16px}
+          .header img{height:36px;width:auto;object-fit:contain}
+          .header h1{color:#fff;font-size:18px;font-weight:800;letter-spacing:0.04em;margin:0;text-transform:uppercase}
+          .body{padding:24px}
+          .row{display:flex;gap:24px}
+          .img-wrap{width:200px;flex-shrink:0;border-radius:6px;overflow:hidden;border:1px solid #eee}
+          .img-wrap img{width:100%;display:block;object-fit:cover}
+          .info{flex:1}
+          h2{font-size:22px;font-weight:800;margin:0 0 4px}
+          .price{font-size:20px;font-weight:800;color:#111;margin:0 0 12px}
+          .badge{display:inline-block;padding:3px 10px;border-radius:3px;font-size:11px;font-weight:700;background:#111;color:#fff;margin-bottom:10px;text-transform:uppercase;letter-spacing:0.08em}
+          .meta-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:16px}
+          .meta-item .l{font-size:10px;text-transform:uppercase;letter-spacing:0.1em;color:#999;margin-bottom:2px}
+          .meta-item .v{font-size:13px;font-weight:600;color:#111}
+          .section-title{font-size:10px;text-transform:uppercase;letter-spacing:0.14em;color:#999;margin:16px 0 6px;font-weight:700}
+          table{width:100%;border-collapse:collapse;font-size:13px}
+          th{background:#f8f8f8;padding:8px 12px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:0.1em;color:#888;font-weight:700}
+          .desc{font-size:13px;line-height:1.6;color:#444;margin-top:12px}
+          ul{margin:0;padding-left:18px;font-size:13px;color:#444;line-height:1.8}
+          .footer{margin-top:20px;padding:12px 24px;background:#f8f8f8;font-size:11px;color:#999;text-align:center;border-top:1px solid #eee}
+          @media print{body{background:#fff;padding:0}.sheet{box-shadow:none}}</style></head>
+          <body><div class="sheet">
+            <div class="header"><img src="${logoSrc}" alt="RedoxDesignx"/><h1>${p.name}</h1></div>
+            <div class="body">
+              <div class="row">
+                <div class="img-wrap"><img src="${p.image}" alt="${p.name}"/></div>
+                <div class="info">
+                  ${p.badge ? `<div class="badge">${p.badge}</div>` : ''}
+                  <h2>${p.name}</h2>
+                  <div class="price">GH₵${Number(p.price).toFixed(2)}${p.compareAtPrice ? ` <span style="text-decoration:line-through;color:#bbb;font-size:15px">GH₵${Number(p.compareAtPrice).toFixed(2)}</span>` : ''}</div>
+                  <div class="meta-grid">
+                    <div class="meta-item"><div class="l">Category</div><div class="v">${p.category || '—'}</div></div>
+                    <div class="meta-item"><div class="l">Collection</div><div class="v">${p.collectionName || '—'}</div></div>
+                    <div class="meta-item"><div class="l">Material</div><div class="v">${p.material || '—'}</div></div>
+                    <div class="meta-item"><div class="l">Fit</div><div class="v">${p.fit || '—'}</div></div>
+                    <div class="meta-item"><div class="l">Rating</div><div class="v">${p.rating ? `${p.rating} / 5` : '—'}</div></div>
+                    <div class="meta-item"><div class="l">Stock status</div><div class="v" style="color:${stock.isSoldOut?'#c0392b':'#0b7a45'}">${stock.isSoldOut ? 'Sold out' : `In stock${!stock.hasUnlimitedStock && stock.totalKnownStock > 0 ? ` (${stock.totalKnownStock} pcs)` : ''}`}</div></div>
+                    <div class="meta-item"><div class="l">Visibility</div><div class="v">${p.visibility === 'hidden' ? '⊘ Hidden' : '✓ Visible'}</div></div>
+                    <div class="meta-item"><div class="l">SKU base / ID</div><div class="v">${p.id}</div></div>
+                  </div>
+                  ${p.wholesale ? `<div style="padding:8px 12px;background:#fffbe8;border:1px solid #f6e05e;border-radius:5px;font-size:12px;color:#7d6608"><strong>Wholesale:</strong> ${p.wholesale.minQuantity}+ pcs @ GH₵${Number(p.wholesale.unitPrice).toFixed(2)} each</div>` : ''}
+                </div>
+              </div>
+              ${p.description ? `<div class="section-title">Description</div><div class="desc">${p.description}</div>` : ''}
+              ${p.details && p.details.length > 0 ? `<div class="section-title">Details</div><ul>${p.details.map(d => `<li>${d}</li>`).join('')}</ul>` : ''}
+              ${p.care && p.care.length > 0 ? `<div class="section-title">Care Instructions</div><ul>${p.care.map(c => `<li>${c}</li>`).join('')}</ul>` : ''}
+              <div class="section-title">Stock by Colour & Size</div>
+              <table><thead><tr><th>Colour</th><th>Sizes & Stock</th></tr></thead><tbody>${colorRows}</tbody></table>
+            </div>
+            <div class="footer">Generated ${new Date().toLocaleString()} · redoxdesignx.com</div>
+          </div></body></html>`;
+
+          const w = window.open('', '_blank', 'width=860,height=1000');
+          if (!w) { triggerNotification('Allow pop-ups to open the print view.', 'error'); return; }
+          w.document.open(); w.document.write(html); w.document.close();
+          w.onload = () => { w.focus(); w.print(); };
+        };
+
+        return (
+          <div className={styles.modalOverlay} onClick={(e) => { if (e.target === e.currentTarget) setDetailProduct(null); }}>
+            <div className={styles.modalContent} style={{ maxWidth: '720px' }}>
+              {/* Header */}
+              <div className={styles.modalHeader}>
+                <h3 className={styles.modalTitle} style={{ gap: '10px' }}>
+                  <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: p.visibility === 'hidden' ? '#a78bfa' : '#10b981', display: 'inline-block', flexShrink: 0 }} />
+                  {p.name}
+                </h3>
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                  <button
+                    onClick={handlePrintDetail}
+                    style={{ background: 'rgba(16,185,129,0.15)', color: '#10b981', border: '1px solid rgba(16,185,129,0.35)', padding: '7px 14px', borderRadius: '4px', fontSize: '0.72rem', fontFamily: 'monospace', fontWeight: 700, cursor: 'pointer', textTransform: 'uppercase', letterSpacing: '0.05em', whiteSpace: 'nowrap' }}
+                  >
+                    ⎙ Print / Screenshot
+                  </button>
+                  <button className={styles.closeButton} onClick={() => setDetailProduct(null)}>&times;</button>
+                </div>
+              </div>
+
+              {/* Body */}
+              <div style={{ padding: 'var(--space-5) var(--space-6)', display: 'grid', gap: 'var(--space-5)' }}>
+
+                {/* Top row: image + key facts */}
+                <div style={{ display: 'grid', gridTemplateColumns: '160px 1fr', gap: 'var(--space-5)', alignItems: 'start' }}>
+                  <div style={{ borderRadius: '6px', overflow: 'hidden', border: '1px solid rgba(255,255,255,0.06)', aspectRatio: '4/5', position: 'relative', background: '#0a0a0a' }}>
+                    <Image src={p.image} alt={p.name} fill style={{ objectFit: 'cover' }} sizes="160px" />
+                  </div>
+
+                  <div>
+                    {p.badge && (
+                      <span style={{ display: 'inline-block', marginBottom: '8px', background: '#111', color: '#fff', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '3px', padding: '3px 10px', fontSize: '0.65rem', fontFamily: 'monospace', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+                        {p.badge}
+                      </span>
+                    )}
+                    <h2 style={{ margin: '0 0 2px', fontSize: 'var(--text-xl)', fontWeight: 800, color: '#fff' }}>{p.name}</h2>
+                    <div style={{ display: 'flex', alignItems: 'baseline', gap: '10px', marginBottom: '14px' }}>
+                      <span style={{ fontSize: '1.4rem', fontWeight: 800, fontFamily: 'monospace', color: '#fff' }}>GH₵{Number(p.price).toFixed(2)}</span>
+                      {p.compareAtPrice && <span style={{ fontSize: '0.9rem', color: '#555', textDecoration: 'line-through', fontFamily: 'monospace' }}>GH₵{Number(p.compareAtPrice).toFixed(2)}</span>}
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px 16px', fontSize: '0.78rem' }}>
+                      {[
+                        ['Category', p.category || '—'],
+                        ['Collection', p.collectionName || '—'],
+                        ['Material', p.material || '—'],
+                        ['Fit', p.fit || '—'],
+                        ['Rating', p.rating ? `${p.rating} / 5 (${p.reviewCount} reviews)` : '—'],
+                        ['Visibility', p.visibility === 'hidden' ? '⊘ Hidden from site' : '✓ Live on site'],
+                      ].map(([label, value]) => (
+                        <div key={label}>
+                          <div style={{ fontSize: '0.6rem', fontFamily: 'monospace', textTransform: 'uppercase', letterSpacing: '0.1em', color: '#555', marginBottom: '2px' }}>{label}</div>
+                          <div style={{ color: label === 'Visibility' ? (p.visibility === 'hidden' ? '#a78bfa' : '#10b981') : '#ddd', fontWeight: 600 }}>{value}</div>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* stock status */}
+                    <div style={{ marginTop: '12px', display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                      <span style={{ padding: '4px 10px', borderRadius: '4px', fontSize: '0.7rem', fontFamily: 'monospace', fontWeight: 700, background: stock.isSoldOut ? 'rgba(239,68,68,0.14)' : 'rgba(16,185,129,0.14)', color: stock.isSoldOut ? '#ef4444' : '#10b981', border: `1px solid ${stock.isSoldOut ? 'rgba(239,68,68,0.3)' : 'rgba(16,185,129,0.3)'}` }}>
+                        {stock.isSoldOut ? 'SOLD OUT' : `IN STOCK${!stock.hasUnlimitedStock && stock.totalKnownStock > 0 ? ` · ${stock.totalKnownStock} pcs` : ''}`}
+                      </span>
+                      <span style={{ padding: '4px 10px', borderRadius: '4px', fontSize: '0.7rem', fontFamily: 'monospace', fontWeight: 700, background: 'rgba(255,255,255,0.05)', color: '#888', border: '1px solid rgba(255,255,255,0.08)' }}>
+                        {p.variants.length} variants
+                      </span>
+                      {p.wholesale && (
+                        <span style={{ padding: '4px 10px', borderRadius: '4px', fontSize: '0.7rem', fontFamily: 'monospace', fontWeight: 700, background: 'rgba(245,158,11,0.12)', color: '#f6c667', border: '1px solid rgba(245,158,11,0.3)' }}>
+                          Bulk: {p.wholesale.minQuantity}+ @ GH₵{Number(p.wholesale.unitPrice).toFixed(2)}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Description */}
+                {p.description && (
+                  <div>
+                    <div style={{ fontSize: '0.6rem', fontFamily: 'monospace', textTransform: 'uppercase', letterSpacing: '0.14em', color: '#555', marginBottom: '6px' }}>Description</div>
+                    <p style={{ margin: 0, color: '#bbb', fontSize: '0.85rem', lineHeight: 1.65 }}>{p.description}</p>
+                  </div>
+                )}
+
+                {/* Details + Care side by side */}
+                {(p.details?.length > 0 || p.care?.length > 0) && (
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-4)' }}>
+                    {p.details?.length > 0 && (
+                      <div>
+                        <div style={{ fontSize: '0.6rem', fontFamily: 'monospace', textTransform: 'uppercase', letterSpacing: '0.14em', color: '#555', marginBottom: '6px' }}>Details</div>
+                        <ul style={{ margin: 0, paddingLeft: '16px', color: '#bbb', fontSize: '0.82rem', lineHeight: 1.8 }}>
+                          {p.details.map((d, i) => <li key={i}>{d}</li>)}
+                        </ul>
+                      </div>
+                    )}
+                    {p.care?.length > 0 && (
+                      <div>
+                        <div style={{ fontSize: '0.6rem', fontFamily: 'monospace', textTransform: 'uppercase', letterSpacing: '0.14em', color: '#555', marginBottom: '6px' }}>Care</div>
+                        <ul style={{ margin: 0, paddingLeft: '16px', color: '#bbb', fontSize: '0.82rem', lineHeight: 1.8 }}>
+                          {p.care.map((c, i) => <li key={i}>{c}</li>)}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Stock by colour & size */}
+                <div>
+                  <div style={{ fontSize: '0.6rem', fontFamily: 'monospace', textTransform: 'uppercase', letterSpacing: '0.14em', color: '#555', marginBottom: '8px' }}>Stock by Colour & Size</div>
+                  <div style={{ display: 'grid', gap: '6px' }}>
+                    {Object.entries(byColor).map(([color, variants]) => (
+                      <div key={color} style={{ background: '#0a0a0a', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '6px', padding: '10px 14px', display: 'grid', gridTemplateColumns: '120px 1fr', gap: '10px', alignItems: 'center' }}>
+                        <div style={{ fontWeight: 700, color: '#ddd', fontSize: '0.82rem' }}>{color}</div>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px' }}>
+                          {variants.map((v) => (
+                            <span
+                              key={v.id}
+                              style={{
+                                padding: '3px 9px',
+                                borderRadius: '3px',
+                                fontSize: '0.72rem',
+                                fontFamily: 'monospace',
+                                fontWeight: 700,
+                                background: v.stockStatus === 'in_stock' ? 'rgba(16,185,129,0.12)' : 'rgba(239,68,68,0.12)',
+                                color: v.stockStatus === 'in_stock' ? '#10b981' : '#ef4444',
+                                border: `1px solid ${v.stockStatus === 'in_stock' ? 'rgba(16,185,129,0.25)' : 'rgba(239,68,68,0.25)'}`,
+                              }}
+                              title={v.sku}
+                            >
+                              {v.size}{v.inventory != null ? ` (${v.inventory})` : ''}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Colour images preview */}
+                {p.colorImages && Object.keys(p.colorImages).length > 0 && (
+                  <div>
+                    <div style={{ fontSize: '0.6rem', fontFamily: 'monospace', textTransform: 'uppercase', letterSpacing: '0.14em', color: '#555', marginBottom: '8px' }}>Colour Images</div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                      {Object.entries(p.colorImages).flatMap(([color, urls]) =>
+                        (urls as string[]).map((url, i) => (
+                          <div key={`${color}-${i}`} style={{ position: 'relative', width: '72px', height: '90px', borderRadius: '4px', overflow: 'hidden', border: '1px solid rgba(255,255,255,0.07)', flexShrink: 0 }}>
+                            <Image src={url} alt={`${color} ${i + 1}`} fill style={{ objectFit: 'cover' }} sizes="72px" />
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Product ID / slug row */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', paddingTop: 'var(--space-3)', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
+                  {[['ID', p.id], ['Slug', p.slug]].map(([label, val]) => (
+                    <div key={label}>
+                      <div style={{ fontSize: '0.6rem', fontFamily: 'monospace', textTransform: 'uppercase', letterSpacing: '0.1em', color: '#555', marginBottom: '2px' }}>{label}</div>
+                      <div style={{ fontFamily: 'monospace', fontSize: '0.78rem', color: '#666' }}>{val}</div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Actions footer */}
+                <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', paddingTop: 'var(--space-2)' }}>
+                  <a
+                    href={`/products/${p.slug}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className={styles.editButton}
+                    style={{ textDecoration: 'none', display: 'inline-flex', alignItems: 'center' }}
+                  >
+                    View live ↗
+                  </a>
+                  <button
+                    className={styles.editButton}
+                    onClick={() => { setDetailProduct(null); openEditProduct(p); }}
+                  >
+                    Edit / Update
+                  </button>
+                  <button className={styles.saveButton} onClick={handlePrintDetail}>
+                    ⎙ Print / Screenshot
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Product Creation / Edition Modal */}
       {showProductModal && (
