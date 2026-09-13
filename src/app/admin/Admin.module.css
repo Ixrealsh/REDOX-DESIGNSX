@@ -350,11 +350,19 @@
 
 .cardFooter {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
+  flex-direction: column;
+  gap: var(--space-3);
   margin-top: auto;
   padding-top: var(--space-4);
-  border-top: 1px solid rgba(255, 255, 255, 0.05);
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  width: 100%;
+}
+
+.cardPriceRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
 }
 
 .cardPrice {
@@ -362,6 +370,144 @@
   font-weight: 700;
   font-size: var(--text-md);
   color: var(--color-white);
+  letter-spacing: -0.01em;
+}
+
+.cardWholesaleNotice {
+  font-family: var(--font-mono), monospace;
+  font-size: 0.65rem;
+  color: #fbbf24;
+  background: rgba(245, 158, 11, 0.1);
+  border: 1px solid rgba(245, 158, 11, 0.25);
+  border-radius: 3px;
+  padding: 2px 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.cardActionGrid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+  width: 100%;
+}
+
+.cardActionButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 10px;
+  border-radius: 5px;
+  font-size: 0.72rem;
+  font-family: var(--font-mono), monospace;
+  font-weight: 700;
+  cursor: pointer;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  text-decoration: none;
+  text-align: center;
+  white-space: nowrap;
+  transition: all var(--duration-fast) var(--ease-out);
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 36px;
+}
+
+.cardActionLive {
+  background: rgba(16, 185, 129, 0.1);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+  color: #34d399;
+}
+
+.cardActionLive:hover {
+  background: rgba(16, 185, 129, 0.22);
+  border-color: rgba(16, 185, 129, 0.55);
+  color: #a7f3d0;
+  transform: translateY(-1px);
+}
+
+.cardActionDetails {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  color: var(--color-text-secondary);
+}
+
+.cardActionDetails:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.3);
+  color: var(--color-white);
+  transform: translateY(-1px);
+}
+
+.cardActionEdit {
+  background: rgba(59, 130, 246, 0.1);
+  border: 1px solid rgba(59, 130, 246, 0.3);
+  color: #60a5fa;
+}
+
+.cardActionEdit:hover {
+  background: rgba(59, 130, 246, 0.22);
+  border-color: rgba(59, 130, 246, 0.55);
+  color: #bfdbfe;
+  transform: translateY(-1px);
+}
+
+.cardActionDanger {
+  background: rgba(239, 68, 68, 0.08);
+  border: 1px solid rgba(239, 68, 68, 0.25);
+  color: #f87171;
+}
+
+.cardActionDanger:hover {
+  background: rgba(239, 68, 68, 0.2);
+  border-color: rgba(239, 68, 68, 0.55);
+  color: #fecaca;
+  transform: translateY(-1px);
+}
+
+.actionIcon {
+  font-size: 0.85rem;
+  line-height: 1;
+}
+
+/* Detail Modal Responsiveness */
+.detailTopGrid {
+  display: grid;
+  grid-template-columns: 180px 1fr;
+  gap: var(--space-5);
+  align-items: start;
+}
+
+.detailImageWrapper {
+  border-radius: 6px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  aspect-ratio: 4/5;
+  position: relative;
+  background: #0a0a0a;
+}
+
+.detailMetaGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.detailSideBySide {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-4);
+}
+
+.detailFooterActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: flex-end;
+  padding-top: var(--space-3);
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
 }
 
 .editButton {
@@ -1413,5 +1559,40 @@
   .variantInventoryHeader {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .detailTopGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .detailSideBySide {
+    grid-template-columns: 1fr;
+  }
+
+  .detailFooterActions {
+    justify-content: stretch;
+  }
+
+  .detailFooterActions > * {
+    flex: 1 1 auto;
+    text-align: center;
+    justify-content: center;
+  }
+}
+
+@media (max-width: 580px) {
+  .grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  .cardActionGrid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 6px;
+  }
+
+  .cardActionButton {
+    padding: 7px 8px;
+    font-size: 0.68rem;
+    min-height: 34px;
   }
 }

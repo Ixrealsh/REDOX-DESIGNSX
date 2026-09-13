@@ -33,44 +33,78 @@ export interface WaitlistSignup {
 }
 
 // ----------------------------------------------------
-// Product Row Mapping
+// Product Row Mapping Helpers
 // ----------------------------------------------------
+function safeParseJson<T>(val: any, fallback: T): T {
+  if (val == null) return fallback;
+  if (typeof val === 'object') return val as T;
+  if (typeof val === 'string') {
+    try {
+      return JSON.parse(val);
+    } catch {
+      return fallback;
+    }
+  }
+  return fallback;
+}
+
+function safeStringArray(val: any, fallback: string[] = []): string[] {
+  if (Array.isArray(val)) return val.map((x) => String(x || '').trim()).filter(Boolean);
+  if (typeof val === 'string') {
+    const trimmed = val.trim();
+    if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
+      try {
+        const parsed = JSON.parse(trimmed);
+        if (Array.isArray(parsed)) return parsed.map((x) => String(x || '').trim()).filter(Boolean);
+      } catch {}
+    }
+    // Postgres array format "{item1,item2}"
+    if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
+      return trimmed
+        .slice(1, -1)
+        .split(',')
+        .map((s) => s.replace(/^"|"$/g, '').trim())
+        .filter(Boolean);
+    }
+    return trimmed.split(',').map((s) => s.trim()).filter(Boolean);
+  }
+  return fallback;
+}
+
 function mapProductRow(row: any): Product {
-  const variants = typeof row.variants === 'string' ? JSON.parse(row.variants) : row.variants;
-  const price = Number(row.price);
+  const parsedVariants = safeParseJson<any[]>(row.variants, []);
+  const variants = Array.isArray(parsedVariants) ? parsedVariants.map(normalizeVariantStock) : [];
+  const price = Number(row.price) || 0;
 
   return {
-    id: row.id,
-    slug: row.slug,
-    name: row.name,
-    collectionSlug: row.collection_slug,
-    collectionName: row.collection_name,
-    category: row.category,
+    id: String(row.id || ''),
+    slug: String(row.slug || ''),
+    name: String(row.name || ''),
+    collectionSlug: String(row.collection_slug || ''),
+    collectionName: String(row.collection_name || ''),
+    category: String(row.category || ''),
     price,
     visibility: row.visibility === 'hidden' ? 'hidden' : 'visible',
-    // Validated on the way out as well as in: a rule that no longer undercuts
-    // the price (because the price was lowered later) is dropped rather than
-    // silently overcharging a bulk buyer.
     wholesale: normalizeWholesaleRule(
       { minQuantity: row.wholesale_min_quantity, unitPrice: row.wholesale_price },
       price
     ),
     badge: row.badge || undefined,
-    image: row.image,
+    image: String(row.image || ''),
     secondaryImage: row.secondary_image || undefined,
-    imageAlt: row.image_alt,
-    colors: row.colors,
-    colorHex: typeof row.color_hex === 'string' ? JSON.parse(row.color_hex) : row.color_hex,
-    variants: Array.isArray(variants) ? variants.map(normalizeVariantStock) : [],
-    description: row.description,
-    story: row.story,
-    details: row.details,
-    care: row.care,
-    material: row.material,
-    fit: row.fit,
-    rating: Number(row.rating),
-    reviewCount: Number(row.review_count),
-    colorImages: typeof row.color_images === 'string' ? JSON.parse(row.color_images) : (row.color_images || {})
+    imageAlt: String(row.image_alt || row.name || ''),
+    colors: safeStringArray(row.colors, ['Obsidian Black']),
+    colorHex: safeParseJson<Record<string, string>>(row.color_hex, { 'Obsidian Black': '#090909' }),
+    variants,
+    description: String(row.description || ''),
+    story: String(row.story || ''),
+    details: safeStringArray(row.details, []),
+    care: safeStringArray(row.care, []),
+    material: String(row.material || '100% Cotton'),
+    fit: String(row.fit || 'True to size'),
+    rating: Number(row.rating) || 5.0,
+    reviewCount: Number(row.review_count) || 0,
+    colorImages: safeParseJson<Record<string, string[]>>(row.color_images, {})
   };
 }
 
@@ -166,15 +200,38 @@ export async function getDbProducts(): Promise<Product[]> {
 }
 
 export async function getDbProduct(slug: string): Promise<Product | undefined> {
-  if (!isDbConfigured) return mockProducts.find((p) => p.slug === slug);
+  if (!slug) return undefined;
+  const decoded = decodeURIComponent(slug).trim();
+  const raw = slug.trim();
+
+  const findInMock = () =>
+    mockProducts.find(
+      (p) =>
+        p.slug === decoded ||
+        p.slug === raw ||
+        p.id === decoded ||
+        p.id === raw ||
+        p.slug.toLowerCase() === decoded.toLowerCase()
+    );
+
+  if (!isDbConfigured) return findInMock();
+
   try {
     await ensureProductsSchema();
-    const rows = await sql`SELECT * FROM products WHERE slug = ${slug} LIMIT 1`;
-    if (!rows || rows.length === 0) return undefined;
+    const rows = await sql`
+      SELECT * FROM products 
+      WHERE slug = ${decoded} 
+         OR slug = ${raw} 
+         OR id = ${decoded} 
+         OR id = ${raw} 
+         OR LOWER(slug) = LOWER(${decoded})
+      LIMIT 1
+    `;
+    if (!rows || rows.length === 0) return findInMock();
     return mapProductRow(rows[0]);
   } catch (error) {
     console.error(`Failed to fetch product ${slug} from Neon Postgres, using fallback:`, error);
-    return mockProducts.find((p) => p.slug === slug);
+    return findInMock();
   }
 }
 

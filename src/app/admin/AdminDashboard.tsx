@@ -1023,14 +1023,15 @@ export function AdminDashboard({
       if (response.ok) {
         triggerNotification('Product saved successfully to Neon database!', 'success');
         
+        const savedProduct = data.product || payload;
         setProducts((prev) => {
-          const index = prev.findIndex((p) => p.id === payload.id);
+          const index = prev.findIndex((p) => (payload.id && p.id === payload.id) || (payload.slug && p.slug === payload.slug));
           if (index > -1) {
             const next = [...prev];
-            next[index] = data.product;
+            next[index] = savedProduct;
             return next;
           }
-          return [data.product, ...prev];
+          return [savedProduct, ...prev];
         });
         
         setShowProductModal(false);
@@ -1223,36 +1224,70 @@ export function AdminDashboard({
 
   // Pre-fill Product Form for Editing
   const openEditProduct = (p: Product) => {
+    const safeVariants = Array.isArray(p.variants) ? p.variants : [];
+    const safeColors: string[] = Array.isArray(p.colors) && p.colors.length > 0
+      ? p.colors
+      : typeof (p as any).colors === 'string'
+      ? (p as any).colors.split(',').map((s: string) => s.trim()).filter(Boolean)
+      : safeVariants.length > 0
+      ? Array.from(new Set(safeVariants.map((v) => v.color).filter(Boolean)))
+      : ['Obsidian Black'];
+
+    const safeDetails: string[] = Array.isArray(p.details)
+      ? p.details
+      : typeof (p as any).details === 'string'
+      ? [(p as any).details]
+      : [];
+
+    const safeCare: string[] = Array.isArray(p.care)
+      ? p.care
+      : typeof (p as any).care === 'string'
+      ? [(p as any).care]
+      : [];
+
+    const safeSizes = Array.from(new Set(safeVariants.map((v) => v.size).filter(Boolean))).join(', ') || 'S, M, L, XL, XXL';
+
+    const safeColorImages = (p.colorImages && typeof p.colorImages === 'object') ? p.colorImages : {};
+    const colorImagesStr = Object.entries(safeColorImages)
+      .map(([color, urls]) => {
+        const urlsArr = Array.isArray(urls) ? urls : typeof urls === 'string' ? [urls] : [];
+        return `${color}: ${urlsArr.join(', ')}`;
+      })
+      .filter(Boolean)
+      .join('\n');
+
     setProductForm({
-      id: p.id,
-      slug: p.slug,
-      name: p.name,
-      price: String(p.price),
-      category: p.category,
-      collectionSlug: p.collectionSlug,
-      collectionName: p.collectionName,
+      id: p.id || '',
+      slug: p.slug || '',
+      name: p.name || '',
+      price: p.price != null ? String(p.price) : '0',
+      category: p.category || '',
+      collectionSlug: p.collectionSlug || '',
+      collectionName: p.collectionName || '',
       badge: p.badge || '',
       visibility: p.visibility === 'hidden' ? 'hidden' : 'visible',
       wholesaleEnabled: Boolean(p.wholesale),
       wholesaleMinQuantity: p.wholesale ? String(p.wholesale.minQuantity) : '',
       wholesalePrice: p.wholesale ? String(p.wholesale.unitPrice) : '',
-      image: p.image,
-      description: p.description,
-      story: p.story,
-      material: p.material,
-      fit: p.fit,
-      colors: p.colors.join(', '),
-      colorImagesStr: p.colorImages ? Object.entries(p.colorImages).map(([color, urls]) => `${color}: ${urls.join(', ')}`).join('\n') : '',
-      sizes: Array.from(new Set(p.variants.map((v) => v.size))).join(', ') || 'S, M, L, XL, XXL',
-      details: p.details.join('\n'),
-      care: p.care.join('\n')
+      image: p.image || '',
+      description: p.description || '',
+      story: p.story || '',
+      material: p.material || '',
+      fit: p.fit || '',
+      colors: safeColors.join(', '),
+      colorImagesStr,
+      sizes: safeSizes,
+      details: safeDetails.join('\n'),
+      care: safeCare.join('\n')
     });
 
-    const variantsList = p.colors.map((color) => {
-      const sizeRows = p.variants
-        .filter((variant) => variant.color === color)
+    const parsedSizes = safeSizes.split(',').map((s) => s.trim()).filter(Boolean);
+
+    const variantsList = safeColors.map((color: string) => {
+      const sizeRows = safeVariants
+        .filter((variant) => variant && variant.color === color)
         .map((variant) => ({
-          size: variant.size,
+          size: variant.size || '',
           stockStatus: (variant.stockStatus === 'out_of_stock' || variant.inventory === 0
             ? 'out_of_stock'
             : 'in_stock') as AdminStockStatus,
@@ -1262,13 +1297,21 @@ export function AdminDashboard({
               : ''
         }));
 
+      const rawUrls = safeColorImages[color];
+      const imageUrls = Array.isArray(rawUrls) ? rawUrls : typeof rawUrls === 'string' && rawUrls ? [rawUrls] : [];
+
       return {
         colorName: color,
-        imageUrls: p.colorImages?.[color] || [],
-        sizes: sizeRows.length > 0 ? sizeRows : createSizeRows()
+        imageUrls,
+        sizes: sizeRows.length > 0 ? sizeRows : createSizeRows(parsedSizes.length ? parsedSizes : undefined)
       };
     });
-    setColorVariants(variantsList);
+
+    setColorVariants(
+      variantsList.length > 0
+        ? variantsList
+        : [{ colorName: safeColors[0] || 'Obsidian Black', imageUrls: p.image ? [p.image] : [], sizes: createSizeRows() }]
+    );
 
     setShowProductModal(true);
   };
@@ -1614,24 +1657,49 @@ export function AdminDashboard({
                     )}
                   </div>
                   <div className={styles.cardFooter}>
-                    <span className={styles.cardPrice}>{formatCurrency(p.price)}</span>
-                    <a
-                      className={styles.editButton}
-                      href={`/products/${p.slug}`}
-                      rel="noopener noreferrer"
-                      target="_blank"
-                    >
-                      View live
-                    </a>
-                    <button className={styles.editButton} onClick={() => setDetailProduct(p)}>
-                      Details
-                    </button>
-                    <button className={styles.editButton} onClick={() => openEditProduct(p)}>
-                      Edit / Update
-                    </button>
-                    <button className={styles.dangerButton} onClick={() => handleDeleteProduct(p)}>
-                      Delete
-                    </button>
+                    <div className={styles.cardPriceRow}>
+                      <span className={styles.cardPrice}>{formatCurrency(p.price)}</span>
+                      {p.wholesale && (
+                        <span className={styles.cardWholesaleNotice}>
+                          Bulk: {p.wholesale.minQuantity}+
+                        </span>
+                      )}
+                    </div>
+                    <div className={styles.cardActionGrid}>
+                      <a
+                        className={`${styles.cardActionButton} ${styles.cardActionLive}`}
+                        href={`/products/${encodeURIComponent(p.slug || p.id)}`}
+                        rel="noopener noreferrer"
+                        target="_blank"
+                        title="View product live on storefront"
+                      >
+                        <span className={styles.actionIcon}>↗</span> View live
+                      </a>
+                      <button
+                        type="button"
+                        className={`${styles.cardActionButton} ${styles.cardActionDetails}`}
+                        onClick={() => setDetailProduct(p)}
+                        title="View comprehensive product specs and stock"
+                      >
+                        <span className={styles.actionIcon}>ℹ</span> Details
+                      </button>
+                      <button
+                        type="button"
+                        className={`${styles.cardActionButton} ${styles.cardActionEdit}`}
+                        onClick={() => openEditProduct(p)}
+                        title="Edit and update product"
+                      >
+                        <span className={styles.actionIcon}>✎</span> Edit / Update
+                      </button>
+                      <button
+                        type="button"
+                        className={`${styles.cardActionButton} ${styles.cardActionDanger}`}
+                        onClick={() => handleDeleteProduct(p)}
+                        title="Delete product"
+                      >
+                        <span className={styles.actionIcon}>✕</span> Delete
+                      </button>
+                    </div>
                   </div>
                 </div>
               </article>
@@ -2161,8 +2229,17 @@ export function AdminDashboard({
       {detailProduct && (() => {
         const p = detailProduct;
         const stock = getProductStockSummary(p);
+        const safeVariants = Array.isArray(p.variants) ? p.variants : [];
+        const safeDetails: string[] = Array.isArray(p.details)
+          ? p.details
+          : (typeof (p as any).details === 'string' && (p as any).details ? [(p as any).details] : []);
+        const safeCare: string[] = Array.isArray(p.care)
+          ? p.care
+          : (typeof (p as any).care === 'string' && (p as any).care ? [(p as any).care] : []);
+        const safeColorImages = (p.colorImages && typeof p.colorImages === 'object') ? p.colorImages : {};
+
         // Group variants by colour
-        const byColor = p.variants.reduce<Record<string, typeof p.variants>>((acc, v) => {
+        const byColor = safeVariants.reduce<Record<string, typeof safeVariants>>((acc, v) => {
           if (!acc[v.color]) acc[v.color] = [];
           acc[v.color].push(v);
           return acc;
@@ -2264,9 +2341,9 @@ export function AdminDashboard({
               <div style={{ padding: 'var(--space-5) var(--space-6)', display: 'grid', gap: 'var(--space-5)' }}>
 
                 {/* Top row: image + key facts */}
-                <div style={{ display: 'grid', gridTemplateColumns: '160px 1fr', gap: 'var(--space-5)', alignItems: 'start' }}>
-                  <div style={{ borderRadius: '6px', overflow: 'hidden', border: '1px solid rgba(255,255,255,0.06)', aspectRatio: '4/5', position: 'relative', background: '#0a0a0a' }}>
-                    <Image src={p.image} alt={p.name} fill style={{ objectFit: 'cover' }} sizes="160px" />
+                <div className={styles.detailTopGrid}>
+                  <div className={styles.detailImageWrapper}>
+                    <Image src={p.image || '/assets/icons/redoxlogo.jpg'} alt={p.name} fill style={{ objectFit: 'cover' }} sizes="180px" />
                   </div>
 
                   <div>
@@ -2281,7 +2358,7 @@ export function AdminDashboard({
                       {p.compareAtPrice && <span style={{ fontSize: '0.9rem', color: '#555', textDecoration: 'line-through', fontFamily: 'monospace' }}>GH₵{Number(p.compareAtPrice).toFixed(2)}</span>}
                     </div>
 
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px 16px', fontSize: '0.78rem' }}>
+                    <div className={styles.detailMetaGrid}>
                       {[
                         ['Category', p.category || '—'],
                         ['Collection', p.collectionName || '—'],
@@ -2303,7 +2380,7 @@ export function AdminDashboard({
                         {stock.isSoldOut ? 'SOLD OUT' : `IN STOCK${!stock.hasUnlimitedStock && stock.totalKnownStock > 0 ? ` · ${stock.totalKnownStock} pcs` : ''}`}
                       </span>
                       <span style={{ padding: '4px 10px', borderRadius: '4px', fontSize: '0.7rem', fontFamily: 'monospace', fontWeight: 700, background: 'rgba(255,255,255,0.05)', color: '#888', border: '1px solid rgba(255,255,255,0.08)' }}>
-                        {p.variants.length} variants
+                        {safeVariants.length} variants
                       </span>
                       {p.wholesale && (
                         <span style={{ padding: '4px 10px', borderRadius: '4px', fontSize: '0.7rem', fontFamily: 'monospace', fontWeight: 700, background: 'rgba(245,158,11,0.12)', color: '#f6c667', border: '1px solid rgba(245,158,11,0.3)' }}>
@@ -2323,21 +2400,21 @@ export function AdminDashboard({
                 )}
 
                 {/* Details + Care side by side */}
-                {(p.details?.length > 0 || p.care?.length > 0) && (
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-4)' }}>
-                    {p.details?.length > 0 && (
+                {(safeDetails.length > 0 || safeCare.length > 0) && (
+                  <div className={styles.detailSideBySide}>
+                    {safeDetails.length > 0 && (
                       <div>
                         <div style={{ fontSize: '0.6rem', fontFamily: 'monospace', textTransform: 'uppercase', letterSpacing: '0.14em', color: '#555', marginBottom: '6px' }}>Details</div>
                         <ul style={{ margin: 0, paddingLeft: '16px', color: '#bbb', fontSize: '0.82rem', lineHeight: 1.8 }}>
-                          {p.details.map((d, i) => <li key={i}>{d}</li>)}
+                          {safeDetails.map((d: string, i: number) => <li key={i}>{d}</li>)}
                         </ul>
                       </div>
                     )}
-                    {p.care?.length > 0 && (
+                    {safeCare.length > 0 && (
                       <div>
                         <div style={{ fontSize: '0.6rem', fontFamily: 'monospace', textTransform: 'uppercase', letterSpacing: '0.14em', color: '#555', marginBottom: '6px' }}>Care</div>
                         <ul style={{ margin: 0, paddingLeft: '16px', color: '#bbb', fontSize: '0.82rem', lineHeight: 1.8 }}>
-                          {p.care.map((c, i) => <li key={i}>{c}</li>)}
+                          {safeCare.map((c: string, i: number) => <li key={i}>{c}</li>)}
                         </ul>
                       </div>
                     )}
@@ -2354,7 +2431,7 @@ export function AdminDashboard({
                         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px' }}>
                           {variants.map((v) => (
                             <span
-                              key={v.id}
+                              key={v.id || `${color}-${v.size}`}
                               style={{
                                 padding: '3px 9px',
                                 borderRadius: '3px',
@@ -2377,17 +2454,18 @@ export function AdminDashboard({
                 </div>
 
                 {/* Colour images preview */}
-                {p.colorImages && Object.keys(p.colorImages).length > 0 && (
+                {Object.keys(safeColorImages).length > 0 && (
                   <div>
                     <div style={{ fontSize: '0.6rem', fontFamily: 'monospace', textTransform: 'uppercase', letterSpacing: '0.14em', color: '#555', marginBottom: '8px' }}>Colour Images</div>
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-                      {Object.entries(p.colorImages).flatMap(([color, urls]) =>
-                        (urls as string[]).map((url, i) => (
+                      {Object.entries(safeColorImages).flatMap(([color, urls]) => {
+                        const urlsArr = Array.isArray(urls) ? urls : typeof urls === 'string' ? [urls] : [];
+                        return urlsArr.map((url, i) => (
                           <div key={`${color}-${i}`} style={{ position: 'relative', width: '72px', height: '90px', borderRadius: '4px', overflow: 'hidden', border: '1px solid rgba(255,255,255,0.07)', flexShrink: 0 }}>
                             <Image src={url} alt={`${color} ${i + 1}`} fill style={{ objectFit: 'cover' }} sizes="72px" />
                           </div>
-                        ))
-                      )}
+                        ));
+                      })}
                     </div>
                   </div>
                 )}
@@ -2403,23 +2481,30 @@ export function AdminDashboard({
                 </div>
 
                 {/* Actions footer */}
-                <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', paddingTop: 'var(--space-2)' }}>
+                <div className={styles.detailFooterActions}>
                   <a
-                    href={`/products/${p.slug}`}
+                    href={`/products/${encodeURIComponent(p.slug || p.id)}`}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className={styles.editButton}
-                    style={{ textDecoration: 'none', display: 'inline-flex', alignItems: 'center' }}
+                    className={`${styles.cardActionButton} ${styles.cardActionLive}`}
+                    style={{ textDecoration: 'none', width: 'auto' }}
                   >
-                    View live ↗
+                    <span className={styles.actionIcon}>↗</span> View live
                   </a>
                   <button
-                    className={styles.editButton}
+                    type="button"
+                    className={`${styles.cardActionButton} ${styles.cardActionEdit}`}
+                    style={{ width: 'auto' }}
                     onClick={() => { setDetailProduct(null); openEditProduct(p); }}
                   >
-                    Edit / Update
+                    <span className={styles.actionIcon}>✎</span> Edit / Update
                   </button>
-                  <button className={styles.saveButton} onClick={handlePrintDetail}>
+                  <button
+                    type="button"
+                    className={styles.saveButton}
+                    onClick={handlePrintDetail}
+                    style={{ padding: '8px 16px', fontSize: '0.75rem' }}
+                  >
                     ⎙ Print / Screenshot
                   </button>
                 </div>
