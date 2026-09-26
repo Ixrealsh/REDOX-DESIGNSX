@@ -16,17 +16,12 @@ export async function generateMetadata({ params }: ProductPageProps) {
   const product = await getDbProduct(params.slug);
   const isAdmin = isAdminSessionValid(getAdminSessionToken());
 
-  // A hidden product must not leak its name or photo into a link preview.
-  if (!product || !isProductVisible(product)) {
-  // A hidden product must not leak its name or photo into a link preview unless admin.
   // A hidden product must not leak its name or photo into a link preview unless admin preview.
   if (!product || (!isProductVisible(product) && !isAdmin)) {
     return buildMetadata({ title: 'Product' });
   }
 
   return buildMetadata({
-    title: `${product.name}`,
-    title: `${product.name}${product.visibility === 'hidden' ? ' (Preview)' : ''}`,
     title: `${product.name}${product.visibility === 'hidden' ? ' (Admin Preview)' : ''}`,
     description: product.description,
     path: `/products/${product.slug}`,
@@ -43,9 +38,6 @@ export default async function ProductPage({ params }: ProductPageProps) {
   }
 
   // Hidden reads exactly like deleted from the outside: someone holding an old
-  // link, or guessing a slug, gets the same 404 as for a piece that never was.
-  if (!product || !isProductVisible(product)) {
-  // Authenticated admins, however, can preview the live product page at any time.
   // link, or guessing a slug, gets 404, but authenticated admins can preview live.
   if (!isProductVisible(product) && !isAdmin) {
     notFound();
@@ -60,7 +52,6 @@ export default async function ProductPage({ params }: ProductPageProps) {
     name: product.name,
     image: [productImage],
     description: product.description,
-    sku: product.variants[0]?.sku,
     sku: product.variants?.[0]?.sku || `RD-${product.id}`,
     brand: { '@type': 'Brand', name: 'REDOXDESIGNX' },
     aggregateRating: {

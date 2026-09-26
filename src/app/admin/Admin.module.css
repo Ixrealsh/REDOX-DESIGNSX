@@ -288,7 +288,6 @@
     0 0 20px rgba(215, 38, 56, 0.05);
 }
 
-.cardMedia,
 .cardImageContainer {
   aspect-ratio: 4/5;
   position: relative;
@@ -351,13 +350,10 @@
 
 .cardFooter {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
   flex-direction: column;
   gap: var(--space-3);
   margin-top: auto;
   padding-top: var(--space-4);
-  border-top: 1px solid rgba(255, 255, 255, 0.05);
   border-top: 1px solid rgba(255, 255, 255, 0.06);
   width: 100%;
 }
@@ -1556,42 +1552,27 @@
     font-size: 0.65rem !important;
   }
 
-  .detailTopGrid {
-    grid-template-columns: 1fr !important;
   .sizeRow {
     grid-template-columns: 1fr;
   }
 
-  .detailSideBySide {
-    grid-template-columns: 1fr !important;
   .variantInventoryHeader {
     align-items: flex-start;
     flex-direction: column;
   }
 
-  .detailFooterActions {
-    flex-direction: column !important;
   .detailTopGrid {
     grid-template-columns: 1fr;
   }
 
-  .detailFooterActions button,
-  .detailFooterActions a {
-    width: 100% !important;
-    justify-content: center !important;
   .detailSideBySide {
     grid-template-columns: 1fr;
   }
 
-  .sizeRow {
-    grid-template-columns: 1fr;
   .detailFooterActions {
     justify-content: stretch;
   }
 
-  .variantInventoryHeader {
-    align-items: flex-start;
-    flex-direction: column;
   .detailFooterActions > * {
     flex: 1 1 auto;
     text-align: center;
@@ -1602,20 +1583,14 @@
 @media (max-width: 580px) {
   .grid {
     grid-template-columns: 1fr !important;
-    gap: var(--space-4) !important;
   }
 
   .cardActionGrid {
-    grid-template-columns: repeat(2, 1fr) !important;
-    gap: 6px !important;
     grid-template-columns: repeat(2, 1fr);
     gap: 6px;
   }
 
   .cardActionButton {
-    padding: 8px 6px !important;
-    font-size: 0.68rem !important;
-    min-height: 36px !important;
     padding: 7px 8px;
     font-size: 0.68rem;
     min-height: 34px;

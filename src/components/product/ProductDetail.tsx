@@ -41,7 +41,6 @@ interface ProductDetailProps {
 }
 
 export function ProductDetail({ product }: ProductDetailProps) {
-  const [selectedColor, setSelectedColor] = useState(product.colors[0] || '');
   const safeColors = useMemo(
     () => (Array.isArray(product.colors) && product.colors.length > 0 ? product.colors : ['Default']),
     [product.colors]
@@ -62,7 +61,6 @@ export function ProductDetail({ product }: ProductDetailProps) {
   useEffect(() => {
     try {
       const savedColor = localStorage.getItem(`redox_sel_color_${product.id}`);
-      if (savedColor && product.colors.includes(savedColor)) {
       if (savedColor && safeColors.includes(savedColor)) {
         setSelectedColor(savedColor);
       } else if (!safeColors.includes(selectedColor)) {
@@ -75,7 +73,6 @@ export function ProductDetail({ product }: ProductDetailProps) {
     } catch (e) {
       console.error('Failed to load persisted product choices', e);
     }
-  }, [product.id, product.colors]);
   }, [product.id, safeColors, selectedColor]);
 
   // Persist selected color to localStorage
@@ -146,7 +143,6 @@ export function ProductDetail({ product }: ProductDetailProps) {
       Object.entries(sizes)
         .filter(([, qty]) => qty > 0)
         .map(([size, qty]) => {
-          const variant = product.variants.find((candidate) => candidate.color === color && candidate.size === size);
           const variant = safeVariants.find((candidate) => candidate.color === color && candidate.size === size);
           return variant
             ? {
@@ -161,12 +157,9 @@ export function ProductDetail({ product }: ProductDetailProps) {
         })
         .filter((item): item is NonNullable<typeof item> => Boolean(item))
     );
-  }, [product.id, product.slug, product.variants, quantities]);
   }, [product.id, product.slug, safeVariants, quantities]);
 
   const activeColorVariants = useMemo(
-    () => product.variants.filter((variant) => variant.color === selectedColor),
-    [product.variants, selectedColor]
     () => safeVariants.filter((variant) => variant.color === selectedColor),
     [safeVariants, selectedColor]
   );
@@ -322,7 +315,6 @@ export function ProductDetail({ product }: ProductDetailProps) {
     Object.entries(quantities).forEach(([color, sizes]) => {
       Object.entries(sizes).forEach(([size, qty]) => {
         if (qty > 0) {
-          const variant = product.variants.find(
           const variant = safeVariants.find(
             (v) => v.size === size && v.color === color && isVariantInStock(v)
           );
@@ -498,7 +490,6 @@ export function ProductDetail({ product }: ProductDetailProps) {
               <h2 className={styles.optionTitle}>Color / {selectedColor || 'Select Product Type'}</h2>
             </div>
             <div className={styles.colorGrid}>
-              {product.colors.map((color) => {
               {safeColors.map((color) => {
                 const imageUrl = product.colorImages?.[color]?.[0] || product.image;
                 const isSelected = selectedColor === color;
