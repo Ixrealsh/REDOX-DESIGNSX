@@ -52,6 +52,7 @@ export function ProductDetail({ product }: ProductDetailProps) {
 
   const [selectedColor, setSelectedColor] = useState(safeColors[0] || '');
   const [quantities, setQuantities] = useState<Record<string, Record<string, number>>>({});
+  const [restoredProductId, setRestoredProductId] = useState<string | null>(null);
   const [activeImage, setActiveImage] = useState(product.image);
   const [error, setError] = useState('');
   const [shaking, setShaking] = useState(false);
@@ -63,7 +64,7 @@ export function ProductDetail({ product }: ProductDetailProps) {
       const savedColor = localStorage.getItem(`redox_sel_color_${product.id}`);
       if (savedColor && safeColors.includes(savedColor)) {
         setSelectedColor(savedColor);
-      } else if (!safeColors.includes(selectedColor)) {
+      } else {
         setSelectedColor(safeColors[0] || '');
       }
       const savedQuantities = localStorage.getItem(`redox_sel_qty_${product.id}`);
@@ -73,21 +74,22 @@ export function ProductDetail({ product }: ProductDetailProps) {
     } catch (e) {
       console.error('Failed to load persisted product choices', e);
     }
-  }, [product.id, safeColors, selectedColor]);
+    setRestoredProductId(product.id);
+  }, [product.id, safeColors]);
 
   // Persist selected color to localStorage
   useEffect(() => {
-    if (selectedColor) {
+    if (restoredProductId === product.id && selectedColor) {
       localStorage.setItem(`redox_sel_color_${product.id}`, selectedColor);
     }
-  }, [selectedColor, product.id]);
+  }, [selectedColor, product.id, restoredProductId]);
 
   // Persist selected quantities map to localStorage
   useEffect(() => {
-    if (Object.keys(quantities).length > 0) {
+    if (restoredProductId === product.id && Object.keys(quantities).length > 0) {
       localStorage.setItem(`redox_sel_qty_${product.id}`, JSON.stringify(quantities));
     }
-  }, [quantities, product.id]);
+  }, [quantities, product.id, restoredProductId]);
 
   // Derived selections
   const selectedSize = useMemo(() => {
