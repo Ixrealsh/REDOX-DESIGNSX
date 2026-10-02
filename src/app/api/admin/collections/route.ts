@@ -5,7 +5,7 @@ import { requireAdminSession } from '@/lib/admin-auth';
 import type { Collection } from '@/types/product';
 
 export async function GET() {
-  const authError = requireAdminSession();
+  const authError = await requireAdminSession();
   if (authError) return authError;
 
   try {
@@ -21,7 +21,7 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
-  const authError = requireAdminSession();
+  const authError = await requireAdminSession();
   if (authError) return authError;
 
   if (!isDbConfigured) {

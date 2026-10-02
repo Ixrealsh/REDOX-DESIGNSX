@@ -1,5 +1,5 @@
 import type { MetadataRoute } from 'next';
-import { getVisibleDbProducts, getDbCollections, getDbLookbooks } from '@/lib/catalog-db';
+import { getVisibleDbProducts, getDbLookbooks } from '@/lib/catalog-db';
 import { siteMeta } from '@/lib/metadata';
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
@@ -7,7 +7,6 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const staticRoutes = [
     '',
     '/shop',
-    '/collections',
     '/drops',
     '/lookbook',
     '/about',
@@ -18,7 +17,6 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   ];
 
   const products = await getVisibleDbProducts();
-  const collections = await getDbCollections();
   const lookbooks = await getDbLookbooks();
 
   return [
@@ -28,10 +26,6 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     })),
     ...products.map((product) => ({
       url: `${siteMeta.siteUrl}/products/${product.slug}`,
-      lastModified: now
-    })),
-    ...collections.map((collection) => ({
-      url: `${siteMeta.siteUrl}/collections/${collection.slug}`,
       lastModified: now
     })),
     ...lookbooks.map((issue) => ({

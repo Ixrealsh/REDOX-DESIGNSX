@@ -13,6 +13,7 @@ import type { OrderItem } from '@/types/product';
  */
 
 const PENDING_KEY = 'redox_pending_checkout';
+const ATTEMPT_KEY = 'redox_checkout_attempt';
 const PENDING_TTL_MS = 24 * 60 * 60 * 1000;
 
 export interface CheckoutCustomer {
@@ -108,6 +109,7 @@ export function readPendingCheckout(): PendingCheckout | null {
 export function forgetPendingCheckout(): void {
   try {
     localStorage.removeItem(PENDING_KEY);
+    sessionStorage.removeItem(ATTEMPT_KEY);
   } catch {
     /* no-op */
   }
@@ -141,6 +143,18 @@ export async function startCheckout(
   customer: CheckoutCustomer,
   lines: CheckoutLine[]
 ): Promise<CheckoutSession> {
+  const signature = JSON.stringify({ customer, lines });
+  let clientRequestId = crypto.randomUUID();
+  try {
+    const previous = JSON.parse(sessionStorage.getItem(ATTEMPT_KEY) || 'null');
+    if (previous?.signature === signature && Date.now() - previous.savedAt < PENDING_TTL_MS) {
+      clientRequestId = previous.clientRequestId;
+    } else {
+      sessionStorage.setItem(ATTEMPT_KEY, JSON.stringify({ signature, clientRequestId, savedAt: Date.now() }));
+    }
+  } catch {
+    // The server still accepts checkouts when browser storage is disabled.
+  }
   const response = await fetch('/api/checkout/initialize', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -150,7 +164,8 @@ export async function startCheckout(
       customerEmail: customer.email,
       shippingAddress: customer.address,
       shippingCity: customer.city,
-      items: lines
+      items: lines,
+      clientRequestId
     })
   });
 

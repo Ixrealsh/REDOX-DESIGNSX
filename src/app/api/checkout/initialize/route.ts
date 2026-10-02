@@ -1,17 +1,38 @@
 import { NextResponse } from 'next/server';
 import { rateLimit, requestKey } from '@/lib/rate-limit';
-import { addDbOrder, rebrandDbOrderReference } from '@/lib/catalog-db';
-import { priceOrderDraft, reserveStockForDraft } from '@/lib/order-pricing';
+import { createDbOrderWithStock, findDbOrderByClientRequestId, rebrandDbOrderReference } from '@/lib/catalog-db';
+import { isDbConfigured } from '@/lib/db';
+import { priceOrderDraft } from '@/lib/order-pricing';
 import { checkoutInitSchema, toRequestedLines } from '@/lib/order-schema';
 import {
-  buildOrderMetadata,
+  buildOrderMetadataFromOrder,
   buildPaymentReference,
   getPaystackPublicKey,
   isPaystackConfigured
 } from '@/lib/paystack-server';
 import { resolveSiteUrl } from '@/lib/site-url';
+import type { Order } from '@/types/product';
 
 export const dynamic = 'force-dynamic';
+
+function checkoutResponse(order: Order, reference: string, publicKey: string, request: Request) {
+  return NextResponse.json({
+    success: true,
+    orderId: order.id,
+    orderNumber: `RD-${order.id}`,
+    reference,
+    publicKey,
+    email: order.customerEmail,
+    currency: 'GHS',
+    amount: Math.round(order.price * 100),
+    subtotal: order.subtotal,
+    serviceCharge: order.serviceCharge,
+    total: order.price,
+    totalQuantity: order.totalQuantity,
+    items: order.items,
+    metadata: buildOrderMetadataFromOrder({ ...order, paymentReference: reference }, resolveSiteUrl(request))
+  });
+}
 
 /**
  * Step 1 of checkout: record the order, then hand the browser what it needs to
@@ -47,6 +68,10 @@ export async function POST(request: Request) {
 
     const input = parsed.data;
 
+    if (!isDbConfigured) {
+      return NextResponse.json({ error: 'Checkout is temporarily unavailable. Please try again later.' }, { status: 503 });
+    }
+
     // Both keys must be present before we reserve anything: a customer should
     // never end up with a reserved order they have no way to pay for.
     const publicKey = getPaystackPublicKey();
@@ -57,6 +82,19 @@ export async function POST(request: Request) {
       );
     }
 
+    if (input.clientRequestId) {
+      const existing = await findDbOrderByClientRequestId(input.clientRequestId);
+      if (existing) {
+        if (existing.customerEmail !== input.customerEmail || existing.customerPhone !== input.customerPhone) {
+          return NextResponse.json({ error: 'This checkout request belongs to another order.' }, { status: 409 });
+        }
+        if (existing.paymentStatus !== 'unpaid' || existing.stockReleased) {
+          return NextResponse.json({ error: 'This checkout has already finished. Please check your order status.' }, { status: 409 });
+        }
+        return checkoutResponse(existing, existing.paymentReference || existing.momoNumber || '', publicKey, request);
+      }
+    }
+
     // 1. AUTHORITATIVE PRICING — the client's totals are never consulted.
     const pricing = await priceOrderDraft(toRequestedLines(input));
     if (!pricing.ok) {
@@ -65,19 +103,13 @@ export async function POST(request: Request) {
 
     const draft = pricing.draft;
 
-    // 2. RESERVE STOCK so the customer on the payment screen cannot be outrun.
-    const reservation = await reserveStockForDraft(draft);
-    if (!reservation.ok) {
-      return NextResponse.json({ error: reservation.error }, { status: 400 });
-    }
-
-    // 3. PERSIST THE ORDER, UNPAID. This is the durability guarantee.
+    // 2. Reserve stock and persist the unpaid order in one database transaction.
     const primary = draft.items[0];
     const provisionalReference = buildPaymentReference();
 
     let order;
     try {
-      order = await addDbOrder({
+      order = await createDbOrderWithStock({
         productId: primary.productId,
         productName: primary.productName,
         productSlug: primary.productSlug,
@@ -96,15 +128,24 @@ export async function POST(request: Request) {
         paymentMethod: 'PAYSTACK',
         momoNumber: provisionalReference,
         paymentReference: provisionalReference,
+        clientRequestId: input.clientRequestId,
         status: 'Awaiting Payment',
         paymentStatus: 'unpaid',
         stockReserved: true,
         stockReleased: false,
         smsSent: false
-      });
-    } catch (error) {
-      await reservation.reservation.rollback();
-      console.error('Could not create the pre-payment order row, stock restored:', error);
+      }, draft.lines);
+    } catch (error: any) {
+      if (error?.code === '23505' && input.clientRequestId) {
+        const existing = await findDbOrderByClientRequestId(input.clientRequestId);
+        if (existing && existing.customerEmail === input.customerEmail && existing.customerPhone === input.customerPhone && existing.paymentStatus === 'unpaid' && !existing.stockReleased) {
+          return checkoutResponse(existing, existing.paymentReference || existing.momoNumber || '', publicKey, request);
+        }
+      }
+      if (error?.code === 'P0001') {
+        return NextResponse.json({ error: error.message || 'Requested stock is unavailable.' }, { status: 400 });
+      }
+      console.error('Could not create the pre-payment order:', error);
       return NextResponse.json(
         { error: 'We could not start your checkout. Please try again in a moment.' },
         { status: 500 }
@@ -121,49 +162,16 @@ export async function POST(request: Request) {
 
     // 5. The purchase, attached to the transaction itself: Paystack renders these
     //    custom fields on the dashboard and in the receipt email.
-    const siteUrl = resolveSiteUrl(request);
-    const metadata = buildOrderMetadata({
-      orderId: order.id,
-      reference,
-      customerName: order.customerName,
-      customerPhone: order.customerPhone,
-      customerEmail: order.customerEmail,
-      shippingAddress: order.shippingAddress,
-      shippingCity: order.shippingCity,
-      items: draft.items,
-      totalQuantity: draft.totalQuantity,
-      subtotal: draft.subtotal,
-      serviceCharge: draft.serviceCharge,
-      grandTotal: draft.grandTotal,
-      siteUrl
-    });
-
     console.log(
       `[checkout] Order #RD-${order.id} recorded before payment (${reference}), GH₵${draft.grandTotal.toFixed(2)}.`
     );
 
-    return NextResponse.json({
-      success: true,
-      orderId: order.id,
-      orderNumber: `RD-${order.id}`,
-      reference,
-      publicKey,
-      email: order.customerEmail,
-      currency: 'GHS',
-      /** Minor units. The server also re-checks this figure at confirmation. */
-      amount: Math.round(draft.grandTotal * 100),
-      subtotal: draft.subtotal,
-      serviceCharge: draft.serviceCharge,
-      total: draft.grandTotal,
-      totalQuantity: draft.totalQuantity,
-      items: draft.items,
-      metadata
-    });
+    return checkoutResponse(order, reference, publicKey, request);
   } catch (error: any) {
     console.error('API checkout initialize error:', error);
     return NextResponse.json(
-      { error: 'We could not start your checkout. Please try again in a moment.' },
-      { status: 500 }
+      { error: 'Checkout is temporarily unavailable. Please try again in a moment.' },
+      { status: 503 }
     );
   }
 }

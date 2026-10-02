@@ -9,10 +9,8 @@ export const metadata = buildMetadata({
 
 export default function TrackOrderPage() {
   return (
-    <main style={{ minHeight: '85vh', paddingTop: '140px', paddingBottom: '100px', display: 'grid', placeItems: 'center' }}>
-      <div style={{ width: 'min(100%, var(--container-max))', margin: '0 auto', padding: '0 var(--section-x)', display: 'grid', placeItems: 'center' }}>
-        <TrackOrder />
-      </div>
+    <main style={{ minHeight: '70vh', padding: 'clamp(120px, 14vw, 180px) var(--section-x) 80px' }}>
+      <TrackOrder />
     </main>
   );
 }

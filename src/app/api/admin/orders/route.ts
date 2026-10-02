@@ -23,7 +23,7 @@ export const dynamic = 'force-dynamic';
 const allowedOrderStatuses = new Set<string>(ORDER_STATUSES);
 
 export async function GET() {
-  const authError = requireAdminSession();
+  const authError = await requireAdminSession();
   if (authError) return authError;
 
   try {
@@ -47,7 +47,7 @@ export async function GET() {
  * a mistake.
  */
 export async function POST(request: Request) {
-  const authError = requireAdminSession();
+  const authError = await requireAdminSession();
   if (authError) return authError;
 
   try {
@@ -232,7 +232,7 @@ export async function POST(request: Request) {
 }
 
 export async function DELETE(request: Request) {
-  const authError = requireAdminSession();
+  const authError = await requireAdminSession();
   if (authError) return authError;
 
   try {

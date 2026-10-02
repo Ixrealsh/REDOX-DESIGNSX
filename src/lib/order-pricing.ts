@@ -1,6 +1,6 @@
 import {
   applyDbProductStockDelta,
-  getDbProduct,
+  getDbProductForSale,
   restoreDbProductStock,
   type StockSelection
 } from '@/lib/catalog-db';
@@ -119,7 +119,7 @@ export async function priceOrderDraft(
   const productsBySlug = new Map<string, Product>();
 
   for (const slug of uniqueSlugs) {
-    const product = await getDbProduct(slug);
+    const product = await getDbProductForSale(slug);
     if (!product) {
       return { ok: false, status: 404, error: `Product "${slug}" was not found.` };
     }
@@ -139,7 +139,15 @@ export async function priceOrderDraft(
     productsBySlug.set(slug, product);
   }
 
-  for (const line of lines) {
+  // Older tabs may identify a product by ID or differently cased slug. The
+  // database transaction always reserves against the canonical live slug.
+  const canonicalLines = mergeLines(lines.map((line) => ({
+    ...line,
+    productSlug: productsBySlug.get(line.productSlug)!.slug
+  })));
+  for (const product of productsBySlug.values()) productsBySlug.set(product.slug, product);
+
+  for (const line of canonicalLines) {
     const product = productsBySlug.get(line.productSlug)!;
     const variant = product.variants.find(
       (candidate) => candidate.color === line.color && candidate.size === line.size
@@ -175,7 +183,7 @@ export async function priceOrderDraft(
     }
   }
 
-  const items = buildOrderItems(lines, productsBySlug);
+  const items = buildOrderItems(canonicalLines, productsBySlug);
   const subtotal = Math.round(items.reduce((sum, item) => sum + item.lineTotal, 0) * 100) / 100;
   const chargesFee = options.applyServiceCharge !== false;
 
@@ -183,8 +191,8 @@ export async function priceOrderDraft(
     ok: true,
     draft: {
       items,
-      lines,
-      uniqueSlugs,
+      lines: canonicalLines,
+      uniqueSlugs: Array.from(new Set(canonicalLines.map((line) => line.productSlug))),
       subtotal,
       serviceCharge: chargesFee ? calcServiceCharge(subtotal) : 0,
       grandTotal: chargesFee ? calcOrderTotal(subtotal) : subtotal,

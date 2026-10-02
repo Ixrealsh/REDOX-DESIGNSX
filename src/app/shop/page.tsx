@@ -20,7 +20,7 @@ export default async function ShopPage() {
         {products.length > 0 ? (
           <div className={styles.landingGrid}>
             {products.map((product, index) => (
-              <ProductCard key={product.id} priority={index < 4} product={product} />
+              <ProductCard key={product.id} priority={index === 0} product={product} />
             ))}
           </div>
         ) : (

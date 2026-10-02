@@ -33,12 +33,14 @@
   background: #0a0a0a;
   box-shadow: -12px 0 80px rgba(0, 0, 0, 0.9);
   transform: translateX(100%);
+  visibility: hidden;
   transition: transform 380ms var(--ease-out);
   overflow: hidden;
 }
 
 .drawerOpen {
   transform: translateX(0);
+  visibility: visible;
 }
 
 /* ── Header ─────────────────────────────────────── */
@@ -422,6 +424,8 @@
 .fieldInput:focus,
 .fieldSelect:focus {
   border-color: rgba(255, 255, 255, 0.25);
+  outline: 2px solid var(--color-white);
+  outline-offset: 2px;
 }
 
 .fieldSelect {

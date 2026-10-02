@@ -4,7 +4,7 @@ import { products, drops, collections, lookbooks } from '@/data/catalog';
 import { requireAdminSession } from '@/lib/admin-auth';
 
 export async function POST() {
-  const authError = requireAdminSession();
+  const authError = await requireAdminSession();
   if (authError) return authError;
 
   if (!isDbConfigured) {

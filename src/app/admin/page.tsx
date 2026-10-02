@@ -16,7 +16,7 @@ export const metadata = {
 };
 
 export default async function AdminPage() {
-  const cookieStore = cookies();
+  const cookieStore = await cookies();
   const sessionToken = cookieStore.get('admin_session')?.value;
 
   if (!sessionToken) {

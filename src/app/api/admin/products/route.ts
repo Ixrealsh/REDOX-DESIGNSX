@@ -8,7 +8,7 @@ import { MIN_WHOLESALE_QUANTITY, normalizeWholesaleRule } from '@/lib/wholesale'
 import type { Product } from '@/types/product';
 
 export async function GET() {
-  const authError = requireAdminSession();
+  const authError = await requireAdminSession();
   if (authError) return authError;
 
   try {
@@ -24,7 +24,7 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
-  const authError = requireAdminSession();
+  const authError = await requireAdminSession();
   if (authError) return authError;
 
   if (!isDbConfigured) {
@@ -135,7 +135,7 @@ export async function POST(request: Request) {
 }
 
 export async function DELETE(request: Request) {
-  const authError = requireAdminSession();
+  const authError = await requireAdminSession();
   if (authError) return authError;
 
   if (!isDbConfigured) {

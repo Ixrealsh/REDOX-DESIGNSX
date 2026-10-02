@@ -2,7 +2,7 @@
 
 import Image from 'next/image';
 import Link from 'next/link';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/Button';
 import { MinusIcon, PlusIcon, TrashIcon, XIcon } from '@/components/ui/Icons';
 import { LinkButton } from '@/components/ui/LinkButton';
@@ -28,6 +28,8 @@ import type { CustomerReceipt } from '@/lib/order-receipt';
 import styles from './CartDrawer.module.css';
 
 export function CartDrawer() {
+  const drawerRef = useRef<HTMLElement>(null);
+  const previousFocusRef = useRef<HTMLElement | null>(null);
   const items = useCartStore((state) => state.items);
   const isOpen = useCartStore((state) => state.isOpen);
   const openCart = useCartStore((state) => state.openCart);
@@ -145,13 +147,27 @@ export function CartDrawer() {
   // Lock scroll + Esc key
   useEffect(() => {
     if (!isOpen) return;
+    previousFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    drawerRef.current?.querySelector<HTMLButtonElement>('button[aria-label="Close"]')?.focus();
     const prev = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') closeCart(); };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') closeCart();
+      if (e.key !== 'Tab' || !drawerRef.current) return;
+      const focusable = Array.from(drawerRef.current.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex="0"]'
+      )).filter((element) => element.getClientRects().length > 0);
+      if (focusable.length === 0) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+    };
     window.addEventListener('keydown', onKey);
     return () => {
       document.body.style.overflow = prev;
       window.removeEventListener('keydown', onKey);
+      previousFocusRef.current?.focus();
     };
   }, [isOpen, closeCart]);
 
@@ -262,9 +278,10 @@ export function CartDrawer() {
     placeholder: string
   ) => (
     <div className={styles.fieldGroup}>
-      <label className={styles.fieldLabel}>{label}</label>
+      <label className={styles.fieldLabel} htmlFor={`cart-${key}`}>{label}</label>
       <input
         className={styles.fieldInput}
+        id={`cart-${key}`}
         onChange={(e) => setFormData({ ...formData, [key]: e.target.value })}
         placeholder={placeholder}
         required
@@ -286,8 +303,10 @@ export function CartDrawer() {
 
       <aside
         aria-label="Shopping cart"
+        aria-hidden={!isOpen}
         aria-modal="true"
         className={`${styles.drawer} ${isOpen ? styles.drawerOpen : ''}`}
+        ref={drawerRef}
         role="dialog"
       >
         {/* ── Header ─────────────────────────────────── */}

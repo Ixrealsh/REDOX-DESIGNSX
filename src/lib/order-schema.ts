@@ -54,7 +54,10 @@ function requireBasket(data: any, ctx: z.RefinementCtx) {
 }
 
 /** Body accepted by `POST /api/checkout/initialize`. */
-export const checkoutInitSchema = customerSchema.extend(basketShape).superRefine(requireBasket);
+export const checkoutInitSchema = customerSchema.extend({
+  ...basketShape,
+  clientRequestId: z.string().trim().min(8).max(80).optional()
+}).superRefine(requireBasket);
 
 /** Body accepted by `POST /api/orders` (COD / MOMO, plus the legacy card path). */
 export const directOrderSchema = customerSchema

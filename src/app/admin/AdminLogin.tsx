@@ -2,8 +2,10 @@
 
 import { useState } from 'react';
 import Image from 'next/image';
+import { useRouter } from 'next/navigation';
 
 export function AdminLogin() {
+  const router = useRouter();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -25,10 +27,10 @@ export function AdminLogin() {
       const data = await response.json();
 
       if (response.ok && data.success) {
-        window.location.reload(); // Refresh to trigger page.tsx server check
+        router.refresh(); // Refresh the server session check without a full reload.
       } else {
         if (response.status === 403) {
-          window.location.href = '/404';
+          router.replace('/404');
           return;
         }
         setError(data.error || 'Access Denied. Unauthorized admin account.');

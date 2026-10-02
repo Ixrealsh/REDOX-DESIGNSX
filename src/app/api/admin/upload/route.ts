@@ -25,7 +25,7 @@ if (isCloudinaryConfigured) {
 }
 
 export async function POST(request: Request) {
-  const authError = requireAdminSession();
+  const authError = await requireAdminSession();
   if (authError) return authError;
 
   if (!isCloudinaryConfigured) {

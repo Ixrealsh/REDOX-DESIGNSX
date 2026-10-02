@@ -1,7 +1,4 @@
 import Image from 'next/image';
-import Link from 'next/link';
-import { ArrowRightIcon } from '@/components/ui/Icons';
-import { LinkButton } from '@/components/ui/LinkButton';
 import type { Collection } from '@/types/product';
 import styles from './HomeSections.module.css';
 
@@ -29,15 +26,12 @@ export function CollectionShowcase({ collections }: CollectionShowcaseProps) {
         </p>
         <div className={styles.collectionList}>
           {collections.map((collection) => (
-            <Link className={styles.collectionItem} href={`/collections/${collection.slug}`} key={collection.slug}>
+            <div className={styles.collectionItem} key={collection.slug}>
               <strong>{collection.name}</strong>
               <span>{collection.tagline}</span>
-            </Link>
+            </div>
           ))}
         </div>
-        <LinkButton href="/collections">
-          Explore collections <ArrowRightIcon />
-        </LinkButton>
       </div>
     </section>
   );

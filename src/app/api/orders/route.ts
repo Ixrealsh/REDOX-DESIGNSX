@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
 import { rateLimit, requestKey } from '@/lib/rate-limit';
-import { addDbOrder, findDbOrderByPaymentRef, type NewOrderInput } from '@/lib/catalog-db';
-import { priceOrderDraft, reserveStockForDraft } from '@/lib/order-pricing';
+import { createDbOrderWithStock, findDbOrderByPaymentRef, type NewOrderInput } from '@/lib/catalog-db';
+import { isDbConfigured } from '@/lib/db';
+import { priceOrderDraft } from '@/lib/order-pricing';
 import { directOrderSchema, toRequestedLines } from '@/lib/order-schema';
 import { toCustomerReceipt } from '@/lib/order-receipt';
 import { notifyOrderOnce, settleOrderPayment } from '@/lib/payment-service';
@@ -39,6 +40,9 @@ export async function POST(request: Request) {
     }
 
     const orderData = parsed.data;
+    if (!isDbConfigured) {
+      return NextResponse.json({ error: 'Ordering is temporarily unavailable. Please try again later.' }, { status: 503 });
+    }
     // Older clients passed the Paystack reference through `momoNumber`.
     const paymentReference = orderData.paymentReference || orderData.momoNumber;
 
@@ -107,18 +111,12 @@ export async function POST(request: Request) {
       };
     }
 
-    // 3. RESERVE STOCK (handed back below if the order row cannot be written).
-    const reservation = await reserveStockForDraft(draft);
-    if (!reservation.ok) {
-      return NextResponse.json({ error: reservation.error }, { status: 400 });
-    }
-
-    // 4. PERSIST ONE ORDER HOLDING EVERY LINE.
+    // 3. Reserve stock and persist one order in the same database transaction.
     const primary = draft.items[0];
 
     let order;
     try {
-      order = await addDbOrder({
+      order = await createDbOrderWithStock({
         productId: primary.productId,
         productName: primary.productName,
         productSlug: primary.productSlug,
@@ -142,10 +140,12 @@ export async function POST(request: Request) {
         stockReleased: false,
         smsSent: false,
         ...paymentFields
-      });
+      }, draft.lines);
     } catch (error: any) {
-      await reservation.reservation.rollback();
-      console.error('Order persistence failed, stock restored:', error);
+      if (error?.code === 'P0001') {
+        return NextResponse.json({ error: error.message || 'Requested stock is unavailable.' }, { status: 400 });
+      }
+      console.error('Order persistence failed:', error);
       return NextResponse.json(
         { error: 'We could not record your order. Please contact support with your payment reference.' },
         { status: 500 }
@@ -167,7 +167,7 @@ export async function POST(request: Request) {
     });
   } catch (error: any) {
     console.error('API orders POST error:', error);
-    return NextResponse.json({ error: error.message || 'Failed to place order.' }, { status: 500 });
+    return NextResponse.json({ error: 'Ordering is temporarily unavailable. Please try again.' }, { status: 503 });
   }
 }
 
@@ -180,26 +180,15 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: 'Order reference query parameter is required.' }, { status: 400 });
     }
 
-    const cleanQuery = query.replace('#RD-', '').replace('RD-', '').trim();
-    const idNum = parseInt(cleanQuery, 10);
-
-    const { getDbOrders } = await import('@/lib/catalog-db');
-    const orders = await getDbOrders();
-
-    const order = orders.find((o) => {
-      if (!isNaN(idNum) && o.id === idNum) return true;
-      const reference = (o.paymentReference || o.momoNumber || '').toLowerCase();
-      if (reference && reference === query.toLowerCase()) return true;
-      if (reference && reference === cleanQuery.toLowerCase()) return true;
-      return false;
-    });
+    const { getDbOrderByPublicReference } = await import('@/lib/catalog-db');
+    const order = await getDbOrderByPublicReference(query);
 
     if (!order) {
       return NextResponse.json({ error: 'No active order found with this reference.' }, { status: 404 });
     }
 
-    const { getDbProducts } = await import('@/lib/catalog-db');
-    const products = await getDbProducts();
+    const { getDbOrderProductImages } = await import('@/lib/catalog-db');
+    const products = await getDbOrderProductImages(order.items.flatMap((item) => [item.productSlug, item.productId]));
 
     const FALLBACK_IMAGE =
       'https://res.cloudinary.com/dti75gff0/image/upload/v1779032145/redox_designsx/redox_hero.png';
@@ -240,6 +229,6 @@ export async function GET(request: Request) {
     });
   } catch (error: any) {
     console.error('API orders GET status tracking error:', error);
-    return NextResponse.json({ error: 'Failed to search order.' }, { status: 500 });
+    return NextResponse.json({ error: 'Order tracking is temporarily unavailable. Please try again.' }, { status: 503 });
   }
 }

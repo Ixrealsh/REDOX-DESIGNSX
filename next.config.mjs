@@ -1,5 +1,7 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // Keep a running dev preview from writing into the production build output.
+  distDir: process.env.NODE_ENV === 'development' ? '.next' : '.next-build',
   reactStrictMode: true,
   poweredByHeader: false,
   images: {

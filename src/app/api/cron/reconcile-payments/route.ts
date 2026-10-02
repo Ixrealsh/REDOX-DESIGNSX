@@ -17,9 +17,9 @@ export const runtime = 'nodejs';
  *   Vercel — vercel.json:
  *   { "crons": [{ "path": "/api/cron/reconcile-payments", "schedule": "*\/10 * * * *" }] }
  */
-function isAuthorized(request: Request): boolean {
+async function isAuthorized(request: Request): Promise<boolean> {
   // A signed-in admin can always trigger it from the dashboard.
-  if (isAdminSessionValid(getAdminSessionToken())) return true;
+  if (isAdminSessionValid(await getAdminSessionToken())) return true;
 
   const secret = (process.env.CRON_SECRET || '').trim();
   if (!secret) return false;
@@ -35,7 +35,7 @@ function isAuthorized(request: Request): boolean {
 }
 
 async function run(request: Request) {
-  if (!isAuthorized(request)) {
+  if (!(await isAuthorized(request))) {
     return NextResponse.json({ error: 'Not authorized.' }, { status: 401 });
   }
 

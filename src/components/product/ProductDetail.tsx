@@ -57,6 +57,68 @@ export function ProductDetail({ product }: ProductDetailProps) {
   const [error, setError] = useState('');
   const [shaking, setShaking] = useState(false);
   const [stickyOpen, setStickyOpen] = useState(false);
+  const colorRailRef = useRef<HTMLDivElement>(null);
+  const restoredColorScrolledForRef = useRef<string | null>(null);
+  const [colorRailState, setColorRailState] = useState({ canScroll: false, atStart: true, atEnd: true, progress: 0 });
+
+  useEffect(() => {
+    const rail = colorRailRef.current;
+    if (!rail) return;
+    let frame = 0;
+
+    const updateRail = () => {
+      const maxScroll = Math.max(0, rail.scrollWidth - rail.clientWidth);
+      const next = {
+        canScroll: maxScroll > 1,
+        atStart: rail.scrollLeft <= 1,
+        atEnd: rail.scrollLeft >= maxScroll - 1,
+        progress: maxScroll > 0 ? rail.scrollLeft / maxScroll : 0
+      };
+      setColorRailState((current) =>
+        current.canScroll === next.canScroll && current.atStart === next.atStart &&
+        current.atEnd === next.atEnd && current.progress === next.progress ? current : next
+      );
+    };
+
+    const scheduleUpdate = () => {
+      if (frame) return;
+      frame = requestAnimationFrame(() => {
+        frame = 0;
+        updateRail();
+      });
+    };
+
+    updateRail();
+    const observer = new ResizeObserver(scheduleUpdate);
+    observer.observe(rail);
+    rail.addEventListener('scroll', scheduleUpdate, { passive: true });
+    return () => {
+      observer.disconnect();
+      rail.removeEventListener('scroll', scheduleUpdate);
+      cancelAnimationFrame(frame);
+    };
+  }, [safeColors]);
+
+  const scrollColors = (direction: -1 | 1) => {
+    const rail = colorRailRef.current;
+    if (!rail) return;
+    rail.scrollBy({
+      left: direction * Math.max(rail.clientWidth * 0.75, 150),
+      behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth'
+    });
+  };
+
+  const selectColor = (color: string, card: HTMLElement) => {
+    setSelectedColor(color);
+    const rail = colorRailRef.current;
+    if (!rail) return;
+    const railRect = rail.getBoundingClientRect();
+    const cardRect = card.getBoundingClientRect();
+    rail.scrollBy({
+      left: cardRect.left - railRect.left - (railRect.width - cardRect.width) / 2,
+      behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth'
+    });
+  };
 
   // Restore previous color and quantities selections on mount to survive page refreshes
   useEffect(() => {
@@ -83,6 +145,18 @@ export function ProductDetail({ product }: ProductDetailProps) {
       localStorage.setItem(`redox_sel_color_${product.id}`, selectedColor);
     }
   }, [selectedColor, product.id, restoredProductId]);
+
+  useEffect(() => {
+    if (restoredProductId !== product.id || restoredColorScrolledForRef.current === product.id) return;
+    const rail = colorRailRef.current;
+    const index = safeColors.indexOf(selectedColor);
+    const card = rail?.children.item(index) as HTMLElement | null;
+    if (!rail || !card || index < 0) return;
+    const railRect = rail.getBoundingClientRect();
+    const cardRect = card.getBoundingClientRect();
+    rail.scrollBy({ left: cardRect.left - railRect.left - (railRect.width - cardRect.width) / 2, behavior: 'auto' });
+    restoredColorScrolledForRef.current = product.id;
+  }, [restoredProductId, product.id, selectedColor, safeColors]);
 
   // Persist selected quantities map to localStorage
   useEffect(() => {
@@ -486,21 +560,30 @@ export function ProductDetail({ product }: ProductDetailProps) {
             <p className={styles.description}>{product.description}</p>
           )}
 
-          {/* Color Selector Grid */}
+          {/* Color variants */}
           <div className={styles.optionGroup}>
             <div className={styles.optionHeader}>
               <h2 className={styles.optionTitle}>Color / {selectedColor || 'Select Product Type'}</h2>
+              {colorRailState.canScroll && (
+                <div className={styles.colorRailControls} aria-label="Browse color variants">
+                  <button type="button" aria-label="Previous color variants" disabled={colorRailState.atStart} onClick={() => scrollColors(-1)}>‹</button>
+                  <button type="button" aria-label="Next color variants" disabled={colorRailState.atEnd} onClick={() => scrollColors(1)}>›</button>
+                </div>
+              )}
             </div>
-            <div className={styles.colorGrid}>
+            <div className={styles.colorGrid} ref={colorRailRef} role="group" aria-label="Color variants">
               {safeColors.map((color) => {
                 const imageUrl = product.colorImages?.[color]?.[0] || product.image;
                 const isSelected = selectedColor === color;
                 const colorQty = Object.values(quantities[color] || {}).reduce((acc, curr) => acc + curr, 0);
                 return (
-                  <div
+                  <button
+                    type="button"
                     className={`${styles.colorCard} ${isSelected ? styles.colorCardActive : ''}`}
                     key={color}
-                    onClick={() => setSelectedColor(color)}
+                    aria-pressed={isSelected}
+                    aria-label={`${color}${colorQty > 0 ? `, ${colorQty} selected` : ''}`}
+                    onClick={(event) => selectColor(color, event.currentTarget)}
                   >
                     <div className={styles.colorCardImageWrapper}>
                       <img 
@@ -535,10 +618,18 @@ export function ProductDetail({ product }: ProductDetailProps) {
                     <div className={styles.colorCardLabel}>
                       {color}
                     </div>
-                  </div>
+                  </button>
                 );
               })}
             </div>
+            {colorRailState.canScroll && (
+              <div className={styles.colorRailFooter} aria-hidden="true">
+                <span>Scroll or swipe to see more</span>
+                <span className={styles.colorRailTrack}>
+                  <span className={styles.colorRailProgress} style={{ transform: `translateX(${colorRailState.progress * 300}%)` }} />
+                </span>
+              </div>
+            )}
           </div>
 
           {/* Bulk pricing. Advertised before the sizes, because it is a reason

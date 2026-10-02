@@ -1,3 +1,4 @@
+import Image from 'next/image';
 import Link from 'next/link';
 import styles from './Footer.module.css';
 
@@ -7,9 +8,11 @@ export function Footer() {
       <div className={styles.inner} style={{ display: 'flex', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '20px', width: 'min(100%, var(--container-max))', margin: '0 auto' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
           <Link className={styles.logo} href="/" style={{ display: 'flex', alignItems: 'center', marginBottom: 0 }}>
-            <img 
-              src="/assets/icons/redoxlogo.jpg" 
-              alt="REDOXDESIGNX" 
+            <Image
+              src="/assets/icons/redoxlogo.jpg"
+              alt="REDOXDESIGNX"
+              width={32}
+              height={32}
               style={{ 
                 width: '32px', 
                 height: '32px', 
@@ -20,13 +23,12 @@ export function Footer() {
             />
           </Link>
           <span style={{ fontSize: '0.72rem', letterSpacing: '0.06em', color: 'var(--color-text-secondary)', textTransform: 'uppercase', fontFamily: 'var(--font-mono), monospace' }}>
-            © 2026 REDOXDESIGNX • ZERO RESTOCKS
+            &copy; 2026 REDOXDESIGNX &bull; ZERO RESTOCKS
           </span>
         </div>
 
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '24px', alignItems: 'center', fontFamily: 'var(--font-mono), monospace', fontSize: '0.72rem', textTransform: 'uppercase' }}>
+        <div className={styles.footerLinks}>
           <Link className={styles.link} href="/shop">Shop</Link>
-          <Link className={styles.link} href="/collections">Collections</Link>
           <Link className={styles.link} href="/drops">Drops</Link>
           <Link className={styles.link} href="/track-order">Track Order</Link>
           <Link className={styles.link} href="/size-guide">Size Guide</Link>

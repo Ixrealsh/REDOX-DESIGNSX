@@ -1,4 +1,6 @@
 import { isDbConfigured, sql } from './db';
+import { cache } from 'react';
+import { parsePublicOrderId } from './order-reference';
 import { 
   products as mockProducts, 
   drops as mockDrops,
@@ -187,19 +189,19 @@ async function ensureProductsSchema(): Promise<void> {
   return productsSchemaPromise;
 }
 
-export async function getDbProducts(): Promise<Product[]> {
+export const getDbProducts = cache(async (): Promise<Product[]> => {
   if (!isDbConfigured) return mockProducts;
   try {
     await ensureProductsSchema();
     const rows = await sql`SELECT * FROM products ORDER BY created_at DESC`;
     return rows.map(mapProductRow);
   } catch (error) {
-    console.error('Failed to fetch products from Neon Postgres, using fallback:', error);
-    return mockProducts;
+    console.error('Failed to fetch products from Neon Postgres:', error);
+    throw error;
   }
-}
+});
 
-export async function getDbProduct(slug: string): Promise<Product | undefined> {
+export const getDbProduct = cache(async (slug: string): Promise<Product | undefined> => {
   if (!slug) return undefined;
   const decoded = decodeURIComponent(slug).trim();
   const raw = slug.trim();
@@ -227,12 +229,24 @@ export async function getDbProduct(slug: string): Promise<Product | undefined> {
          OR LOWER(slug) = LOWER(${decoded})
       LIMIT 1
     `;
-    if (!rows || rows.length === 0) return findInMock();
+    if (!rows || rows.length === 0) return undefined;
     return mapProductRow(rows[0]);
   } catch (error) {
-    console.error(`Failed to fetch product ${slug} from Neon Postgres, using fallback:`, error);
-    return findInMock();
+    console.error(`Failed to fetch product ${slug} from Neon Postgres:`, error);
+    throw error;
   }
+});
+
+/** Checkout must never price a demo fallback or a stale product on DB failure. */
+export async function getDbProductForSale(slug: string): Promise<Product | undefined> {
+  if (!isDbConfigured) throw new Error('The database is unavailable. Please try again later.');
+  await ensureProductsSchema();
+  const rows = await sql`
+    SELECT * FROM products
+    WHERE slug = ${slug} OR id = ${slug} OR LOWER(slug) = LOWER(${slug})
+    LIMIT 1
+  `;
+  return rows[0] ? mapProductRow(rows[0]) : undefined;
 }
 
 /**
@@ -358,6 +372,54 @@ export async function applyDbProductStockDelta(
   selections: StockSelection[],
   options: StockDeltaOptions = {}
 ): Promise<Product | undefined> {
+  if (isDbConfigured) {
+    const requested = JSON.stringify(selections);
+    const allowShortfall = options.allowShortfall === true;
+    const rows = await sql`
+      UPDATE products AS p SET variants = (
+        SELECT COALESCE(jsonb_agg(
+          CASE WHEN q.quantity > 0 AND jsonb_typeof(v.value->'inventory') = 'number' THEN
+            jsonb_set(
+              jsonb_set(v.value, '{inventory}',
+                to_jsonb(GREATEST((v.value->>'inventory')::INTEGER - q.quantity, 0))),
+              '{stockStatus}', to_jsonb(
+                CASE WHEN (v.value->>'inventory')::INTEGER - q.quantity <= 0
+                  THEN 'out_of_stock' ELSE 'in_stock' END
+              )
+            )
+          ELSE v.value END ORDER BY v.position
+        ), '[]'::jsonb)
+        FROM jsonb_array_elements(p.variants) WITH ORDINALITY AS v(value, position)
+        LEFT JOIN (
+          SELECT x.color, x.size, SUM(x.quantity)::INTEGER AS quantity
+          FROM jsonb_to_recordset(${requested}::jsonb) AS x(color TEXT, size TEXT, quantity INTEGER)
+          GROUP BY x.color, x.size
+        ) AS q ON q.color = v.value->>'color' AND q.size = v.value->>'size'
+      )
+      WHERE p.slug = ${slug}
+        AND (${allowShortfall} OR p.visibility <> 'hidden')
+        AND NOT EXISTS (
+          SELECT 1 FROM (
+            SELECT x.color, x.size, SUM(x.quantity)::INTEGER AS quantity
+            FROM jsonb_to_recordset(${requested}::jsonb) AS x(color TEXT, size TEXT, quantity INTEGER)
+            GROUP BY x.color, x.size
+          ) AS q
+          WHERE q.quantity < 1 OR NOT EXISTS (
+            SELECT 1 FROM jsonb_array_elements(p.variants) AS v(value)
+            WHERE v.value->>'color' = q.color AND v.value->>'size' = q.size
+              AND (${allowShortfall} OR (
+                v.value->>'stockStatus' <> 'out_of_stock' AND
+                (jsonb_typeof(v.value->'inventory') <> 'number' OR
+                  (v.value->>'inventory')::INTEGER >= q.quantity)
+              ))
+          )
+        )
+      RETURNING *
+    `;
+    if (!rows[0]) throw new Error('Requested stock is unavailable.');
+    return mapProductRow(rows[0]);
+  }
+
   const product = await getDbProduct(slug);
   if (!product) return undefined;
 
@@ -423,6 +485,36 @@ export async function applyDbProductStockDelta(
  * fails to persist, so a failed checkout never silently eats inventory.
  */
 export async function restoreDbProductStock(slug: string, selections: StockSelection[]): Promise<void> {
+  if (isDbConfigured) {
+    // PostgreSQL evaluates this UPDATE under the product row lock. A concurrent
+    // checkout cannot have its new stock count overwritten by a stale read.
+    await sql`
+      UPDATE products AS p
+      SET variants = (
+        SELECT COALESCE(jsonb_agg(
+          CASE
+            WHEN q.quantity > 0 AND jsonb_typeof(v.value->'inventory') = 'number' THEN
+              jsonb_set(
+                jsonb_set(v.value, '{inventory}',
+                  to_jsonb((v.value->>'inventory')::INTEGER + q.quantity)),
+                '{stockStatus}', to_jsonb('in_stock'::TEXT)
+              )
+            ELSE v.value
+          END ORDER BY v.position
+        ), '[]'::jsonb)
+        FROM jsonb_array_elements(p.variants) WITH ORDINALITY AS v(value, position)
+        LEFT JOIN (
+          SELECT x.color, x.size, SUM(x.quantity)::INTEGER AS quantity
+          FROM jsonb_to_recordset(${JSON.stringify(selections)}::jsonb)
+            AS x(color TEXT, size TEXT, quantity INTEGER)
+          GROUP BY x.color, x.size
+        ) AS q ON q.color = v.value->>'color' AND q.size = v.value->>'size'
+      )
+      WHERE p.slug = ${slug}
+    `;
+    return;
+  }
+
   const product = await getDbProduct(slug);
   if (!product) return;
 
@@ -459,8 +551,8 @@ export async function getDbDrops(): Promise<Drop[]> {
     const rows = await sql`SELECT * FROM drops ORDER BY release_date DESC`;
     return rows.map(mapDropRow);
   } catch (error) {
-    console.error('Failed to fetch drops from Neon Postgres, using fallback:', error);
-    return mockDrops;
+    console.error('Failed to fetch drops from Neon Postgres:', error);
+    throw error;
   }
 }
 
@@ -471,8 +563,8 @@ export async function getDbDrop(slug: string): Promise<Drop | undefined> {
     if (!rows || rows.length === 0) return undefined;
     return mapDropRow(rows[0]);
   } catch (error) {
-    console.error(`Failed to fetch drop ${slug} from Neon Postgres, using fallback:`, error);
-    return mockDrops.find((d) => d.slug === slug);
+    console.error(`Failed to fetch drop ${slug} from Neon Postgres:`, error);
+    throw error;
   }
 }
 
@@ -501,28 +593,28 @@ export async function saveDbDrop(d: Drop): Promise<boolean> {
 // ----------------------------------------------------
 // Collections Getters / Setters
 // ----------------------------------------------------
-export async function getDbCollections(): Promise<Collection[]> {
+export const getDbCollections = cache(async (): Promise<Collection[]> => {
   if (!isDbConfigured) return mockCollections;
   try {
     const rows = await sql`SELECT * FROM collections ORDER BY created_at DESC`;
     return rows.map(mapCollectionRow);
   } catch (error) {
-    console.error('Failed to fetch collections from Neon Postgres, using fallback:', error);
-    return mockCollections;
+    console.error('Failed to fetch collections from Neon Postgres:', error);
+    throw error;
   }
-}
+});
 
-export async function getDbCollection(slug: string): Promise<Collection | undefined> {
+export const getDbCollection = cache(async (slug: string): Promise<Collection | undefined> => {
   if (!isDbConfigured) return mockCollections.find((c) => c.slug === slug);
   try {
     const rows = await sql`SELECT * FROM collections WHERE slug = ${slug} LIMIT 1`;
     if (!rows || rows.length === 0) return undefined;
     return mapCollectionRow(rows[0]);
   } catch (error) {
-    console.error(`Failed to fetch collection ${slug} from Neon Postgres, using fallback:`, error);
-    return mockCollections.find((c) => c.slug === slug);
+    console.error(`Failed to fetch collection ${slug} from Neon Postgres:`, error);
+    throw error;
   }
-}
+});
 
 export async function saveDbCollection(c: Collection): Promise<boolean> {
   if (!isDbConfigured) return false;
@@ -547,28 +639,28 @@ export async function saveDbCollection(c: Collection): Promise<boolean> {
 // ----------------------------------------------------
 // Lookbooks Getters / Setters
 // ----------------------------------------------------
-export async function getDbLookbooks(): Promise<LookbookIssue[]> {
+export const getDbLookbooks = cache(async (): Promise<LookbookIssue[]> => {
   if (!isDbConfigured) return mockLookbooks;
   try {
     const rows = await sql`SELECT * FROM lookbooks ORDER BY created_at DESC`;
     return rows.map(mapLookbookRow);
   } catch (error) {
-    console.error('Failed to fetch lookbooks from Neon Postgres, using fallback:', error);
-    return mockLookbooks;
+    console.error('Failed to fetch lookbooks from Neon Postgres:', error);
+    throw error;
   }
-}
+});
 
-export async function getDbLookbook(slug: string): Promise<LookbookIssue | undefined> {
+export const getDbLookbook = cache(async (slug: string): Promise<LookbookIssue | undefined> => {
   if (!isDbConfigured) return mockLookbooks.find((l) => l.slug === slug);
   try {
     const rows = await sql`SELECT * FROM lookbooks WHERE slug = ${slug} LIMIT 1`;
     if (!rows || rows.length === 0) return undefined;
     return mapLookbookRow(rows[0]);
   } catch (error) {
-    console.error(`Failed to fetch lookbook ${slug} from Neon Postgres, using fallback:`, error);
-    return mockLookbooks.find((l) => l.slug === slug);
+    console.error(`Failed to fetch lookbook ${slug} from Neon Postgres:`, error);
+    throw error;
   }
-}
+});
 
 export async function saveDbLookbook(l: LookbookIssue): Promise<boolean> {
   if (!isDbConfigured) return false;
@@ -775,6 +867,11 @@ async function ensureOrdersSchema(): Promise<void> {
         console.error('[orders] Could not create the payment_status index:', error);
       }
 
+      await sql`
+        CREATE INDEX IF NOT EXISTS orders_momo_number_idx
+        ON orders (momo_number) WHERE momo_number IS NOT NULL
+      `;
+
       // The guard that makes admin order creation idempotent: a retried or
       // double-tapped request carrying the same key cannot insert twice.
       try {
@@ -785,6 +882,123 @@ async function ensureOrdersSchema(): Promise<void> {
       } catch (error) {
         console.error('[orders] Could not create the unique client_request_id index:', error);
       }
+
+      // One database statement owns the stock and order row. Row locks serialize
+      // shoppers competing for the same variant; an INSERT error rolls back every
+      // stock change made by this function, including multi-product baskets.
+      await sql`
+        CREATE OR REPLACE FUNCTION create_order_with_reservation(
+          p_order JSONB, p_lines JSONB, p_allow_shortfall BOOLEAN DEFAULT FALSE
+        ) RETURNS SETOF orders LANGUAGE plpgsql AS $fn$
+        DECLARE
+          item RECORD;
+          selection RECORD;
+          product_row products%ROWTYPE;
+          variant JSONB;
+          updated_variants JSONB;
+          requested INTEGER;
+          remaining INTEGER;
+        BEGIN
+          IF jsonb_typeof(p_lines) <> 'array' OR jsonb_array_length(p_lines) = 0 THEN
+            RAISE EXCEPTION 'The basket is empty.' USING ERRCODE = 'P0001';
+          END IF;
+
+          IF NULLIF(p_order->>'paymentReference', '') IS NOT NULL THEN
+            PERFORM pg_advisory_xact_lock(hashtext('payment:' || (p_order->>'paymentReference')));
+            IF EXISTS (SELECT 1 FROM orders WHERE payment_reference = p_order->>'paymentReference') THEN
+              RAISE EXCEPTION 'Payment reference already has an order.' USING ERRCODE = '23505';
+            END IF;
+          END IF;
+          IF NULLIF(p_order->>'clientRequestId', '') IS NOT NULL THEN
+            PERFORM pg_advisory_xact_lock(hashtext('order:' || (p_order->>'clientRequestId')));
+            IF EXISTS (SELECT 1 FROM orders WHERE client_request_id = p_order->>'clientRequestId') THEN
+              RAISE EXCEPTION 'This order was already created.' USING ERRCODE = '23505';
+            END IF;
+          END IF;
+
+          FOR item IN
+            SELECT DISTINCT x."productSlug" AS slug
+            FROM jsonb_to_recordset(p_lines) AS x("productSlug" TEXT, color TEXT, size TEXT, quantity INTEGER)
+            ORDER BY slug
+          LOOP
+            SELECT * INTO product_row FROM products WHERE slug = item.slug FOR UPDATE;
+            IF NOT FOUND THEN
+              RAISE EXCEPTION 'A product is no longer available.' USING ERRCODE = 'P0001';
+            END IF;
+            IF NOT p_allow_shortfall AND product_row.visibility = 'hidden' THEN
+              RAISE EXCEPTION 'A product is no longer available.' USING ERRCODE = 'P0001';
+            END IF;
+
+            FOR selection IN
+              SELECT x.color, x.size, SUM(x.quantity)::INTEGER AS quantity
+              FROM jsonb_to_recordset(p_lines) AS x("productSlug" TEXT, color TEXT, size TEXT, quantity INTEGER)
+              WHERE x."productSlug" = item.slug
+              GROUP BY x.color, x.size
+            LOOP
+              IF selection.quantity IS NULL OR selection.quantity < 1 THEN
+                RAISE EXCEPTION 'Invalid quantity.' USING ERRCODE = 'P0001';
+              END IF;
+              SELECT value INTO variant FROM jsonb_array_elements(product_row.variants)
+              WHERE value->>'color' = selection.color AND value->>'size' = selection.size LIMIT 1;
+              IF variant IS NULL THEN
+                RAISE EXCEPTION 'A selected size or color is unavailable.' USING ERRCODE = 'P0001';
+              END IF;
+              IF NOT p_allow_shortfall AND (
+                variant->>'stockStatus' = 'out_of_stock' OR
+                (jsonb_typeof(variant->'inventory') = 'number' AND
+                  (variant->>'inventory')::INTEGER < selection.quantity)
+              ) THEN
+                RAISE EXCEPTION 'Requested stock is unavailable.' USING ERRCODE = 'P0001';
+              END IF;
+            END LOOP;
+
+            updated_variants := '[]'::jsonb;
+            FOR variant IN SELECT value FROM jsonb_array_elements(product_row.variants)
+            LOOP
+              SELECT COALESCE(SUM(x.quantity), 0)::INTEGER INTO requested
+              FROM jsonb_to_recordset(p_lines) AS x("productSlug" TEXT, color TEXT, size TEXT, quantity INTEGER)
+              WHERE x."productSlug" = item.slug
+                AND x.color = variant->>'color' AND x.size = variant->>'size';
+              IF requested > 0 AND jsonb_typeof(variant->'inventory') = 'number' THEN
+                remaining := GREATEST((variant->>'inventory')::INTEGER - requested, 0);
+                variant := jsonb_set(variant, '{inventory}', to_jsonb(remaining));
+                variant := jsonb_set(variant, '{stockStatus}', to_jsonb(
+                  CASE WHEN remaining = 0 THEN 'out_of_stock' ELSE 'in_stock' END
+                ));
+              END IF;
+              updated_variants := updated_variants || jsonb_build_array(variant);
+            END LOOP;
+            UPDATE products SET variants = updated_variants WHERE id = product_row.id;
+          END LOOP;
+
+          RETURN QUERY INSERT INTO orders (
+            product_id, product_name, product_slug, selected_color, selected_size, price,
+            customer_name, customer_phone, customer_email, shipping_address, shipping_city,
+            payment_method, momo_network, momo_number, status, items, total_quantity,
+            subtotal, service_charge, payment_status, payment_reference, paid_at,
+            amount_paid, payment_channel, paystack_transaction_id, last_verified_at,
+            payment_verified_by, gateway_response, stock_reserved, stock_released,
+            sms_sent, discount, source, client_request_id, payment_note, extras
+          ) VALUES (
+            p_order->>'productId', p_order->>'productName', p_order->>'productSlug',
+            p_order->>'selectedColor', p_order->>'selectedSize', (p_order->>'price')::NUMERIC,
+            p_order->>'customerName', p_order->>'customerPhone', p_order->>'customerEmail',
+            p_order->>'shippingAddress', p_order->>'shippingCity', p_order->>'paymentMethod',
+            p_order->>'momoNetwork', COALESCE(p_order->>'momoNumber', p_order->>'paymentReference'),
+            COALESCE(p_order->>'status', 'Pending'), COALESCE(p_order->'items', '[]'::jsonb),
+            (p_order->>'totalQuantity')::INTEGER, (p_order->>'subtotal')::NUMERIC,
+            (p_order->>'serviceCharge')::NUMERIC, COALESCE(p_order->>'paymentStatus', 'unpaid'),
+            p_order->>'paymentReference', (p_order->>'paidAt')::TIMESTAMPTZ,
+            (p_order->>'amountPaid')::NUMERIC, p_order->>'paymentChannel',
+            p_order->>'paystackTransactionId', (p_order->>'lastVerifiedAt')::TIMESTAMPTZ,
+            p_order->>'paymentVerifiedBy', p_order->>'gatewayResponse', TRUE, FALSE,
+            FALSE, COALESCE((p_order->>'discount')::NUMERIC, 0),
+            COALESCE(p_order->>'source', 'web'), p_order->>'clientRequestId',
+            p_order->>'paymentNote', COALESCE(p_order->'extras', '[]'::jsonb)
+          ) RETURNING *;
+        END;
+        $fn$;
+      `;
     })().catch((error) => {
       // Let the next caller retry rather than caching a permanent failure.
       ordersSchemaPromise = null;
@@ -935,8 +1149,8 @@ export async function getDbOrders(): Promise<Order[]> {
     const rows = await sql`SELECT * FROM orders ORDER BY created_at DESC`;
     return rows.map(mapOrderRow);
   } catch (error) {
-    console.error('Failed to fetch orders from Neon Postgres, using fallback:', error);
-    return sandboxOrders;
+    console.error('Failed to fetch orders from Neon Postgres:', error);
+    throw error;
   }
 }
 
@@ -965,7 +1179,7 @@ export async function findDbOrderByPaymentRef(reference: string): Promise<Order 
     return rows.length > 0 ? mapOrderRow(rows[0]) : undefined;
   } catch (error) {
     console.error('Failed to look up order by payment reference:', error);
-    return undefined;
+    throw error;
   }
 }
 
@@ -1011,6 +1225,44 @@ export async function getDbOrderById(id: number): Promise<Order | undefined> {
     console.error(`Failed to load order #${id}:`, error);
     return undefined;
   }
+}
+
+/** Exact lookup for customer tracking; never scans the full orders table. */
+export async function getDbOrderByPublicReference(reference: string): Promise<Order | undefined> {
+  if (!isDbConfigured) throw new Error('Order tracking is temporarily unavailable.');
+  await ensureOrdersSchema();
+  const trimmed = reference.trim();
+  const id = parsePublicOrderId(trimmed);
+  const rows = await sql`
+    SELECT * FROM orders
+    WHERE (${id}::INTEGER IS NOT NULL AND id = ${id}::INTEGER)
+       OR payment_reference = ${trimmed}
+       OR momo_number = ${trimmed}
+    ORDER BY id DESC LIMIT 1
+  `;
+  return rows[0] ? mapOrderRow(rows[0]) : undefined;
+}
+
+/** Small image lookup for tracking one order, without loading the whole catalog. */
+export async function getDbOrderProductImages(keys: string[]): Promise<{
+  id: string;
+  slug: string;
+  image: string;
+  colorImages: Record<string, string[]>;
+}[]> {
+  if (!isDbConfigured || keys.length === 0) return [];
+  const values = JSON.stringify(Array.from(new Set(keys.filter(Boolean))));
+  const rows = await sql`
+    SELECT id, slug, image, color_images FROM products
+    WHERE slug IN (SELECT jsonb_array_elements_text(${values}::jsonb))
+       OR id IN (SELECT jsonb_array_elements_text(${values}::jsonb))
+  `;
+  return rows.map((row: Record<string, unknown>) => ({
+    id: String(row.id),
+    slug: String(row.slug),
+    image: String(row.image || ''),
+    colorImages: safeParseJson<Record<string, string[]>>(row.color_images, {})
+  }));
 }
 
 export type NewOrderInput = Omit<
@@ -1085,6 +1337,32 @@ export async function addDbOrder(o: NewOrderInput): Promise<Order> {
     console.error('Failed to save order to Neon Postgres:', error);
     throw error;
   }
+}
+
+/** Atomically reserves all tracked variants and records the order. */
+export async function createDbOrderWithStock(
+  order: NewOrderInput,
+  lines: StockSelectionWithSlug[],
+  allowShortfall = false
+): Promise<Order> {
+  if (!isDbConfigured) {
+    throw new Error('Checkout is temporarily unavailable. Please try again later.');
+  }
+  await ensureProductsSchema();
+  await ensureOrdersSchema();
+  const rows = await sql`
+    SELECT * FROM create_order_with_reservation(
+      ${JSON.stringify(order)}::jsonb,
+      ${JSON.stringify(lines)}::jsonb,
+      ${allowShortfall}
+    )
+  `;
+  if (!rows[0]) throw new Error('The order could not be saved. Please try again.');
+  return mapOrderRow(rows[0]);
+}
+
+export interface StockSelectionWithSlug extends StockSelection {
+  productSlug: string;
 }
 
 /**

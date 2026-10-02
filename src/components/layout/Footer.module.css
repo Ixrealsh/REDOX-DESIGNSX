@@ -64,6 +64,18 @@
   color: var(--color-white);
 }
 
+.footerLinks {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 16px 24px;
+  min-width: 0;
+  max-width: 100%;
+  font-family: var(--font-mono), monospace;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+}
+
 .bottom {
   display: flex;
   justify-content: space-between;
@@ -89,6 +101,7 @@
 }
 
 @media (max-width: 560px) {
+  .footerLinks { width: 100%; }
   .inner {
     grid-template-columns: 1fr;
   }

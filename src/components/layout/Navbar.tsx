@@ -3,7 +3,7 @@
 import Image from 'next/image';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { BagIcon, HeartIcon, MenuIcon, SearchIcon, UserIcon, XIcon } from '@/components/ui/Icons';
 import { getCartTotals, useCartStore } from '@/store/cart.store';
 import { useWishlistStore } from '@/store/wishlist.store';
@@ -11,7 +11,6 @@ import styles from './Navbar.module.css';
 
 const NAV_LINKS = [
   { href: '/shop', label: 'Shop' },
-  { href: '/collections', label: 'Collections' },
   { href: '/track-order', label: 'Track Order' },
 ];
 
@@ -19,6 +18,8 @@ export function Navbar() {
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
+  const menuButtonRef = useRef<HTMLButtonElement>(null);
+  const mobilePanelRef = useRef<HTMLDivElement>(null);
 
   const items = useCartStore((state) => state.items);
   const openCart = useCartStore((state) => state.openCart);
@@ -41,6 +42,19 @@ export function Navbar() {
     return () => { document.body.style.overflow = ''; };
   }, [mobileOpen]);
 
+  useEffect(() => {
+    if (!mobileOpen) return;
+    mobilePanelRef.current?.querySelector('a')?.focus();
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setMobileOpen(false);
+        menuButtonRef.current?.focus();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [mobileOpen]);
+
   return (
     <>
       <nav
@@ -52,9 +66,11 @@ export function Navbar() {
           <div className={styles.left}>
             <button
               aria-expanded={mobileOpen}
+              aria-controls="mobile-navigation"
               aria-label={mobileOpen ? 'Close menu' : 'Open menu'}
               className={styles.menuButton}
               onClick={() => setMobileOpen((o) => !o)}
+              ref={menuButtonRef}
               type="button"
             >
               {mobileOpen ? <XIcon /> : <MenuIcon />}
@@ -127,6 +143,8 @@ export function Navbar() {
       <div
         aria-hidden={!mobileOpen}
         className={`${styles.mobilePanel} ${mobileOpen ? styles.mobilePanelOpen : ''}`}
+        id="mobile-navigation"
+        ref={mobilePanelRef}
       >
         <div className={styles.mobilePanelInner}>
           {[...NAV_LINKS, { href: '/search', label: 'Search' }, { href: '/account', label: 'Account' }].map(
@@ -135,6 +153,7 @@ export function Navbar() {
                 className={`${styles.mobileLink} ${pathname.startsWith(link.href) ? styles.mobileLinkActive : ''}`}
                 href={link.href}
                 key={link.href}
+                tabIndex={mobileOpen ? 0 : -1}
               >
                 {link.label}
                 <span className={styles.mobileLinkArrow}>→</span>

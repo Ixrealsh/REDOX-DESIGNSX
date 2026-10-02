@@ -24,11 +24,11 @@ export function isAdminSessionValid(token?: string) {
   return crypto.timingSafeEqual(tokenBuffer, expectedBuffer);
 }
 
-export function getAdminSessionToken() {
-  return cookies().get('admin_session')?.value;
+export async function getAdminSessionToken() {
+  return (await cookies()).get('admin_session')?.value;
 }
 
-export function requireAdminSession() {
-  if (isAdminSessionValid(getAdminSessionToken())) return null;
+export async function requireAdminSession() {
+  if (isAdminSessionValid(await getAdminSessionToken())) return null;
   return NextResponse.json({ error: 'Admin session required.' }, { status: 401 });
 }

@@ -235,6 +235,10 @@
 }
 
 .status {
+  grid-column: 1 / -1;
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
   color: var(--color-steel);
   font-family: var(--font-mono), monospace;
   font-size: var(--text-xs);

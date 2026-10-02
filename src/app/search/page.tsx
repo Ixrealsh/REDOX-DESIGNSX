@@ -5,7 +5,7 @@ import { buildMetadata } from '@/lib/metadata';
 import styles from '../pages.module.css';
 
 interface SearchPageProps {
-  searchParams?: { q?: string };
+  searchParams: Promise<{ q?: string }>;
 }
 
 export const metadata = buildMetadata({
@@ -15,7 +15,7 @@ export const metadata = buildMetadata({
 });
 
 export default async function SearchPage({ searchParams }: SearchPageProps) {
-  const query = searchParams?.q || '';
+  const query = (await searchParams)?.q || '';
   const products = await getVisibleDbProducts();
   const collections = await getDbCollections();
 

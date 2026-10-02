@@ -9,12 +9,16 @@ import { getAdminSessionToken, isAdminSessionValid } from '@/lib/admin-auth';
 export const dynamic = 'force-dynamic';
 
 interface ProductPageProps {
-  params: { slug: string };
+  params: Promise<{ slug: string }>;
 }
 
 export async function generateMetadata({ params }: ProductPageProps) {
-  const product = await getDbProduct(params.slug);
-  const isAdmin = isAdminSessionValid(getAdminSessionToken());
+  const { slug } = await params;
+  const [product, sessionToken] = await Promise.all([
+    getDbProduct(slug),
+    getAdminSessionToken()
+  ]);
+  const isAdmin = isAdminSessionValid(sessionToken);
 
   // A hidden product must not leak its name or photo into a link preview unless admin preview.
   if (!product || (!isProductVisible(product) && !isAdmin)) {
@@ -30,8 +34,12 @@ export async function generateMetadata({ params }: ProductPageProps) {
 }
 
 export default async function ProductPage({ params }: ProductPageProps) {
-  const product = await getDbProduct(params.slug);
-  const isAdmin = isAdminSessionValid(getAdminSessionToken());
+  const { slug } = await params;
+  const [product, sessionToken] = await Promise.all([
+    getDbProduct(slug),
+    getAdminSessionToken()
+  ]);
+  const isAdmin = isAdminSessionValid(sessionToken);
 
   if (!product) {
     notFound();

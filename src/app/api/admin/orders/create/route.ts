@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
 import { requireAdminSession } from '@/lib/admin-auth';
-import { addDbOrder, findDbOrderByClientRequestId } from '@/lib/catalog-db';
-import { priceOrderDraft, reserveStockForDraft } from '@/lib/order-pricing';
+import { createDbOrderWithStock, findDbOrderByClientRequestId } from '@/lib/catalog-db';
+import { isDbConfigured } from '@/lib/db';
+import { priceOrderDraft } from '@/lib/order-pricing';
 import { adminOrderSchema, resolveDiscount, sumOrderExtras } from '@/lib/order-schema';
 import { notifyOrderOnce } from '@/lib/payment-service';
 import { formatGhanaPhone, isValidGhanaPhone } from '@/lib/phone';
@@ -48,7 +49,7 @@ function isUniqueViolation(error: any): boolean {
 export async function POST(request: Request) {
   // No rate limit: this sits behind the admin session, and a merchant serving a
   // queue of customers must never be throttled mid-sale.
-  const authError = requireAdminSession();
+  const authError = await requireAdminSession();
   if (authError) return authError;
 
   try {
@@ -69,6 +70,9 @@ export async function POST(request: Request) {
     }
 
     const input = parsed.data;
+    if (!isDbConfigured) {
+      return NextResponse.json({ error: 'Database is unavailable. The order was not created.' }, { status: 503 });
+    }
 
     // 1. IDEMPOTENCY. A double-tapped button, or a retry after the connection
     //    dropped mid-request, must never mint a second order or take the stock
@@ -117,18 +121,7 @@ export async function POST(request: Request) {
     const discount = resolveDiscount(billBeforeDiscount, input.discountType, input.discountValue);
     const grandTotal = Math.round((billBeforeDiscount - discount) * 100) / 100;
 
-    // 3. RESERVE STOCK, so the shop cannot sell online what was just handed over
-    //    in person. `allowShortfall` mirrors the pricing override: the merchant
-    //    is holding the piece and the recorded count is behind.
-    const reservation = await reserveStockForDraft(draft, {
-      allowShortfall: input.allowOutOfStock === true
-    });
-
-    if (!reservation.ok) {
-      return NextResponse.json({ error: reservation.error }, { status: 400 });
-    }
-
-    // 4. PERSIST THE ORDER.
+    // 3. Reserve stock and persist the order together.
     const primary = draft.items[0];
     const paidNow = input.paidNow === true;
     const now = new Date().toISOString();
@@ -143,7 +136,7 @@ export async function POST(request: Request) {
 
     let order;
     try {
-      order = await addDbOrder({
+      order = await createDbOrderWithStock({
         productId: primary.productId,
         productName: primary.productName,
         productSlug: primary.productSlug,
@@ -188,12 +181,8 @@ export async function POST(request: Request) {
               paymentStatus: 'unpaid' as const,
               paymentNote: noteParts || 'Created in person by an admin — payment on delivery.'
             })
-      });
+      }, draft.lines, input.allowOutOfStock === true);
     } catch (error: any) {
-      // Always hand the units back first: whatever happened, this request is not
-      // the one that owns them.
-      await reservation.reservation.rollback();
-
       // Two identical submissions can pass the lookup above at the same instant.
       // The unique index catches the loser, and that is a duplicate — not a
       // failure. Return the order the winner created.
@@ -210,7 +199,11 @@ export async function POST(request: Request) {
         }
       }
 
-      console.error('Could not record the admin-created order, stock restored:', error);
+      if (error?.code === 'P0001') {
+        return NextResponse.json({ error: error.message || 'Requested stock is unavailable.' }, { status: 400 });
+      }
+
+      console.error('Could not record the admin-created order:', error);
       return NextResponse.json(
         { error: 'We could not save that order. Nothing was changed — please try again.' },
         { status: 500 }

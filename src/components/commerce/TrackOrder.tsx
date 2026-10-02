@@ -2,45 +2,71 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { formatCurrency } from '@/lib/format';
+import styles from './TrackOrder.module.css';
+
+interface TrackedItem {
+  productSlug: string;
+  productName: string;
+  color: string;
+  size: string;
+  quantity: number;
+  lineTotal: number;
+}
+
+interface TrackedOrder {
+  id: number;
+  reference?: string;
+  status: string;
+  paymentStatus: string;
+  items: TrackedItem[];
+  extras?: { label: string; amount: number }[];
+  price: number;
+  discount?: number;
+  serviceCharge?: number;
+}
+
+const STEPS = ['Placed', 'Processing', 'Shipped', 'Delivered'];
+
+function progressIndex(status: string) {
+  return status === 'Pending' ? 0 : STEPS.indexOf(status);
+}
+
+function paymentLabel(status: string) {
+  if (status === 'paid') return 'Paid';
+  if (status === 'refunded') return 'Refunded';
+  if (status === 'failed' || status === 'abandoned') return 'Payment not completed';
+  return 'Awaiting payment confirmation';
+}
 
 export function TrackOrder() {
   const [refInput, setRefInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [order, setOrder] = useState<any>(null);
-  const [lightboxOpen, setLightboxOpen] = useState(false);
+  const [order, setOrder] = useState<TrackedOrder | null>(null);
 
   const lookupOrder = useCallback(async (reference: string) => {
     const trimmed = reference.trim();
     if (!trimmed) {
-      setError('Please input a valid order reference or Paystack ID.');
+      setError('Enter your order reference to continue.');
       return;
     }
-
     setLoading(true);
     setError('');
     setOrder(null);
-
     try {
       const response = await fetch(`/api/orders?ref=${encodeURIComponent(trimmed)}`);
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Unable to trace this order reference.');
+      const data = await response.json().catch(() => null);
+      if (!response.ok || !data?.order) {
+        throw new Error(data?.error || 'We could not find that order. Check the reference and try again.');
       }
-
       setOrder(data.order);
-    } catch (err: any) {
-      setError(err.message || 'No order records correspond to this reference.');
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Order tracking is unavailable. Please try again.');
     } finally {
       setLoading(false);
     }
   }, []);
 
-  /**
-   * Confirmation texts and receipts link straight here with `?ref=RD-1042`, so
-   * arriving with one should show the order rather than an empty search box.
-   */
   useEffect(() => {
     const fromUrl = new URLSearchParams(window.location.search).get('ref');
     if (!fromUrl) return;
@@ -48,369 +74,70 @@ export function TrackOrder() {
     void lookupOrder(fromUrl);
   }, [lookupOrder]);
 
-  const handleTrackSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    await lookupOrder(refInput);
-  };
-
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'Pending':
-        return '#f59e0b';
-      case 'Processing':
-        return '#3b82f6';
-      case 'Shipped':
-        return '#8b5cf6';
-      case 'Delivered':
-        return '#10b981';
-      default:
-        return '#ef4444';
-    }
-  };
-
-  const getStepIndex = (status: string) => {
-    switch (status) {
-      case 'Pending':
-        return 0;
-      case 'Processing':
-        return 1;
-      case 'Shipped':
-        return 2;
-      case 'Delivered':
-        return 3;
-      default:
-        return -1;
-    }
-  };
-
-  const stepIndex = order ? getStepIndex(order.status) : -1;
+  const currentStep = order ? progressIndex(order.status) : -1;
 
   return (
-    <div style={{
-      background: 'rgba(10, 10, 10, 0.65)',
-      backdropFilter: 'blur(16px)',
-      border: '1px solid rgba(255, 255, 255, 0.06)',
-      borderRadius: 'var(--radius-xl)',
-      padding: 'var(--space-6) var(--space-5)',
-      width: '100%',
-      maxWidth: '640px',
-      margin: '80px auto 0',
-      fontFamily: 'monospace'
-    }}>
-      <div style={{ textAlign: 'center', marginBottom: 'var(--space-4)' }}>
-        <h3 style={{
-          color: '#fff',
-          fontSize: '0.9rem',
-          letterSpacing: '0.2em',
-          textTransform: 'uppercase',
-          margin: '0 0 6px 0',
-          fontFamily: 'var(--font-mono)'
-        }}>
-          🎯 TRACK YOUR PIECE
-        </h3>
-        <p style={{ color: '#888', fontSize: '0.75rem', margin: 0 }}>
-          Enter your order receipt reference (e.g. #RD-1209) or Paystack ID to search live status.
-        </p>
+    <section className={styles.panel} aria-labelledby="track-title">
+      <div className={styles.intro}>
+        <p className={styles.eyebrow}>Your order</p>
+        <h1 id="track-title">Track order</h1>
+        <p>Enter the reference from your checkout confirmation.</p>
       </div>
-
-      <form onSubmit={handleTrackSubmit} style={{ display: 'flex', gap: '8px', marginBottom: 'var(--space-3)' }}>
-        <input
-          type="text"
-          value={refInput}
-          onChange={(e) => setRefInput(e.target.value)}
-          placeholder="e.g. #RD-1025 or RDX-DEMO-991"
-          style={{
-            flex: 1,
-            height: '44px',
-            background: 'rgba(0,0,0,0.6)',
-            border: '1px solid rgba(255,255,255,0.1)',
-            borderRadius: 'var(--radius-md)',
-            color: '#fff',
-            padding: '0 16px',
-            fontSize: '0.85rem',
-            fontFamily: 'monospace',
-            outline: 'none',
-            transition: 'border-color 0.2s'
-          }}
-          onFocus={(e) => (e.target.style.borderColor = '#10b981')}
-          onBlur={(e) => (e.target.style.borderColor = 'rgba(255,255,255,0.1)')}
-        />
-        <button
-          type="submit"
-          disabled={loading}
-          style={{
-            background: '#fff',
-            color: '#000',
-            fontWeight: 'bold',
-            fontSize: '0.75rem',
-            letterSpacing: '0.1em',
-            textTransform: 'uppercase',
-            padding: '0 20px',
-            borderRadius: 'var(--radius-md)',
-            cursor: 'pointer',
-            border: 'none',
-            transition: 'opacity 0.2s',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center'
-          }}
-          onMouseOver={(e) => (e.currentTarget.style.opacity = '0.85')}
-          onMouseOut={(e) => (e.currentTarget.style.opacity = '1')}
-        >
-          {loading ? 'Searching...' : 'Trace'}
-        </button>
+      <form className={styles.form} onSubmit={(event) => { event.preventDefault(); void lookupOrder(refInput); }}>
+        <label className={styles.label} htmlFor="order-reference">Order reference</label>
+        <div className={styles.formRow}>
+          <input autoComplete="off" id="order-reference" onChange={(event) => setRefInput(event.target.value)} placeholder="RD-1025" required type="text" value={refInput} />
+          <button disabled={loading} type="submit">{loading ? 'Checking…' : 'Track'}</button>
+        </div>
       </form>
+      {error && <p className={styles.error} role="alert">{error}</p>}
+      {loading && <p className={styles.feedback} role="status">Checking your order…</p>}
 
-      {error && (
-        <div style={{
-          color: '#ef4444',
-          fontSize: '0.75rem',
-          textAlign: 'center',
-          marginTop: '8px',
-          padding: '8px',
-          background: 'rgba(239, 68, 68, 0.08)',
-          border: '1px solid rgba(239, 68, 68, 0.15)',
-          borderRadius: '4px'
-        }}>
-          ✕ {error}
-        </div>
-      )}
-
-      {order && (
-        <div style={{
-          marginTop: '24px',
-          paddingTop: '20px',
-          borderTop: '1px solid rgba(255,255,255,0.06)'
-        }}>
-          {/* Order Details & Image Row */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '20px', marginBottom: '28px', alignItems: 'center' }}>
-            {/* Image Box */}
-            {order.productImage && (
-              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>
-                <div 
-                  onClick={() => setLightboxOpen(true)}
-                  style={{ 
-                    position: 'relative', 
-                    width: '100%', 
-                    height: '240px', 
-                    borderRadius: '8px', 
-                    overflow: 'hidden', 
-                    border: '1px solid rgba(255,255,255,0.08)',
-                    background: 'rgba(255,255,255,0.01)',
-                    cursor: 'zoom-in',
-                    boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
-                    transition: 'transform 0.2s'
-                  }}
-                  onMouseOver={(e) => e.currentTarget.style.transform = 'scale(1.02)'}
-                  onMouseOut={(e) => e.currentTarget.style.transform = 'scale(1)'}
-                >
-                  <img 
-                    src={order.productImage} 
-                    alt={order.productName} 
-                    style={{ width: '100%', height: '100%', objectFit: 'cover' }} 
-                  />
-                  <div style={{
-                    position: 'absolute',
-                    bottom: '8px',
-                    right: '8px',
-                    background: 'rgba(0,0,0,0.78)',
-                    color: '#fff',
-                    fontSize: '0.62rem',
-                    padding: '4px 8px',
-                    borderRadius: '4px',
-                    letterSpacing: '0.05em',
-                    fontWeight: 'bold',
-                    fontFamily: 'monospace'
-                  }}>
-                    🔍 VIEW LARGER
-                  </div>
-                </div>
-              </div>
+      {order && !loading && (
+        <div className={styles.result} aria-live="polite">
+          <div className={styles.summary}>
+            <p className={styles.eyebrow}>Order RD-{order.id}</p>
+            <h2>{order.status === 'Pending' ? 'Order placed' : order.status}</h2>
+            <p className={styles.payment} data-payment={order.paymentStatus}>{paymentLabel(order.paymentStatus)}</p>
+            {(order.paymentStatus === 'failed' || order.paymentStatus === 'abandoned') && (
+              <p className={styles.note}>If you were charged, contact us with your payment reference.</p>
             )}
-
-            {/* Order Details list */}
-            <div style={{
-              display: 'grid',
-              gap: '12px',
-              fontSize: '0.8rem',
-              background: 'rgba(255,255,255,0.02)',
-              padding: '16px',
-              borderRadius: '6px',
-              border: '1px solid rgba(255,255,255,0.03)'
-            }}>
-              <div>
-                <span style={{ color: '#666', display: 'block', fontSize: '0.7rem', letterSpacing: '0.05em' }}>ORDER REFERENCE</span>
-                <strong style={{ color: '#fff', fontSize: '0.9rem' }}>#RD-{order.id}</strong>
-              </div>
-              <div>
-                <span style={{ color: '#666', display: 'block', fontSize: '0.7rem', letterSpacing: '0.05em' }}>
-                  ITEMS ORDERED
-                </span>
-                <div style={{ display: 'grid', gap: '8px', marginTop: '4px' }}>
-                  {order.items?.map((item: any, index: number) => (
-                    <div key={`${item.productSlug}-${item.color}-${item.size}-${index}`}>
-                      <strong style={{ color: '#fff', fontSize: '0.88rem' }}>{item.productName}</strong>
-                      <div style={{ color: '#10b981', fontSize: '0.78rem', marginTop: '2px' }}>
-                        {item.color} / Size {item.size} &times; {item.quantity} — GH₵{Number(item.lineTotal).toFixed(2)}
-                      </div>
-                    </div>
-                  ))}
-
-                  {/* Services billed alongside the garments. Without these the
-                      items would not add up to the total the customer paid. */}
-                  {order.extras?.map((extra: any, index: number) => (
-                    <div key={`extra-${index}`}>
-                      <strong style={{ color: '#fff', fontSize: '0.88rem' }}>{extra.label}</strong>
-                      <div style={{ color: '#60a5fa', fontSize: '0.78rem', marginTop: '2px' }}>
-                        Service — GH₵{Number(extra.amount).toFixed(2)}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-              <div>
-                <span style={{ color: '#666', display: 'block', fontSize: '0.7rem', letterSpacing: '0.05em' }}>ORDER PRICE</span>
-                <strong style={{ color: '#fff' }}>GH₵{Number(order.price).toFixed(2)}</strong>
-                <div style={{ color: '#666', fontSize: '0.72rem', marginTop: '2px' }}>
-                  {order.totalQuantity} item{order.totalQuantity === 1 ? '' : 's'}
-                  {Number(order.discount) > 0 && ` · GH₵${Number(order.discount).toFixed(2)} discount applied`}
-                  {/* Only web orders carry the gateway fee; an in-person sale has none. */}
-                  {Number(order.serviceCharge) > 0 && ' · incl. 2% service fee'}
-                </div>
-              </div>
-              <div>
-                <span style={{ color: '#666', display: 'block', fontSize: '0.7rem', letterSpacing: '0.05em' }}>PAYMENT</span>
-                {order.paymentStatus === 'paid' ? (
-                  <strong style={{ color: '#10b981' }}>
-                    ✓ PAID
-                    {order.paymentChannel ? ` · ${String(order.paymentChannel).replace(/_/g, ' ').toUpperCase()}` : ''}
-                  </strong>
-                ) : order.paymentStatus === 'failed' || order.paymentStatus === 'abandoned' ? (
-                  <strong style={{ color: '#ef4444' }}>NOT COMPLETED</strong>
-                ) : order.paymentStatus === 'refunded' ? (
-                  <strong style={{ color: '#a78bfa' }}>REFUNDED</strong>
-                ) : (
-                  <>
-                    <strong style={{ color: '#f59e0b' }}>AWAITING CONFIRMATION</strong>
-                    <div style={{ color: '#666', fontSize: '0.7rem', marginTop: '2px', lineHeight: 1.5 }}>
-                      Your order is saved. If you have paid, this updates automatically — no need to pay again.
-                    </div>
-                  </>
-                )}
-                {order.paidAt && (
-                  <div style={{ color: '#666', fontSize: '0.7rem', marginTop: '2px' }}>
-                    {new Date(order.paidAt).toLocaleString()}
-                  </div>
-                )}
-              </div>
-              <div>
-                <span style={{ color: '#666', display: 'block', fontSize: '0.7rem', letterSpacing: '0.05em' }}>SHIPMENT STATUS</span>
-                <strong style={{ color: getStatusColor(order.status) }}>{order.status.toUpperCase()}</strong>
-              </div>
-            </div>
+            {!['paid', 'refunded', 'failed', 'abandoned'].includes(order.paymentStatus) && (
+              <p className={styles.note}>If you have paid, your status will update after confirmation. Please do not pay again.</p>
+            )}
           </div>
-
-          {/* Stepper progress timeline */}
-          {stepIndex >= 0 && (
-            <div style={{ marginTop: '20px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', position: 'relative', padding: '0 10px' }}>
-                {/* Horizontal Bar */}
-                <div style={{
-                  position: 'absolute',
-                  top: '12px',
-                  left: '20px',
-                  right: '20px',
-                  height: '2px',
-                  background: 'rgba(255,255,255,0.08)',
-                  zIndex: 1
-                }} />
-                
-                {/* Active progress indicator line */}
-                <div style={{
-                  position: 'absolute',
-                  top: '12px',
-                  left: '20px',
-                  width: `${(stepIndex / 3) * 100}%`,
-                  height: '2px',
-                  background: '#10b981',
-                  transition: 'width 0.4s ease-out',
-                  zIndex: 2
-                }} />
-
-                {['Placed', 'Processing', 'Shipped', 'Delivered'].map((step, idx) => {
-                  const isPast = idx <= stepIndex;
-                  const isCurrent = idx === stepIndex;
-                  return (
-                    <div key={step} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', zIndex: 3, position: 'relative' }}>
-                      <div style={{
-                        width: '26px',
-                        height: '26px',
-                        borderRadius: '50%',
-                        background: isPast ? '#10b981' : '#111',
-                        border: `2px solid ${isPast ? '#10b981' : 'rgba(255,255,255,0.1)'}`,
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        color: isPast ? '#000' : '#888',
-                        fontWeight: 'bold',
-                        fontSize: '0.7rem',
-                        boxShadow: isCurrent ? '0 0 12px #10b981' : 'none',
-                        transition: 'all 0.3s'
-                      }}>
-                        {isPast ? '✓' : idx + 1}
-                      </div>
-                      <span style={{
-                        marginTop: '8px',
-                        fontSize: '0.65rem',
-                        color: isCurrent ? '#10b981' : isPast ? '#fff' : '#666',
-                        fontWeight: isCurrent ? 'bold' : 'normal',
-                        textTransform: 'uppercase',
-                        letterSpacing: '0.05em'
-                      }}>
-                        {step}
-                      </span>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
+          {currentStep >= 0 && (
+            <details className={styles.details}>
+              <summary>Delivery progress <span aria-hidden="true">+</span></summary>
+              <ol className={styles.steps}>
+                {STEPS.map((step, index) => (
+                  <li className={index <= currentStep ? styles.stepDone : ''} key={step} aria-current={index === currentStep ? 'step' : undefined}>
+                    <span className={styles.stepMark} aria-hidden="true">{index < currentStep ? '✓' : index + 1}</span>{step}
+                  </li>
+                ))}
+              </ol>
+            </details>
           )}
+          <details className={styles.details}>
+            <summary>Order details <span aria-hidden="true">+</span></summary>
+            <div className={styles.detailBody}>
+              {order.items?.map((item, index) => (
+                <div className={styles.line} key={`${item.productSlug}-${item.color}-${item.size}-${index}`}>
+                  <div><strong>{item.productName}</strong><small>{item.color} · Size {item.size} · Qty {item.quantity}</small></div>
+                  <span>{formatCurrency(Number(item.lineTotal))}</span>
+                </div>
+              ))}
+              {order.extras?.map((extra, index) => (
+                <div className={styles.line} key={`${extra.label}-${index}`}><span>{extra.label}</span><span>{formatCurrency(Number(extra.amount))}</span></div>
+              ))}
+              <div className={`${styles.line} ${styles.total}`}><strong>Total</strong><strong>{formatCurrency(Number(order.price))}</strong></div>
+              {Number(order.discount) > 0 && <p className={styles.small}>Includes {formatCurrency(Number(order.discount))} discount.</p>}
+              {Number(order.serviceCharge) > 0 && <p className={styles.small}>Includes service charge.</p>}
+              {order.reference && <p className={styles.small}>Payment reference: {order.reference}</p>}
+            </div>
+          </details>
         </div>
       )}
-
-      {/* Lightbox full-screen modal */}
-      {lightboxOpen && order && (
-        <div 
-          onClick={() => setLightboxOpen(false)}
-          style={{
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            background: 'rgba(0, 0, 0, 0.96)',
-            zIndex: 99999,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            cursor: 'zoom-out',
-            animation: 'fadeIn 0.2s ease-out'
-          }}
-        >
-          <img 
-            src={order.productImage} 
-            alt={order.productName} 
-            style={{ 
-              maxWidth: '92vw', 
-              maxHeight: '92vh', 
-              borderRadius: '8px', 
-              objectFit: 'contain',
-              border: '1.5px solid rgba(255, 255, 255, 0.12)',
-              boxShadow: '0 24px 64px rgba(0, 0, 0, 0.95)'
-            }} 
-          />
-        </div>
-      )}
-    </div>
+    </section>
   );
 }

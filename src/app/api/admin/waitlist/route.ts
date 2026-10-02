@@ -3,7 +3,7 @@ import { getDbWaitlist } from '@/lib/catalog-db';
 import { requireAdminSession } from '@/lib/admin-auth';
 
 export async function GET() {
-  const authError = requireAdminSession();
+  const authError = await requireAdminSession();
   if (authError) return authError;
 
   try {

@@ -677,13 +677,84 @@
 }
 
 .colorGrid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+  display: flex;
   gap: var(--space-3);
   margin-top: var(--space-3);
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scroll-snap-type: x proximity;
+  scroll-padding-inline: 2px;
+  scroll-behavior: smooth;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  padding: 2px 2px 12px;
+}
+
+.colorGrid::-webkit-scrollbar {
+  display: none;
+}
+
+.colorRailControls {
+  display: flex;
+  flex-shrink: 0;
+  gap: 6px;
+  margin-left: auto;
+}
+
+.colorRailControls button {
+  width: 34px;
+  height: 34px;
+  border: 1px solid var(--color-border);
+  border-radius: 50%;
+  background: var(--color-surface-2);
+  color: var(--color-white);
+  font-size: 1.5rem;
+  line-height: 1;
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease-out), border-color var(--duration-fast) var(--ease-out), transform var(--duration-fast) var(--ease-out);
+}
+
+.colorRailControls button:hover:not(:disabled) {
+  border-color: var(--color-red);
+  background: var(--color-red);
+  transform: scale(1.06);
+}
+
+.colorRailControls button:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.colorRailFooter {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-3);
+  color: var(--color-text-muted);
+  font-size: var(--text-xs);
+  letter-spacing: 0.02em;
+}
+
+.colorRailTrack {
+  width: 72px;
+  height: 3px;
+  overflow: hidden;
+  border-radius: 3px;
+  background: var(--color-border);
+}
+
+.colorRailProgress {
+  display: block;
+  width: 25%;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--color-red);
+  transition: transform 100ms linear;
 }
 
 .colorCard {
+  flex: 0 0 clamp(132px, 32%, 166px);
+  padding: 0;
   background: var(--color-surface-2);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
@@ -691,7 +762,11 @@
   display: flex;
   flex-direction: column;
   cursor: pointer;
-  transition: all var(--duration-fast) var(--ease-out);
+  color: inherit;
+  font: inherit;
+  text-align: inherit;
+  scroll-snap-align: start;
+  transition: transform var(--duration-fast) var(--ease-out), border-color var(--duration-fast) var(--ease-out), box-shadow var(--duration-fast) var(--ease-out);
 }
 
 .colorCard:hover {
@@ -733,4 +808,22 @@
 .colorCardActive .colorCardLabel {
   background: var(--color-red);
   color: #fff;
+}
+
+.colorCard:focus-visible,
+.colorRailControls button:focus-visible {
+  outline: 2px solid var(--color-white);
+  outline-offset: 3px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .colorGrid {
+    scroll-behavior: auto;
+  }
+
+  .colorCard,
+  .colorRailControls button,
+  .colorRailProgress {
+    transition: none;
+  }
 }
