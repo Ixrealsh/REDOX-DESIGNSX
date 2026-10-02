@@ -8,5 +8,5 @@ export default defineConfig([
     // Migrate these individually after the React upgrade is verified.
     rules: { 'react-hooks/set-state-in-effect': 'off' }
   },
-  globalIgnores(['.next/**', '.next-build/**', 'out/**', 'dist/**', 'coverage/**', 'next-env.d.ts'])
+  globalIgnores(['.next/**', '.next-dev/**', '.next-build/**', 'out/**', 'dist/**', 'coverage/**', 'next-env.d.ts'])
 ]);
