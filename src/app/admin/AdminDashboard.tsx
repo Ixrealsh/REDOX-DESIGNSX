@@ -1006,6 +1006,7 @@ export function AdminDashboard({
             unitPrice: Number(productForm.wholesalePrice)
           }
         : null,
+      image: productForm.image || colorVariants.flatMap((variant) => variant.imageUrls).find(Boolean) || '',
       secondaryImage: finalColorImages[finalColors[0]]?.[0] || productForm.image,
       imageAlt: productForm.name,
       rating: 4.8,
@@ -1484,6 +1485,7 @@ export function AdminDashboard({
           <div style={{ background: '#0a0a0a', border: '1px solid rgba(16,185,129,0.2)', borderRadius: '7px', padding: '12px 14px' }}>
             <label className={styles.revenueLabel} htmlFor="revenue-range">Revenue</label>
             <select className={styles.revenueSelect} id="revenue-range" onChange={(event) => setRevenueRange(event.target.value as RevenueRange)} value={revenueRange}>
+              <option value="allTime">All time</option>
               <option value="today">Today</option>
               <option value="week">This week</option>
               <option value="last30">Last 30 days</option>

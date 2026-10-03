@@ -11,6 +11,7 @@ test('revenue periods use Ghana calendar boundaries and count paid orders only',
     { paymentStatus: 'paid', paidAt: '2026-09-01T00:00:00Z', createdAt: '2026-09-01T00:00:00Z', price: 20 },
     { paymentStatus: 'unpaid', createdAt: '2026-10-07T01:00:00Z', price: 1000 }
   ];
+  assert.deepEqual(revenueForRange(orders, 'allTime', now), { amount: 180, count: 4 });
   assert.deepEqual(revenueForRange(orders, 'today', now), { amount: 90, count: 1 });
   assert.deepEqual(revenueForRange(orders, 'week', now), { amount: 130, count: 2 });
   assert.deepEqual(revenueForRange(orders, 'last30', now), { amount: 160, count: 3 });

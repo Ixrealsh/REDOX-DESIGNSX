@@ -1,5 +1,5 @@
 /** Store reporting uses Ghana's calendar day (UTC year-round). */
-export type RevenueRange = 'today' | 'week' | 'last30' | 'lastMonth';
+export type RevenueRange = 'allTime' | 'today' | 'week' | 'last30' | 'lastMonth';
 
 interface PaidOrder {
   paymentStatus: string;
@@ -10,6 +10,7 @@ interface PaidOrder {
 }
 
 export function revenueWindow(range: RevenueRange, now = new Date()) {
+  if (range === 'allTime') return { start: Number.NEGATIVE_INFINITY, end: Number.POSITIVE_INFINITY };
   const today = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
   if (range === 'today') return { start: today.getTime(), end: now.getTime() + 1 };
   if (range === 'week') {

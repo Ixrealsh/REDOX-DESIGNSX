@@ -34,8 +34,13 @@ export function ProductCard({ product, priority = false }: ProductCardProps) {
   const bulkRule = useMemo(() => getWholesaleRule(product), [product]);
   const badgeLabel: Product['badge'] = stock.isSoldOut ? 'SOLD OUT' : product.badge;
   const defaultPhotos = product.colorImages?.[product.colors?.[0] || ''] || [];
-  const primaryImage = defaultPhotos[0] || product.image;
-  const secondaryImage = defaultPhotos[1] || product.secondaryImage;
+  const firstVariantImage = product.colors?.flatMap((color) => product.colorImages?.[color] || []).find(Boolean);
+  const primaryImage = product.image || firstVariantImage || defaultPhotos[0] || '';
+  const secondaryImage = [
+    ...defaultPhotos.slice(1),
+    ...(product.colors?.flatMap((color) => product.colorImages?.[color] || []) || []).filter((image) => image !== primaryImage),
+    product.secondaryImage
+  ].find((image) => Boolean(image && image !== primaryImage));
   const hasAlternateImage = Boolean(secondaryImage && secondaryImage !== primaryImage);
 
   return (

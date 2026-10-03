@@ -1094,12 +1094,12 @@ export function ProductDetail({ product }: ProductDetailProps) {
                 </div>
 
                 <div className={styles.formGroup}>
-                  <label className={styles.fieldLabel}>SHIPPING ADDRESS *</label>
+                  <label className={styles.fieldLabel}>DELIVERY LOCATION *</label>
                   <input
                     type="text"
                     required
                     className={styles.formInput}
-                    placeholder="e.g. Hse No 42, Spintex Rd"
+                    placeholder="e.g. Dansoman, Accra, Tarkwa, Kumasi, etc."
                     value={formData.address}
                     onChange={(e) => setFormData(f => ({ ...f, address: e.target.value }))}
                   />
