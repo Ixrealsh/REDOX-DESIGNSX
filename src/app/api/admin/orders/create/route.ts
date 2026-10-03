@@ -38,7 +38,7 @@ function isUniqueViolation(error: any): boolean {
  *
  * This is the same pipeline `/api/checkout/initialize` runs — price from the
  * database, reserve the stock, write the row — with the gateway step removed and
- * the confirmation SMS sent immediately instead of after a payment lands. The
+ * an optional confirmation SMS sent immediately or held for the admin. The
  * resulting order is indistinguishable from a web order everywhere it is read:
  * the orders table, the printed slip, the track-order page.
  *
@@ -159,6 +159,7 @@ export async function POST(request: Request) {
         stockReserved: true,
         stockReleased: false,
         smsSent: false,
+        smsDeferred: input.sendSmsNow === false,
 
         ...(paidNow
           ? {
@@ -216,27 +217,29 @@ export async function POST(request: Request) {
     //    guaranteed to finish once a serverless function has already returned.
     //    A failure here is reported, never fatal: the order exists either way,
     //    and the panel offers a Resend button.
-    const smsSent = await notifyOrderOnce(order);
+    const smsSent = input.sendSmsNow === false ? false : await notifyOrderOnce(order);
     const msisdn = formatGhanaPhone(order.customerPhone);
 
     console.log(
       `[admin-order] Order #RD-${order.id} created in the panel — GH₵${grandTotal.toFixed(2)}` +
         `${extrasTotal > 0 ? ` (incl. GH₵${extrasTotal.toFixed(2)} services)` : ''}` +
         `${discount > 0 ? ` (GH₵${discount.toFixed(2)} off)` : ''}, ` +
-        `${paidNow ? 'paid' : 'unpaid'}, SMS ${smsSent ? 'sent' : 'not sent'}.`
+        `${paidNow ? 'paid' : 'unpaid'}, SMS ${input.sendSmsNow === false ? 'deferred' : smsSent ? 'sent' : 'not sent'}.`
     );
 
     return NextResponse.json({
       success: true,
       duplicate: false,
       smsSent,
-      smsReason: smsSent
+      smsReason: input.sendSmsNow === false
+        ? 'SMS is saved for later. Open the order to edit the number or send it.'
+        : smsSent
         ? undefined
         : isValidGhanaPhone(msisdn)
         ? 'The SMS gateway did not accept the message. You can resend it from the orders table.'
         : `"${order.customerPhone}" is not a valid Ghanaian number, so no text was sent.`,
       message: `Order #RD-${order.id} created.`,
-      order
+      order: { ...order, smsSent, smsDeferred: input.sendSmsNow === false }
     });
   } catch (error: any) {
     console.error('API admin order create error:', error);

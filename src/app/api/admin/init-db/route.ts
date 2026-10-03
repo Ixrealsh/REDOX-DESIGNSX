@@ -141,7 +141,8 @@ export async function POST() {
         payment_note TEXT,
         stock_reserved BOOLEAN NOT NULL DEFAULT TRUE,
         stock_released BOOLEAN NOT NULL DEFAULT FALSE,
-        sms_sent BOOLEAN NOT NULL DEFAULT FALSE
+        sms_sent BOOLEAN NOT NULL DEFAULT FALSE,
+        sms_deferred BOOLEAN NOT NULL DEFAULT FALSE
       );
     `;
 

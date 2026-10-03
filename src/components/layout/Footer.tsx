@@ -1,5 +1,6 @@
 import Image from 'next/image';
 import Link from 'next/link';
+import { InstallApp } from './InstallApp';
 import styles from './Footer.module.css';
 
 export function Footer() {
@@ -9,16 +10,14 @@ export function Footer() {
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
           <Link className={styles.logo} href="/" style={{ display: 'flex', alignItems: 'center', marginBottom: 0 }}>
             <Image
-              src="/assets/icons/redoxlogo.jpg"
+              src="/assets/icons/redoxlogo.png"
               alt="REDOXDESIGNX"
-              width={32}
-              height={32}
+              width={116}
+              height={73}
               style={{ 
-                width: '32px', 
-                height: '32px', 
-                borderRadius: '50%', 
-                objectFit: 'cover', 
-                border: '1px solid var(--color-border)' 
+                width: '116px',
+                height: 'auto',
+                objectFit: 'contain'
               }} 
             />
           </Link>
@@ -33,6 +32,7 @@ export function Footer() {
           <Link className={styles.link} href="/track-order">Track Order</Link>
           <Link className={styles.link} href="/size-guide">Size Guide</Link>
           <Link className={styles.link} href="/contact">Contact</Link>
+          <InstallApp />
           <span style={{ color: '#333' }}>|</span>
           <a className={styles.link} href="https://wa.me/233558058348" target="_blank" rel="noopener noreferrer">WhatsApp</a>
           <a className={styles.link} href="https://tiktok.com/@redoxdesignx" target="_blank" rel="noopener noreferrer">TikTok</a>

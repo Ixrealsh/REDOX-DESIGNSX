@@ -6,7 +6,7 @@ export const siteMeta = {
   defaultTitle: 'REDOXDESIGNX | Premium Streetwear & Contemporary Blanks',
   defaultDescription:
     'Chemical precision. Street tension. REDOXDESIGNX crafts premium limited-run 230gsm heavyweight blank tees and contemporary apparel. Engineered with intention, zero restocks.',
-  defaultOgImage: 'https://redoxdesignx.com/assets/icons/redoxlogo.jpg',
+  defaultOgImage: 'https://redoxdesignx.com/assets/icons/redoxlogo.png',
   twitterHandle: '@redoxdesignsx'
 };
 
@@ -44,16 +44,22 @@ export function buildMetadata({
     ],
     alternates: { canonical: url },
     icons: {
-      icon: '/assets/icons/redoxlogo.jpg',
-      apple: '/assets/icons/redoxlogo.jpg',
-      shortcut: '/assets/icons/redoxlogo.jpg'
+      icon: '/icon?brand=2',
+      apple: '/apple-icon?brand=2',
+      shortcut: '/icon1?brand=2'
+    },
+    applicationName: siteMeta.siteName,
+    appleWebApp: {
+      capable: true,
+      title: siteMeta.siteName,
+      statusBarStyle: 'black'
     },
     openGraph: {
       title: pageTitle,
       description: pageDescription,
       url,
       siteName: siteMeta.siteName,
-      images: [{ url: image, width: 600, height: 600, alt: siteMeta.siteName }],
+      images: [{ url: image, width: 757, height: 473, alt: siteMeta.siteName }],
       type: 'website'
     },
     twitter: {

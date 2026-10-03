@@ -47,7 +47,7 @@ test('stock and order creation commit or roll back together', async () => {
         paid_at TIMESTAMPTZ, amount_paid NUMERIC, payment_channel TEXT,
         paystack_transaction_id TEXT, last_verified_at TIMESTAMPTZ,
         payment_verified_by TEXT, gateway_response TEXT, stock_reserved BOOLEAN,
-        stock_released BOOLEAN, sms_sent BOOLEAN, discount NUMERIC, source TEXT,
+        stock_released BOOLEAN, sms_sent BOOLEAN, sms_deferred BOOLEAN NOT NULL DEFAULT FALSE, discount NUMERIC, source TEXT,
         client_request_id TEXT UNIQUE, payment_note TEXT, extras JSONB,
         delivery_method TEXT NOT NULL DEFAULT 'none', delivery_fee NUMERIC NOT NULL DEFAULT 0
       );

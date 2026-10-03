@@ -8,7 +8,7 @@ export type DeliveryMethod = 'none' | 'standard' | 'urgent';
 
 export const FREE_STATION_DELIVERY_LABEL = 'Free Delivery to Station';
 export const URGENT_STATION_DELIVERY_LABEL = 'Urgent Delivery to Station';
-export const FREE_STATION_DELIVERY_DETAILS = 'Station deliveries run on Monday, Wednesday and Friday and take up to 3 days, depending on when you order.';
+export const FREE_STATION_DELIVERY_DETAILS = 'Station deliveries run on Monday, Wednesday and Friday via VIP, OA and Express Bus.';
 
 export interface DeliverySettings {
   eligibleRegions: string[];

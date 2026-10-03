@@ -1,4 +1,4 @@
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
 import { Archivo_Black, Barlow_Condensed, DM_Sans, IBM_Plex_Mono } from 'next/font/google';
 import { Footer } from '@/components/layout/Footer';
 import { Navbar } from '@/components/layout/Navbar';
@@ -35,6 +35,7 @@ const plexMono = IBM_Plex_Mono({
 });
 
 export const metadata: Metadata = buildMetadata();
+export const viewport: Viewport = { themeColor: '#080808' };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (

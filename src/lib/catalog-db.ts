@@ -793,6 +793,7 @@ async function ensureOrdersSchema(): Promise<void> {
           ADD COLUMN IF NOT EXISTS stock_reserved BOOLEAN NOT NULL DEFAULT TRUE,
           ADD COLUMN IF NOT EXISTS stock_released BOOLEAN NOT NULL DEFAULT FALSE,
           ADD COLUMN IF NOT EXISTS sms_sent BOOLEAN NOT NULL DEFAULT FALSE,
+          ADD COLUMN IF NOT EXISTS sms_deferred BOOLEAN NOT NULL DEFAULT FALSE,
           ADD COLUMN IF NOT EXISTS discount NUMERIC NOT NULL DEFAULT 0,
           ADD COLUMN IF NOT EXISTS source VARCHAR(20) NOT NULL DEFAULT 'web',
           ADD COLUMN IF NOT EXISTS client_request_id VARCHAR(80),
@@ -984,7 +985,7 @@ async function ensureOrdersSchema(): Promise<void> {
             subtotal, service_charge, payment_status, payment_reference, paid_at,
             amount_paid, payment_channel, paystack_transaction_id, last_verified_at,
             payment_verified_by, gateway_response, stock_reserved, stock_released,
-            sms_sent, discount, source, client_request_id, payment_note, extras,
+            sms_sent, sms_deferred, discount, source, client_request_id, payment_note, extras,
             delivery_method, delivery_fee
           ) VALUES (
             p_order->>'productId', p_order->>'productName', p_order->>'productSlug',
@@ -999,7 +1000,8 @@ async function ensureOrdersSchema(): Promise<void> {
             (p_order->>'amountPaid')::NUMERIC, p_order->>'paymentChannel',
             p_order->>'paystackTransactionId', (p_order->>'lastVerifiedAt')::TIMESTAMPTZ,
             p_order->>'paymentVerifiedBy', p_order->>'gatewayResponse', TRUE, FALSE,
-            FALSE, COALESCE((p_order->>'discount')::NUMERIC, 0),
+            FALSE, COALESCE((p_order->>'smsDeferred')::BOOLEAN, FALSE),
+            COALESCE((p_order->>'discount')::NUMERIC, 0),
             COALESCE(p_order->>'source', 'web'), p_order->>'clientRequestId',
             p_order->>'paymentNote', COALESCE(p_order->'extras', '[]'::jsonb),
             COALESCE(p_order->>'deliveryMethod', 'none'), COALESCE((p_order->>'deliveryFee')::NUMERIC, 0)
@@ -1148,7 +1150,8 @@ function mapOrderRow(row: any): Order {
     paymentNote: row.payment_note || undefined,
     stockReserved: row.stock_reserved !== false,
     stockReleased: row.stock_released === true,
-    smsSent: row.sms_sent === true
+    smsSent: row.sms_sent === true,
+    smsDeferred: row.sms_deferred === true
   };
 }
 
@@ -1283,6 +1286,7 @@ export type NewOrderInput = Omit<
   | 'stockReserved'
   | 'stockReleased'
   | 'smsSent'
+  | 'smsDeferred'
   | 'discount'
   | 'source'
   | 'extras'
@@ -1290,7 +1294,7 @@ export type NewOrderInput = Omit<
   Partial<
     Pick<
       Order,
-      'paymentStatus' | 'stockReserved' | 'stockReleased' | 'smsSent' | 'discount' | 'source' | 'extras'
+      'paymentStatus' | 'stockReserved' | 'stockReleased' | 'smsSent' | 'smsDeferred' | 'discount' | 'source' | 'extras'
     >
   >;
 
@@ -1300,6 +1304,7 @@ export async function addDbOrder(o: NewOrderInput): Promise<Order> {
     stockReserved: o.stockReserved !== false,
     stockReleased: o.stockReleased === true,
     smsSent: o.smsSent === true,
+    smsDeferred: o.smsDeferred === true,
     discount: Number.isFinite(o.discount) ? Math.max(0, Number(o.discount)) : 0,
     source: o.source === 'admin' ? ('admin' as const) : ('web' as const),
     extras: parseOrderExtras(o.extras),
@@ -1328,7 +1333,7 @@ export async function addDbOrder(o: NewOrderInput): Promise<Order> {
         items, total_quantity, subtotal, service_charge,
         payment_status, payment_reference, paid_at, amount_paid, payment_channel,
         paystack_transaction_id, last_verified_at, payment_verified_by, gateway_response,
-        stock_reserved, stock_released, sms_sent,
+        stock_reserved, stock_released, sms_sent, sms_deferred,
         discount, source, client_request_id, payment_note, extras,
         delivery_method, delivery_fee
       ) VALUES (
@@ -1339,7 +1344,7 @@ export async function addDbOrder(o: NewOrderInput): Promise<Order> {
         ${defaults.paymentStatus}, ${o.paymentReference || null}, ${o.paidAt || null}, ${o.amountPaid ?? null},
         ${o.paymentChannel || null}, ${o.paystackTransactionId || null}, ${o.lastVerifiedAt || null},
         ${o.paymentVerifiedBy || null}, ${o.gatewayResponse || null},
-        ${defaults.stockReserved}, ${defaults.stockReleased}, ${defaults.smsSent},
+        ${defaults.stockReserved}, ${defaults.stockReleased}, ${defaults.smsSent}, ${defaults.smsDeferred},
         ${defaults.discount}, ${defaults.source}, ${o.clientRequestId || null}, ${o.paymentNote || null},
         ${JSON.stringify(defaults.extras)}, ${defaults.deliveryMethod}, ${defaults.deliveryFee}
       )
@@ -1691,7 +1696,7 @@ export async function annotateDbOrderPayment(id: number, note: string): Promise<
 export async function claimDbOrderSms(id: number): Promise<boolean> {
   if (!isDbConfigured) {
     const order = sandboxOrders.find((candidate) => candidate.id === id);
-    if (!order || order.smsSent) return false;
+    if (!order || order.smsSent || order.smsDeferred) return false;
     order.smsSent = true;
     return true;
   }
@@ -1700,7 +1705,7 @@ export async function claimDbOrderSms(id: number): Promise<boolean> {
     await ensureOrdersSchema();
     const rows = await sql`
       UPDATE orders SET sms_sent = TRUE
-      WHERE id = ${id} AND sms_sent = FALSE
+      WHERE id = ${id} AND sms_sent = FALSE AND sms_deferred = FALSE
       RETURNING id
     `;
     return rows.length > 0;
@@ -1723,6 +1728,30 @@ export async function releaseDbOrderSmsClaim(id: number): Promise<void> {
   } catch (error) {
     console.error(`Could not release the SMS claim on order #${id}:`, error);
   }
+}
+
+/** Save the SMS number and hold or release an in-person order's confirmation. */
+export async function updateDbOrderSmsDetails(id: number, phone: string, sendNow: boolean): Promise<Order | undefined> {
+  if (!isDbConfigured) {
+    const order = sandboxOrders.find((candidate) => candidate.id === id);
+    if (!order) return undefined;
+    const changed = order.customerPhone !== phone;
+    if (changed) order.smsSent = false;
+    order.smsDeferred = order.smsSent && !changed ? false : !sendNow;
+    order.customerPhone = phone;
+    return order;
+  }
+
+  await ensureOrdersSchema();
+  const rows = await sql`
+    UPDATE orders SET
+      customer_phone = ${phone},
+      sms_sent = CASE WHEN customer_phone = ${phone} THEN sms_sent ELSE FALSE END,
+      sms_deferred = CASE WHEN customer_phone = ${phone} AND sms_sent = TRUE THEN FALSE ELSE ${!sendNow} END
+    WHERE id = ${id}
+    RETURNING *
+  `;
+  return rows[0] ? mapOrderRow(rows[0]) : undefined;
 }
 
 /**
@@ -1770,14 +1799,14 @@ export async function listDbOrdersAwaitingPayment(options: {
  */
 export async function listDbOrdersMissingSms(limit: number): Promise<Order[]> {
   if (!isDbConfigured) {
-    return sandboxOrders.filter((order) => order.paymentStatus === 'paid' && !order.smsSent).slice(0, limit);
+    return sandboxOrders.filter((order) => order.paymentStatus === 'paid' && !order.smsSent && !order.smsDeferred).slice(0, limit);
   }
 
   try {
     await ensureOrdersSchema();
     const rows = await sql`
       SELECT * FROM orders
-      WHERE payment_status = 'paid' AND sms_sent = FALSE
+      WHERE payment_status = 'paid' AND sms_sent = FALSE AND sms_deferred = FALSE
       ORDER BY created_at ASC
       LIMIT ${limit}
     `;

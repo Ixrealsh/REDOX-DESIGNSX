@@ -87,6 +87,7 @@ export const directOrderSchema = customerSchema
 export const adminOrderSchema = z.object({
   customerName: z.string().trim().min(2).max(255),
   customerPhone: z.string().trim().min(8).max(100),
+  sendSmsNow: z.boolean().optional(),
   customerEmail: z.union([z.string().trim().email().max(255), z.literal('')]).optional(),
   shippingAddress: z.string().trim().max(500).optional(),
   shippingCity: z.string().trim().max(255).optional(),

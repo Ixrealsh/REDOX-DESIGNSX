@@ -16,6 +16,13 @@ const nextConfig = {
       }
     ],
   },
+  async redirects() {
+    return [
+      { source: '/assets/icons/redoxlogo.jpg', destination: '/assets/icons/redoxlogo.png', permanent: true },
+      { source: '/assets/images/logo/redox-mark.svg', destination: '/icon1?brand=2', permanent: true },
+      { source: '/favicon.svg', destination: '/icon1?brand=2', permanent: true }
+    ];
+  },
   async headers() {
     const csp = [
       "default-src 'self'",
@@ -33,6 +40,13 @@ const nextConfig = {
     ].join('; ');
 
     return [
+      {
+        source: '/sw.js',
+        headers: [
+          { key: 'Cache-Control', value: 'no-cache, no-store, must-revalidate' },
+          { key: 'Service-Worker-Allowed', value: '/' }
+        ]
+      },
       {
         source: '/:path*',
         headers: [

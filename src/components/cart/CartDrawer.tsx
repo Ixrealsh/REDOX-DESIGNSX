@@ -577,7 +577,7 @@ export function CartDrawer() {
                     </select>
                   </div>
                   <DeliveryChoice region={formData.city} method={deliveryMethod} settings={deliverySettings} loading={deliveryLoading} onChange={setDeliveryMethod} />
-                  {field('address', delivery.method !== 'none' ? 'Preferred Station / Town *' : 'Delivery Address *', 'text', delivery.method !== 'none' ? 'Station name and town (e.g. Ho station)' : 'House No., Street, Area')}
+                  {field('address', delivery.method !== 'none' ? 'Preferred Town *' : 'Delivery Address *', 'text', delivery.method !== 'none' ? 'Town name (e.g. Ho)' : 'House No., Street, Area')}
                 </div>
 
                 {/* Order summary */}

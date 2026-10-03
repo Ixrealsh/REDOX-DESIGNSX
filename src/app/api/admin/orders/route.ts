@@ -6,7 +6,8 @@ import {
   markDbOrderPaid,
   markDbOrderRefunded,
   revertDbOrderToUnpaid,
-  setDbOrderStatus
+  setDbOrderStatus,
+  updateDbOrderSmsDetails
 } from '@/lib/catalog-db';
 import { requireAdminSession } from '@/lib/admin-auth';
 import { summariseOrderPayments as summarise } from '@/lib/order-receipt';
@@ -17,6 +18,7 @@ import {
   settleOrderPayment
 } from '@/lib/payment-service';
 import { ORDER_STATUSES } from '@/types/product';
+import { formatGhanaPhone, isValidGhanaPhone } from '@/lib/phone';
 
 export const dynamic = 'force-dynamic';
 
@@ -162,13 +164,24 @@ export async function POST(request: Request) {
     }
 
     // ── Send the confirmation text again ──────────────────────────
-    if (action === 'resendSms') {
+    if (action === 'resendSms' || action === 'updateSms') {
+      if (action === 'updateSms' && order.source !== 'admin') {
+        return NextResponse.json({ error: 'SMS contact editing is available for in-person orders.' }, { status: 400 });
+      }
+      const sendNow = action === 'resendSms' || body?.sendSms === true;
+      const phone = action === 'updateSms' ? String(body?.customerPhone || '').trim() : order.customerPhone;
+      if (phone.length < 8 || phone.length > 100) {
+        return NextResponse.json({ error: 'Enter a phone number with at least 8 characters.' }, { status: 400 });
+      }
+      if (sendNow && !isValidGhanaPhone(formatGhanaPhone(phone))) {
+        return NextResponse.json({ error: 'Enter a valid Ghanaian phone number before sending SMS.' }, { status: 400 });
+      }
       // The message reads "Order confirmed!". Sending that to someone whose
       // payment failed, or who walked away from checkout, would be false — and
       // it is billable. Guarded here as well as in the UI.
       const confirmable = order.paymentStatus === 'paid' || order.source === 'admin';
 
-      if (!confirmable) {
+      if (sendNow && !confirmable) {
         return NextResponse.json(
           {
             error:
@@ -179,23 +192,26 @@ export async function POST(request: Request) {
         );
       }
 
-      const result = await resendOrderSms(order);
+      const saved = await updateDbOrderSmsDetails(orderId, phone, sendNow);
+      if (!saved) return NextResponse.json({ error: 'That order no longer exists.' }, { status: 404 });
+      if (!sendNow) {
+        return NextResponse.json({
+          success: true,
+          smsSent: saved.smsSent,
+          message: saved.smsSent ? 'Phone number saved.' : 'Phone number saved. SMS is set for later.',
+          order: saved
+        });
+      }
 
-      const reasons: Record<string, string> = {
-        not_configured: 'SMS is not configured on the server (check the Hubtel credentials).',
-        no_valid_recipients: `"${order.customerPhone}" is not a valid Ghanaian number, so no text could be sent.`,
-        customer_phone_invalid: `"${order.customerPhone}" is not a valid Ghanaian number, so no text could be sent.`,
-        timeout: 'The SMS gateway did not respond in time. Try again in a moment.',
-        network_error: 'Could not reach the SMS gateway. Try again in a moment.'
-      };
-
+      const result = saved.smsSent ? await resendOrderSms(saved) : null;
+      const smsSent = result ? result.sent : await notifyOrderOnce(saved);
       return NextResponse.json({
         success: true,
-        smsSent: result.sent,
-        recipients: result.recipients,
-        message: result.sent
-          ? `Confirmation re-sent to ${result.recipients.join(', ')}.`
-          : reasons[result.reason || ''] || 'The confirmation text could not be delivered.',
+        smsSent,
+        recipients: result?.recipients,
+        message: smsSent
+          ? `Confirmation SMS sent to ${formatGhanaPhone(phone)}.`
+          : 'The number was saved, but the SMS was not delivered. Check the SMS gateway and try again.',
         order: await getDbOrderById(orderId)
       });
     }

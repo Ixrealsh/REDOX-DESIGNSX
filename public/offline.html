@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#080808" />
+    <title>You're offline | REDOXDESIGNX</title>
+    <style>
+      * { box-sizing: border-box; }
+      body { min-height: 100vh; margin: 0; display: grid; place-items: center; padding: 24px; background: #080808; color: #f3f3f3; font: 16px/1.5 system-ui, sans-serif; }
+      main { max-width: 400px; text-align: center; }
+      .mark { width: 58px; height: 58px; object-fit: contain; }
+      h1 { margin: 24px 0 8px; font-size: clamp(26px, 7vw, 38px); line-height: 1.1; text-transform: uppercase; }
+      p { color: #bdbdbd; margin: 0 0 24px; }
+      button { min-height: 46px; padding: 10px 25px; border: 0; border-radius: 4px; background: #d72638; color: #fff; font: inherit; font-weight: 700; cursor: pointer; }
+      button:focus-visible { outline: 3px solid #fff; outline-offset: 3px; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <img class="mark" src="/icon1?brand=2" alt="REDOXDESIGNX" />
+      <h1>Connection lost</h1>
+      <p>Reconnect to browse the shop, place an order, or check an order's latest status.</p>
+      <button type="button" onclick="location.reload()">Try again</button>
+    </main>
+  </body>
+</html>

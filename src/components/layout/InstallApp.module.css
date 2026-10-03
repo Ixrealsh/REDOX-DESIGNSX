@@ -1,0 +1,39 @@
+.footerButton {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  font: inherit;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.footerButton:hover,
+.footerButton:focus-visible { color: var(--color-white); }
+
+.dialog {
+  width: min(420px, calc(100% - 32px));
+  max-height: min(80dvh, 600px);
+  margin: auto;
+  padding: 26px;
+  border: 1px solid #3a3a3a;
+  border-radius: 10px;
+  background: #101010;
+  color: #f4f4f4;
+  box-shadow: 0 24px 80px #000b;
+}
+
+.dialog::backdrop { background: #000b; }
+.heading { display: flex; align-items: flex-start; justify-content: space-between; }
+.mark { display: block; width: 48px; height: 48px; object-fit: contain; }
+.close { width: 38px; height: 38px; border: 0; background: transparent; color: #ddd; cursor: pointer; font-size: 28px; line-height: 1; }
+.dialog h2 { margin: 18px 0 8px; font-size: 1.35rem; line-height: 1.2; text-transform: uppercase; }
+.dialog p { margin: 10px 0; color: #ccc; font-size: 0.9rem; line-height: 1.55; }
+.dialog ol { margin: 16px 0; padding-left: 22px; color: #ddd; font-size: 0.9rem; line-height: 1.55; }
+.dialog li + li { margin-top: 12px; }
+.dialog strong { color: #fff; }
+.dialog .note { color: #999; font-size: 0.78rem; }
+.installButton { width: 100%; min-height: 46px; margin: 16px 0 8px; padding: 10px; border: 0; border-radius: 4px; background: #d72638; color: #fff; cursor: pointer; font: inherit; font-weight: 700; }
+.installButton:disabled { opacity: 0.6; cursor: wait; }
+.dialog button:focus-visible, .footerButton:focus-visible { outline: 2px solid #f4f4f4; outline-offset: 4px; }

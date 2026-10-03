@@ -41,7 +41,7 @@ export function AdminLogin() {
     <div className={styles.page}>
       <section className={styles.card} aria-labelledby="admin-login-title">
         <div className={styles.brand}>
-          <Image alt="REDOXDESIGNX" className={styles.logo} height={52} src="/assets/icons/redoxlogo.jpg" width={52} />
+          <Image alt="REDOXDESIGNX" className={styles.logo} height={52} src="/icon1?brand=2" unoptimized width={52} />
           <p className={styles.eyebrow}>REDOXDESIGNX</p>
           <h1 id="admin-login-title">Admin sign in</h1>
           <p>Manage products and orders in one place.</p>

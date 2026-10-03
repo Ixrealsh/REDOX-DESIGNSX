@@ -23,7 +23,7 @@ export function DeliveryChoice({ region, method, settings, loading, onChange }: 
       <legend>Delivery for {region}</legend>
       <label className={`${styles.option} ${method !== 'urgent' ? styles.selected : ''}`}>
         <input type="radio" name="delivery-method" checked={method !== 'urgent'} onChange={() => onChange('standard')} />
-        <span><strong>{FREE_STATION_DELIVERY_LABEL} · no extra fee</strong><small>{FREE_STATION_DELIVERY_DETAILS} Enter your preferred station or town below; our team will confirm the station.</small></span>
+        <span><strong>{FREE_STATION_DELIVERY_LABEL}</strong><small>{FREE_STATION_DELIVERY_DETAILS}</small></span>
       </label>
       {urgentAvailable && (
         <label className={`${styles.option} ${method === 'urgent' ? styles.selected : ''}`}>

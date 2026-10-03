@@ -11,6 +11,7 @@ import { getProductStockSummary } from '@/lib/inventory';
 import { sumOrderExtras } from '@/lib/order-schema';
 import { formatAdminDateTime, revenueForRange, type RevenueRange } from '@/lib/admin-metrics';
 import { CreateOrderModal, type CreatedOrderResult } from './CreateOrderModal';
+import { SmsOrderEditor } from './SmsOrderEditor';
 import { DeliverySettingsPanel } from './DeliverySettingsPanel';
 import styles from './Admin.module.css';
 
@@ -156,7 +157,7 @@ function paymentMethodLabel(order: Order): string {
 /** Build a self-contained, white, print-ready order slip for a single order. */
 function buildOrderSlipHtml(order: Order, origin: string): string {
   const ref = `#RD-${order.id}`;
-  const logoSrc = `${origin}/assets/icons/redoxlogo.jpg`;
+  const logoSrc = `${origin}/assets/icons/redoxlogo.png`;
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -186,41 +187,41 @@ function buildOrderSlipHtml(order: Order, origin: string): string {
   .brand {
     text-align: center;
     border-bottom: 2px solid #111;
-    padding-bottom: 8px;
+    padding-bottom: 6px;
   }
-  .brand img { height: 34px; width: auto; object-fit: contain; display: block; margin: 0 auto; }
+  .brand img { height: 32px; width: auto; object-fit: contain; display: block; margin: 0 auto; filter: brightness(0); }
   .brand .name {
     margin-top: 4px;
-    font-size: 13px;
+    font-size: 15px;
     font-weight: 800;
     letter-spacing: 0.05em;
     text-transform: uppercase;
   }
-  .gap { margin-top: 12px; }
+  .gap { margin-top: 8px; }
   .section-title {
-    font-size: 9px; font-weight: 800; letter-spacing: 0.12em; text-transform: uppercase;
-    color: #222; margin-bottom: 5px;
+    font-size: 11px; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase;
+    color: #222; margin-bottom: 4px;
   }
-  .recipient { font-size: 14px; font-weight: 800; margin-bottom: 6px; }
-  .field { padding: 5px 0; border-bottom: 1px solid #d4d4d4; }
+  .recipient { font-size: 16px; font-weight: 800; margin-bottom: 4px; }
+  .field { padding: 3px 0; border-bottom: 1px solid #d4d4d4; }
   .field:last-child { border-bottom: none; }
-  .field .l { font-size: 8.5px; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase; color: #333; }
-  .field .d { font-size: 11px; font-weight: 600; color: #111; margin-top: 3px; word-break: break-word; }
+  .field .l { font-size: 11px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; color: #333; }
+  .field .d { font-size: 14px; font-weight: 600; color: #111; margin-top: 2px; word-break: break-word; }
   .stats { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 6px; }
-  .stat { min-width: 0; border: 1px solid #bdbdbd; border-radius: 5px; padding: 9px; text-align: left; background: #fafafa; }
-  .stat .l { font-size: 8.5px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; color: #333; }
-  .stat .d { font-size: 16px; font-weight: 800; line-height: 1.2; margin-top: 5px; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+  .stat { min-width: 0; border: 1px solid #bdbdbd; border-radius: 5px; padding: 7px; text-align: left; background: #fafafa; }
+  .stat .l { font-size: 10px; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; color: #333; }
+  .stat .d { font-size: 18px; font-weight: 800; line-height: 1.2; margin-top: 4px; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
   .stat.order-id { text-align: right; }
-  .stat.order-id .d { font-size: 13px; }
+  .stat.order-id .d { font-size: 15px; }
   .total {
     display: flex; justify-content: space-between; align-items: center;
-    margin-top: 13px; padding: 10px 12px; background: #111; border-radius: 5px;
+    margin-top: 9px; margin-bottom: 8px; padding: 9px 11px; background: #111; border-radius: 5px;
   }
-  .total .k { font-size: 10px; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase; color: #fff; }
-  .total .v { font-size: 21px; font-weight: 800; color: #fff; }
+  .total .k { font-size: 12px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; color: #fff; }
+  .total .v { font-size: 24px; font-weight: 800; color: #fff; }
   .foot {
-    margin-top: auto; padding-top: 9px; border-top: 1px solid #333;
-    text-align: center; font-size: 9px; font-weight: 600; color: #222; line-height: 1.45;
+    margin-top: auto; padding-top: 7px; border-top: 1px solid #333;
+    text-align: center; font-size: 11px; font-weight: 600; color: #222; line-height: 1.4;
   }
   .foot .thanks { font-weight: 800; color: #111; margin-bottom: 3px; }
   @media print {
@@ -323,6 +324,7 @@ export function AdminDashboard({
   
   // Form Modal States
   const [showCreateOrderModal, setShowCreateOrderModal] = useState(false);
+  const [smsOrder, setSmsOrder] = useState<Order | null>(null);
   /** Newly created order, briefly highlighted in the table so it is easy to find. */
   const [highlightOrderId, setHighlightOrderId] = useState<number | null>(null);
   const [showProductModal, setShowProductModal] = useState(false);
@@ -599,8 +601,8 @@ export function AdminDashboard({
     triggerNotification(
       result.duplicate
         ? `Order #RD-${result.order.id} already existed — it was not created twice.`
-        : `Order #RD-${result.order.id} created.${result.smsSent ? ' Customer notified by SMS.' : ' SMS not delivered.'}`,
-      result.smsSent || result.duplicate ? 'success' : 'error'
+        : `Order #RD-${result.order.id} created.${result.smsSent ? ' Customer notified by SMS.' : result.order.smsDeferred ? ' SMS saved for later.' : ' SMS not delivered.'}`,
+      result.smsSent || result.duplicate || result.order.smsDeferred ? 'success' : 'error'
     );
   };
 
@@ -1941,6 +1943,7 @@ export function AdminDashboard({
                         <div style={{ fontWeight: 'bold', color: '#fff' }}>{o.customerName}</div>
                         <div style={{ color: '#aaa', fontSize: '0.75rem' }}>{o.customerPhone}</div>
                         <div style={{ color: '#777', fontSize: '0.7rem' }}>{o.customerEmail}</div>
+                        {o.source === 'admin' && !o.smsSent && <span className={styles.smsNotSentBadge}>SMS not sent</span>}
                       </td>
                       <td data-label="Items" style={{ padding: 'var(--space-3)', minWidth: '260px' }}>
                         <div style={{ display: 'grid', gap: '6px' }}>
@@ -2136,7 +2139,7 @@ export function AdminDashboard({
                                     money received, or an order the merchant took
                                     themselves. Texting "order confirmed" to someone
                                     who abandoned checkout would be a lie. */}
-                                {!o.smsSent && (o.paymentStatus === 'paid' || o.source === 'admin') && (
+                                {!o.smsSent && o.source !== 'admin' && o.paymentStatus === 'paid' && (
                                   <button
                                     onClick={() => handleResendSms(o)}
                                     disabled={busy}
@@ -2206,6 +2209,11 @@ export function AdminDashboard({
                       <td data-label="Placed" style={{ padding: 'var(--space-3)', color: '#777' }}>{formatAdminDateTime(o.createdAt)}</td>
                       <td data-label="Actions" style={{ padding: 'var(--space-3)' }}>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                          {o.source === 'admin' && (
+                            <button className={styles.smsEditButton} onClick={() => setSmsOrder(o)} type="button">
+                              Edit phone / SMS
+                            </button>
+                          )}
                           <button
                             onClick={() => handlePrintOrder(o)}
                             style={{
@@ -2259,8 +2267,21 @@ export function AdminDashboard({
         <CreateOrderModal
           onClose={() => setShowCreateOrderModal(false)}
           onCreated={handleOrderCreated}
+          onSmsUpdated={(updated) => patchOrder(updated, updated.id)}
           onPrint={handlePrintOrder}
           products={products}
+        />
+      )}
+
+      {smsOrder && (
+        <SmsOrderEditor
+          key={smsOrder.id}
+          onClose={() => setSmsOrder(null)}
+          onSaved={(updated, message, sent) => {
+            patchOrder(updated, updated.id);
+            triggerNotification(message, sent || updated.smsDeferred || updated.smsSent ? 'success' : 'error');
+          }}
+          order={smsOrder}
         />
       )}
 
@@ -2286,7 +2307,7 @@ export function AdminDashboard({
 
         const handlePrintDetail = () => {
           const origin = window.location.origin;
-          const logoSrc = `${origin}/assets/icons/redoxlogo.jpg`;
+          const logoSrc = `${origin}/assets/icons/redoxlogo-white.png`;
           const colorRows = Object.entries(byColor).map(([color, variants]) => `
             <tr style="border-bottom:1px solid #f0f0f0">
               <td style="padding:8px 12px;font-weight:700;color:#111">${color}</td>
@@ -2382,7 +2403,7 @@ export function AdminDashboard({
                 {/* Top row: image + key facts */}
                 <div className={styles.detailTopGrid}>
                   <div className={styles.detailImageWrapper}>
-                    <Image src={p.image || '/assets/icons/redoxlogo.jpg'} alt={p.name} fill style={{ objectFit: 'cover' }} sizes="180px" />
+                    <Image src={p.image || '/assets/icons/redoxlogo.png'} alt={p.name} fill style={{ objectFit: 'contain' }} sizes="180px" />
                   </div>
 
                   <div>

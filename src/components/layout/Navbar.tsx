@@ -95,7 +95,8 @@ export function Navbar() {
               alt="REDOXDESIGNX"
               className={styles.logoImg}
               height={38}
-              src="/assets/icons/redoxlogo.jpg"
+              src="/icon1?brand=2"
+              unoptimized
               width={38}
             />
             <span className={styles.logoText}>REDOXDESIGNX</span>

@@ -92,6 +92,7 @@ interface CreateOrderModalProps {
   products: Product[];
   onClose: () => void;
   onCreated: (result: CreatedOrderResult) => void;
+  onSmsUpdated: (order: Order) => void;
   onPrint: (order: Order) => void;
 }
 
@@ -120,7 +121,7 @@ function colorsOf(product: Product): string[] {
   return Array.from(new Set(product.variants.map((variant) => variant.color)));
 }
 
-export function CreateOrderModal({ products, onClose, onCreated, onPrint }: CreateOrderModalProps) {
+export function CreateOrderModal({ products, onClose, onCreated, onSmsUpdated, onPrint }: CreateOrderModalProps) {
   const [clientRequestId, setClientRequestId] = useState(newRequestId);
 
   const [search, setSearch] = useState('');
@@ -133,6 +134,7 @@ export function CreateOrderModal({ products, onClose, onCreated, onPrint }: Crea
 
   const [customerName, setCustomerName] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
+  const [sendSmsNow, setSendSmsNow] = useState(true);
   const [customerEmail, setCustomerEmail] = useState('');
   const [shippingAddress, setShippingAddress] = useState('');
   const [shippingCity, setShippingCity] = useState('');
@@ -405,6 +407,7 @@ export function CreateOrderModal({ products, onClose, onCreated, onPrint }: Crea
         body: JSON.stringify({
           customerName: customerName.trim(),
           customerPhone: customerPhone.trim(),
+          sendSmsNow,
           customerEmail: customerEmail.trim() || undefined,
           shippingAddress: shippingAddress.trim() || undefined,
           shippingCity: shippingCity.trim() || undefined,
@@ -467,7 +470,9 @@ export function CreateOrderModal({ products, onClose, onCreated, onPrint }: Crea
 
       setResendMessage(data.message);
       if (data.smsSent) {
-        setCreated({ ...created, smsSent: true, smsReason: undefined });
+        const updated = { ...created, order: data.order || { ...created.order, smsSent: true }, smsSent: true, smsReason: undefined };
+        setCreated(updated);
+        onSmsUpdated(updated.order);
       }
     } catch (err: any) {
       setResendMessage(err?.message || 'The text could not be sent.');
@@ -485,6 +490,7 @@ export function CreateOrderModal({ products, onClose, onCreated, onPrint }: Crea
     setShowPaymentDetails(false);
     setCustomerName('');
     setCustomerPhone('');
+    setSendSmsNow(true);
     setCustomerEmail('');
     setShippingAddress('');
     setShippingCity('');
@@ -554,11 +560,13 @@ export function CreateOrderModal({ products, onClose, onCreated, onPrint }: Crea
 
             <div
               className={`${styles.smsBanner} ${
-                created.smsSent ? styles.smsBannerOk : styles.smsBannerWarn
+                created.smsSent ? styles.smsBannerOk : order.smsDeferred ? styles.smsBannerDeferred : styles.smsBannerWarn
               }`}
             >
               {created.smsSent ? (
                 <>✓ Confirmation SMS delivered to {order.customerPhone}.</>
+              ) : order.smsDeferred ? (
+                <>SMS saved for later. Open this order in Orders to edit the number and send it.</>
               ) : (
                 <>
                   ⚠ The confirmation SMS was not delivered.
@@ -582,7 +590,7 @@ export function CreateOrderModal({ products, onClose, onCreated, onPrint }: Crea
               <button className={styles.saveButton} onClick={startAnother} type="button">
                 + New order
               </button>
-              {!created.smsSent && (
+              {!created.smsSent && !order.smsDeferred && (
                 <button
                   className={styles.cancelButton}
                   disabled={isResending}
@@ -944,11 +952,23 @@ export function CreateOrderModal({ products, onClose, onCreated, onPrint }: Crea
                 {phoneTouched && (
                   <p className={`${styles.hint} ${phoneValid ? styles.hintOk : styles.hintWarn}`}>
                     {phoneValid
-                      ? `✓ SMS will be sent to ${msisdn}`
-                      : '⚠ Not a valid Ghana number — the order will save, but no SMS can be sent.'}
+                      ? sendSmsNow ? `✓ SMS will be sent to ${msisdn}` : `Number saved for SMS later: ${msisdn}`
+                      : sendSmsNow ? '⚠ Not a valid Ghana number — the order will save, but no SMS can be sent.' : 'You can correct this number before sending SMS later.'}
                   </p>
                 )}
               </div>
+
+              <fieldset className={`${styles.smsTiming} ${styles.formGridFull}`}>
+                <legend>Confirmation SMS</legend>
+                <label className={styles.smsTimingOption}>
+                  <input checked={sendSmsNow} name="create-order-sms" onChange={() => setSendSmsNow(true)} type="radio" />
+                  <span><strong>Send now</strong><small>Text the customer after the order is saved.</small></span>
+                </label>
+                <label className={styles.smsTimingOption}>
+                  <input checked={!sendSmsNow} name="create-order-sms" onChange={() => setSendSmsNow(false)} type="radio" />
+                  <span><strong>Send later</strong><small>Save the order now. Edit the number and send from Orders when ready.</small></span>
+                </label>
+              </fieldset>
 
               <button
                 aria-expanded={showCustomerDetails}
