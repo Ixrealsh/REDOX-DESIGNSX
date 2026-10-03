@@ -6,6 +6,7 @@ import type { Product, Drop, Collection, LookbookIssue, Order } from '@/types/pr
 import type { OrderPaymentSummary } from '@/lib/order-receipt';
 import type { WaitlistSignup } from '@/lib/catalog-db';
 import { formatCurrency } from '@/lib/format';
+import { FREE_STATION_DELIVERY_LABEL, URGENT_STATION_DELIVERY_LABEL } from '@/lib/delivery';
 import { getProductStockSummary } from '@/lib/inventory';
 import { sumOrderExtras } from '@/lib/order-schema';
 import { formatAdminDateTime, revenueForRange, type RevenueRange } from '@/lib/admin-metrics';
@@ -202,10 +203,12 @@ function buildOrderSlipHtml(order: Order, origin: string): string {
   .field:last-child { border-bottom: none; }
   .field .l { font-size: 7.5px; letter-spacing: 0.14em; text-transform: uppercase; color: #aaa; }
   .field .d { font-size: 11px; color: #111; margin-top: 2px; word-break: break-word; }
-  .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-  .stat { border: 1px solid #eaeaea; border-radius: 5px; padding: 9px 6px; text-align: center; }
+  .stats { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 6px; }
+  .stat { min-width: 0; border: 1px solid #eaeaea; border-radius: 5px; padding: 9px 7px; text-align: left; }
   .stat .l { font-size: 7.5px; letter-spacing: 0.14em; text-transform: uppercase; color: #aaa; }
-  .stat .d { font-size: 15px; font-weight: 800; margin-top: 4px; }
+  .stat .d { font-size: 14px; font-weight: 800; line-height: 1.2; margin-top: 4px; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+  .stat.order-id { text-align: right; }
+  .stat.order-id .d { font-size: 12px; }
   .total {
     display: flex; justify-content: space-between; align-items: center;
     margin-top: 16px; padding: 11px 12px; background: #111; border-radius: 5px;
@@ -235,14 +238,14 @@ function buildOrderSlipHtml(order: Order, origin: string): string {
       <div class="section-title">Customer</div>
       <div class="recipient">${escapeHtml(order.customerName)}</div>
       <div class="field">
-        <div class="l">Location</div>
+        <div class="l">${order.deliveryMethod && order.deliveryMethod !== 'none' ? 'Station / Town' : 'Location'}</div>
         <div class="d">${escapeHtml(order.shippingAddress)}, ${escapeHtml(order.shippingCity)}</div>
       </div>
       <div class="field">
         <div class="l">Phone</div>
         <div class="d">${escapeHtml(order.customerPhone)}</div>
       </div>
-      ${order.deliveryMethod && order.deliveryMethod !== 'none' ? `<div class="field"><div class="l">Delivery</div><div class="d">${order.deliveryMethod === 'urgent' ? 'Urgent' : 'Standard (within 3 working days)'}</div></div>` : ''}
+      ${order.deliveryMethod && order.deliveryMethod !== 'none' ? `<div class="field"><div class="l">Delivery</div><div class="d">${order.deliveryMethod === 'urgent' ? URGENT_STATION_DELIVERY_LABEL : `${FREE_STATION_DELIVERY_LABEL} (Mon/Wed/Fri)`}</div></div>` : ''}
       <div class="field">
         <div class="l">Email</div>
         <div class="d">${escapeHtml(order.customerEmail)}</div>
@@ -253,12 +256,12 @@ function buildOrderSlipHtml(order: Order, origin: string): string {
       <div class="section-title">Order</div>
       <div class="stats">
         <div class="stat">
+          <div class="l">Total Amount</div>
+          <div class="d">${ghs(order.price)}</div>
+        </div>
+        <div class="stat order-id">
           <div class="l">Order ID</div>
           <div class="d">${escapeHtml(ref)}</div>
-        </div>
-        <div class="stat">
-          <div class="l">Total Items</div>
-          <div class="d">${escapeHtml(order.totalQuantity)}</div>
         </div>
       </div>
     </div>
@@ -279,7 +282,7 @@ function buildOrderSlipHtml(order: Order, origin: string): string {
       </div>`
         )
         .join('')}
-      ${Number(order.deliveryFee) > 0 ? `<div class="field"><div class="l">Urgent delivery</div><div class="d">${ghs(Number(order.deliveryFee))}</div></div>` : ''}
+      ${Number(order.deliveryFee) > 0 ? `<div class="field"><div class="l">${URGENT_STATION_DELIVERY_LABEL}</div><div class="d">${ghs(Number(order.deliveryFee))}</div></div>` : ''}
       ${
         order.discount > 0
           ? `<div class="field">
@@ -293,8 +296,8 @@ function buildOrderSlipHtml(order: Order, origin: string): string {
     }
 
     <div class="total">
-      <span class="k">Total Amount</span>
-      <span class="v">${ghs(order.price)}</span>
+      <span class="k">Total Items</span>
+      <span class="v">${escapeHtml(order.totalQuantity)}</span>
     </div>
 
     <div class="foot">
@@ -2002,7 +2005,7 @@ export function AdminDashboard({
                       <td data-label="Ship to" style={{ padding: 'var(--space-3)' }}>
                         <div style={{ color: '#f5f3ee' }}>{o.shippingAddress}</div>
                         <div style={{ color: '#888', fontSize: '0.75rem' }}>{o.shippingCity}</div>
-                        {o.deliveryMethod && o.deliveryMethod !== 'none' && <div style={{ color: o.deliveryMethod === 'urgent' ? '#f5b459' : '#aaa', fontSize: '0.72rem', marginTop: '4px' }}>{o.deliveryMethod === 'urgent' ? `Urgent delivery · +${formatCurrency(o.deliveryFee || 0)}` : 'Standard · within 3 working days'}</div>}
+                        {o.deliveryMethod && o.deliveryMethod !== 'none' && <div style={{ color: o.deliveryMethod === 'urgent' ? '#f5b459' : '#aaa', fontSize: '0.72rem', marginTop: '4px' }}>{o.deliveryMethod === 'urgent' ? `${URGENT_STATION_DELIVERY_LABEL} · +${formatCurrency(o.deliveryFee || 0)}` : `${FREE_STATION_DELIVERY_LABEL} · Monday, Wednesday and Friday`}</div>}
                       </td>
                       <td data-label="Payment" style={{ padding: 'var(--space-3)', verticalAlign: 'top' }}>
                         {(() => {

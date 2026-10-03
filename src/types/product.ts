@@ -146,7 +146,7 @@ export interface Order {
   /** Sum of the product lines alone. Extras and discounts sit outside it. */
   subtotal: number;
   serviceCharge: number;
-  /** Extra amount charged for urgent regional delivery; zero for standard or local orders. */
+  /** Extra amount charged for urgent station delivery; zero for free station or local orders. */
   deliveryFee?: number;
   deliveryMethod?: 'none' | 'standard' | 'urgent';
   /** Non-product charges: printing, customisation, delivery. Empty for web orders. */

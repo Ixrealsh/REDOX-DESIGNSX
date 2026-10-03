@@ -11,7 +11,7 @@ test('delivery options apply only to selected regions and price urgent delivery'
   assert.deepEqual(settings.eligibleRegions, ['Ashanti']);
   assert.deepEqual(deliveryQuote('Ashanti', 'standard', settings), { method: 'standard', fee: 0 });
   assert.deepEqual(deliveryQuote('Ashanti', 'urgent', settings), { method: 'urgent', fee: 25 });
-  assert.equal(deliveryQuote('Greater Accra', 'urgent', settings).error, 'Urgent delivery is not available for this region.');
+  assert.equal(deliveryQuote('Greater Accra', 'urgent', settings).error, 'Urgent Delivery to Station is not available for this region.');
   assert.deepEqual(deliveryQuote('Western', 'standard', settings), { method: 'none', fee: 0 });
   assert.ok(deliveryQuote('Ashanti', 'urgent', { ...settings, urgentFee: 0 }).error);
 });

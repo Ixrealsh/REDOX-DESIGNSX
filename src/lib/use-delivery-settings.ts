@@ -15,7 +15,7 @@ export function useDeliverySettings() {
         return response.json();
       })
       .then((data) => { if (!cancelled) setSettings(normalizeDeliverySettings(data)); })
-      .catch(() => { /* Standard delivery remains available without an extra charge. */ })
+      .catch(() => { /* Free station delivery remains available without an extra charge. */ })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
   }, []);

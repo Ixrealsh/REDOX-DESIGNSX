@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/Button';
 import { DeliveryChoice } from '@/components/commerce/DeliveryChoice';
 import { HeartIcon, RulerIcon, ShareIcon, StarIcon } from '@/components/ui/Icons';
 import { calcOrderTotal, calcServiceCharge, formatCurrency } from '@/lib/format';
-import { deliveryQuote } from '@/lib/delivery';
+import { deliveryQuote, FREE_STATION_DELIVERY_DETAILS, FREE_STATION_DELIVERY_LABEL, URGENT_STATION_DELIVERY_LABEL } from '@/lib/delivery';
 import { useDeliverySettings } from '@/lib/use-delivery-settings';
 import { useWishlistStore } from '@/store/wishlist.store';
 import { useCartStore } from '@/store/cart.store';
@@ -1104,18 +1104,6 @@ export function ProductDetail({ product }: ProductDetailProps) {
                   </div>
                 </div>
 
-                <div className={styles.formGroup}>
-                  <label className={styles.fieldLabel}>DELIVERY LOCATION *</label>
-                  <input
-                    type="text"
-                    required
-                    className={styles.formInput}
-                    placeholder="e.g. Dansoman, Accra, Tarkwa, Kumasi, etc."
-                    value={formData.address}
-                    onChange={(e) => setFormData(f => ({ ...f, address: e.target.value }))}
-                  />
-                </div>
-
                 <div className={styles.formGrid}>
                   <div className={styles.formGroup}>
                     <label className={styles.fieldLabel}>CITY / REGION *</label>
@@ -1147,6 +1135,18 @@ export function ProductDetail({ product }: ProductDetailProps) {
                     <DeliveryChoice region={formData.city} method={deliveryMethod} settings={deliverySettings} loading={deliveryLoading} onChange={setDeliveryMethod} />
                   </div>
 
+                  <div className={styles.formGroup} style={{ gridColumn: '1 / -1' }}>
+                    <label className={styles.fieldLabel}>{delivery.method !== 'none' ? 'PREFERRED STATION / TOWN *' : 'DELIVERY LOCATION *'}</label>
+                    <input
+                      type="text"
+                      required
+                      className={styles.formInput}
+                      placeholder={delivery.method !== 'none' ? 'Station name and town (e.g. Ho station)' : 'e.g. Dansoman, Accra, Tarkwa, Kumasi'}
+                      value={formData.address}
+                      onChange={(e) => setFormData(f => ({ ...f, address: e.target.value }))}
+                    />
+                  </div>
+
                   <div className={styles.formGroup} style={{ gridColumn: 'span 2' }}>
                     <div style={{
                       padding: 'var(--space-3) var(--space-4)',
@@ -1169,7 +1169,7 @@ export function ProductDetail({ product }: ProductDetailProps) {
                   </div>
                 </div>
 
-                {delivery.fee > 0 && <p>Urgent delivery: {formatCurrency(delivery.fee)} extra · Total: {formatCurrency(checkoutTotal)}</p>}
+                {delivery.fee > 0 && <p>{URGENT_STATION_DELIVERY_LABEL}: {formatCurrency(delivery.fee)} extra · Total: {formatCurrency(checkoutTotal)}</p>}
 
                 {error && <p className={styles.error}>{error}</p>}
 
@@ -1207,8 +1207,8 @@ export function ProductDetail({ product }: ProductDetailProps) {
                   </p>
                 ))}
                 <p><strong>Total:</strong> {formatCurrency(checkoutSuccess.price)}</p>
-                {checkoutSuccess.deliveryMethod !== 'none' && <p><strong>Delivery:</strong> {checkoutSuccess.deliveryMethod === 'urgent' ? `Urgent (+${formatCurrency(checkoutSuccess.deliveryFee || 0)})` : 'Standard · within 3 working days, Monday–Friday'}</p>}
-                <p><strong>Shipping to:</strong> {checkoutSuccess.shippingAddress}, {checkoutSuccess.shippingCity}</p>
+                {checkoutSuccess.deliveryMethod !== 'none' && <p><strong>Delivery:</strong> {checkoutSuccess.deliveryMethod === 'urgent' ? `${URGENT_STATION_DELIVERY_LABEL} (+${formatCurrency(checkoutSuccess.deliveryFee || 0)}). Our team will confirm the earliest time.` : `${FREE_STATION_DELIVERY_LABEL}. ${FREE_STATION_DELIVERY_DETAILS}`}</p>}
+                <p><strong>{checkoutSuccess.deliveryMethod !== 'none' ? 'Station / town:' : 'Shipping to:'}</strong> {checkoutSuccess.shippingAddress}, {checkoutSuccess.shippingCity}</p>
                 <p>
                   <strong>Payment:</strong>{' '}
                   {checkoutSuccess.paymentStatus === 'paid'

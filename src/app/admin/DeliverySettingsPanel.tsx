@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { DEFAULT_DELIVERY_SETTINGS, GHANA_REGIONS, type DeliverySettings } from '@/lib/delivery';
+import { DEFAULT_DELIVERY_SETTINGS, FREE_STATION_DELIVERY_DETAILS, FREE_STATION_DELIVERY_LABEL, GHANA_REGIONS, URGENT_STATION_DELIVERY_LABEL, type DeliverySettings } from '@/lib/delivery';
 import { formatCurrency } from '@/lib/format';
 import styles from './DeliverySettingsPanel.module.css';
 
@@ -71,10 +71,10 @@ export function DeliverySettingsPanel() {
   return (
     <section className={styles.panel} aria-labelledby="delivery-settings-title">
       <h2 id="delivery-settings-title">Delivery options</h2>
-      <p>Choose where customers see standard and urgent delivery. Greater Accra is always excluded.</p>
+      <p>Choose where customers see free or urgent delivery to station. Greater Accra is always excluded.</p>
       {loading ? <p>Loading delivery settings…</p> : loadError ? <div role="alert"><p>{message}</p><button className={styles.save} onClick={() => window.location.reload()} type="button">Retry loading</button></div> : <>
-        <div className={styles.info}>Standard: no extra fee. Deliveries run Monday–Friday and arrive within 3 working days.</div>
-        <label className={styles.feeLabel} htmlFor="urgent-delivery-fee">Urgent delivery extra fee (GH₵)</label>
+        <div className={styles.info}>{FREE_STATION_DELIVERY_LABEL}: no delivery fee. {FREE_STATION_DELIVERY_DETAILS}</div>
+        <label className={styles.feeLabel} htmlFor="urgent-delivery-fee">{URGENT_STATION_DELIVERY_LABEL} extra fee (GH₵)</label>
         <input
           id="urgent-delivery-fee"
           min="0"
@@ -86,8 +86,8 @@ export function DeliverySettingsPanel() {
         />
         <p className={styles.helper}>
           {Number(feeInput) > 0
-            ? `Customers choosing urgent delivery pay ${formatCurrency(Number(feeInput))} extra.`
-            : 'Set an amount above zero to offer urgent delivery.'}
+            ? `Customers choosing ${URGENT_STATION_DELIVERY_LABEL} pay ${formatCurrency(Number(feeInput))} extra.`
+            : `Set an amount above zero to offer ${URGENT_STATION_DELIVERY_LABEL}.`}
         </p>
         <div className={styles.regionHeader}>
           <h3>Regions with these options</h3>

@@ -6,6 +6,10 @@ export const GHANA_REGIONS = [
 
 export type DeliveryMethod = 'none' | 'standard' | 'urgent';
 
+export const FREE_STATION_DELIVERY_LABEL = 'Free Delivery to Station';
+export const URGENT_STATION_DELIVERY_LABEL = 'Urgent Delivery to Station';
+export const FREE_STATION_DELIVERY_DETAILS = 'Station deliveries run on Monday, Wednesday and Friday and take up to 3 days, depending on when you order.';
+
 export interface DeliverySettings {
   eligibleRegions: string[];
   urgentFee: number;
@@ -37,13 +41,13 @@ export function deliveryQuote(
   const eligible = region !== 'Greater Accra' && settings.eligibleRegions.includes(region);
   if (!eligible) {
     return requested === 'urgent'
-      ? { method: 'none', fee: 0, error: 'Urgent delivery is not available for this region.' }
+      ? { method: 'none', fee: 0, error: 'Urgent Delivery to Station is not available for this region.' }
       : { method: 'none', fee: 0 };
   }
   if (requested === 'urgent') {
     return settings.urgentFee > 0
       ? { method: 'urgent', fee: settings.urgentFee }
-      : { method: 'standard', fee: 0, error: 'Urgent delivery is not available right now.' };
+      : { method: 'standard', fee: 0, error: 'Urgent Delivery to Station is not available right now.' };
   }
   return { method: 'standard', fee: 0 };
 }

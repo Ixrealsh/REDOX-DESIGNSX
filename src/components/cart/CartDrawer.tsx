@@ -8,7 +8,7 @@ import { DeliveryChoice } from '@/components/commerce/DeliveryChoice';
 import { MinusIcon, PlusIcon, TrashIcon, XIcon } from '@/components/ui/Icons';
 import { LinkButton } from '@/components/ui/LinkButton';
 import { formatCurrency } from '@/lib/format';
-import { deliveryQuote } from '@/lib/delivery';
+import { deliveryQuote, FREE_STATION_DELIVERY_DETAILS, FREE_STATION_DELIVERY_LABEL, URGENT_STATION_DELIVERY_LABEL } from '@/lib/delivery';
 import { useDeliverySettings } from '@/lib/use-delivery-settings';
 import { getCartTotals, useCartStore } from '@/store/cart.store';
 import {
@@ -384,7 +384,7 @@ export function CartDrawer() {
                     <span className={styles.receiptTotalLabel}>Service fee (2%)</span>
                     <span className={styles.receiptTotalValue}>{formatCurrency(receiptServiceCharge)}</span>
                   </div>
-                  {checkoutSuccess.deliveryFee > 0 && <div className={styles.receiptTotalRow}><span className={styles.receiptTotalLabel}>Urgent delivery</span><span className={styles.receiptTotalValue}>{formatCurrency(checkoutSuccess.deliveryFee)}</span></div>}
+                  {checkoutSuccess.deliveryFee > 0 && <div className={styles.receiptTotalRow}><span className={styles.receiptTotalLabel}>{URGENT_STATION_DELIVERY_LABEL}</span><span className={styles.receiptTotalValue}>{formatCurrency(checkoutSuccess.deliveryFee)}</span></div>}
                   <hr className={styles.receiptGrandDivider} />
                   <div className={styles.receiptGrandTotal}>
                     <span className={styles.receiptGrandLabel}>Total Paid</span>
@@ -395,12 +395,12 @@ export function CartDrawer() {
                 {/* Shipping + payment info */}
                 <div className={styles.receiptMeta}>
                   <div className={styles.receiptMetaRow}>
-                    <span className={styles.receiptMetaKey}>Ship to</span>
+                    <span className={styles.receiptMetaKey}>{checkoutSuccess.deliveryMethod !== 'none' ? 'Station / town' : 'Ship to'}</span>
                     <span className={styles.receiptMetaVal}>
                       {checkoutSuccess.shippingAddress}, {checkoutSuccess.shippingCity}
                     </span>
                   </div>
-                  {checkoutSuccess.deliveryMethod !== 'none' && <div className={styles.receiptMetaRow}><span className={styles.receiptMetaKey}>Delivery</span><span className={styles.receiptMetaVal}>{checkoutSuccess.deliveryMethod === 'urgent' ? 'Urgent · timing confirmed by our team' : 'Standard · within 3 working days, Monday–Friday'}</span></div>}
+                  {checkoutSuccess.deliveryMethod !== 'none' && <div className={styles.receiptMetaRow}><span className={styles.receiptMetaKey}>Delivery</span><span className={styles.receiptMetaVal}>{checkoutSuccess.deliveryMethod === 'urgent' ? `${URGENT_STATION_DELIVERY_LABEL} · time confirmed by our team` : `${FREE_STATION_DELIVERY_LABEL} · ${FREE_STATION_DELIVERY_DETAILS}`}</span></div>}
                   <div className={styles.receiptMetaRow}>
                     <span className={styles.receiptMetaKey}>Payment</span>
                     <span className={styles.receiptMetaVal}>
@@ -550,8 +550,7 @@ export function CartDrawer() {
 
                 {/* Shipping section */}
                 <div className={styles.checkoutSection}>
-                  <p className={styles.checkoutSectionTitle}>Shipping</p>
-                  {field('address', 'Delivery Address *', 'text', 'House No., Street, Area')}
+                  <p className={styles.checkoutSectionTitle}>{delivery.method !== 'none' ? 'Station delivery' : 'Shipping'}</p>
                   <div className={styles.fieldGroup}>
                     <label className={styles.fieldLabel}>City / Region *</label>
                     <select
@@ -578,6 +577,7 @@ export function CartDrawer() {
                     </select>
                   </div>
                   <DeliveryChoice region={formData.city} method={deliveryMethod} settings={deliverySettings} loading={deliveryLoading} onChange={setDeliveryMethod} />
+                  {field('address', delivery.method !== 'none' ? 'Preferred Station / Town *' : 'Delivery Address *', 'text', delivery.method !== 'none' ? 'Station name and town (e.g. Ho station)' : 'House No., Street, Area')}
                 </div>
 
                 {/* Order summary */}
@@ -590,7 +590,7 @@ export function CartDrawer() {
                     <span className={styles.checkoutSummaryLabel}>Service fee (2%)</span>
                     <span className={styles.checkoutSummaryValue}>{formatCurrency(serviceCharge)}</span>
                   </div>
-                  {delivery.fee > 0 && <div className={styles.checkoutSummaryRow}><span className={styles.checkoutSummaryLabel}>Urgent delivery</span><span className={styles.checkoutSummaryValue}>{formatCurrency(delivery.fee)}</span></div>}
+                  {delivery.fee > 0 && <div className={styles.checkoutSummaryRow}><span className={styles.checkoutSummaryLabel}>{URGENT_STATION_DELIVERY_LABEL}</span><span className={styles.checkoutSummaryValue}>{formatCurrency(delivery.fee)}</span></div>}
                   <hr className={styles.checkoutSummaryDivider} />
                   <div className={styles.checkoutSummaryTotal}>
                     <span className={styles.checkoutSummaryTotalLabel}>Order Total</span>

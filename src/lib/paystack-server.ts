@@ -368,7 +368,7 @@ export function buildOrderMetadata(input: OrderMetadataInput): Record<string, an
     { display_name: 'Customer', variable_name: 'customer_name', value: clip(input.customerName, 120) },
     { display_name: 'Phone', variable_name: 'customer_phone', value: clip(input.customerPhone, 40) },
     {
-      display_name: 'Delivery Address',
+      display_name: input.deliveryMethod === 'standard' || input.deliveryMethod === 'urgent' ? 'Station / Town' : 'Delivery Address',
       variable_name: 'delivery_address',
       value: clip(`${input.shippingAddress}, ${input.shippingCity}`)
     },
@@ -376,8 +376,8 @@ export function buildOrderMetadata(input: OrderMetadataInput): Record<string, an
     { display_name: 'Total Quantity', variable_name: 'total_quantity', value: String(input.totalQuantity) },
     { display_name: 'Subtotal', variable_name: 'subtotal', value: ghs(input.subtotal) },
     { display_name: 'Service Fee (2%)', variable_name: 'service_charge', value: ghs(input.serviceCharge) },
-    { display_name: 'Delivery', variable_name: 'delivery_method', value: input.deliveryMethod === 'urgent' ? 'Urgent' : input.deliveryMethod === 'standard' ? 'Standard (up to 3 working days)' : 'Local' },
-    { display_name: 'Urgent Delivery Fee', variable_name: 'delivery_fee', value: ghs(input.deliveryFee || 0) },
+    { display_name: 'Delivery', variable_name: 'delivery_method', value: input.deliveryMethod === 'urgent' ? 'Urgent Delivery to Station' : input.deliveryMethod === 'standard' ? 'Free Delivery to Station (Mon/Wed/Fri)' : 'Local' },
+    { display_name: 'Urgent Station Delivery Fee', variable_name: 'delivery_fee', value: ghs(input.deliveryFee || 0) },
     { display_name: 'Order Total', variable_name: 'order_total', value: ghs(input.grandTotal) },
     { display_name: 'Track Order', variable_name: 'track_url', value: clip(trackUrl) }
   ];
