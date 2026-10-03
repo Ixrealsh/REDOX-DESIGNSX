@@ -972,6 +972,43 @@
   margin: 0 0 var(--space-3);
 }
 
+.optionalToggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+  width: 100%;
+  margin: var(--space-4) 0 var(--space-3);
+  padding: 10px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.03);
+  color: #ddd;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-align: left;
+  cursor: pointer;
+}
+
+.optionalToggle:hover {
+  border-color: rgba(255, 255, 255, 0.35);
+}
+
+.optionalToggleHint {
+  color: #777;
+  font-size: 0.65rem;
+  font-weight: 400;
+  text-align: right;
+}
+
+.orderFooterHint {
+  margin: 0;
+  color: #aaa;
+  font-size: 0.7rem;
+  text-align: center;
+}
+
 /* --- Product picker --- */
 .pickerList {
   border: 1px solid rgba(255, 255, 255, 0.06);
@@ -1122,6 +1159,67 @@
   font-size: 0.6rem;
   opacity: 0.7;
   font-weight: 400;
+}
+
+.sizeChip {
+  min-width: 0;
+  min-height: 48px;
+  flex: 1;
+  flex-direction: column;
+  align-items: stretch;
+  text-align: left;
+  gap: 3px;
+}
+
+.sizePickerItem {
+  display: inline-flex;
+  flex: 1 1 145px;
+  min-width: 145px;
+  gap: 4px;
+}
+
+.sizePickerMinus {
+  width: 36px;
+  flex-shrink: 0;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 4px;
+  color: #ddd;
+  font-size: 1rem;
+  cursor: pointer;
+}
+
+.sizePickerMinus:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.sizePickerMinus:hover:not(:disabled) {
+  border-color: rgba(255, 255, 255, 0.35);
+  color: #fff;
+}
+
+.pickerHelp {
+  margin: var(--space-2) 0 0;
+  color: #777;
+  font-size: 0.68rem;
+}
+
+.sizeChipTop {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.sizeChipQuantity {
+  color: #888;
+  font-size: 0.65rem;
+  white-space: nowrap;
+}
+
+.sizeChipQuantityActive {
+  color: #10b981;
 }
 
 /* --- Basket --- */

@@ -47,6 +47,8 @@ const GHANA_REGIONS = [
 
 /** Rendering every product on each keystroke is wasted work on a phone. */
 const MAX_RESULTS = 40;
+const MAX_LINES = 50;
+const MAX_LINE_QUANTITY = 99;
 
 /** One tap instead of typing the same word every time. */
 const EXTRA_PRESETS = ['Printing', 'Customisation', 'Embroidery', 'Delivery'];
@@ -125,6 +127,9 @@ export function CreateOrderModal({ products, onClose, onCreated, onPrint }: Crea
   const [openSlug, setOpenSlug] = useState<string | null>(null);
   const [openColor, setOpenColor] = useState<string | null>(null);
   const [lines, setLines] = useState<DraftLine[]>([]);
+  const [showExtras, setShowExtras] = useState(false);
+  const [showCustomerDetails, setShowCustomerDetails] = useState(false);
+  const [showPaymentDetails, setShowPaymentDetails] = useState(false);
 
   const [customerName, setCustomerName] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
@@ -148,6 +153,7 @@ export function CreateOrderModal({ products, onClose, onCreated, onPrint }: Crea
   const [resendMessage, setResendMessage] = useState('');
 
   const searchRef = useRef<HTMLInputElement>(null);
+  const modalBodyRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     searchRef.current?.focus();
@@ -177,9 +183,10 @@ export function CreateOrderModal({ products, onClose, onCreated, onPrint }: Crea
     const query = search.trim().toLowerCase();
     const matches = query
       ? products.filter((product) =>
-          [product.name, product.slug, product.collectionName, product.category]
+          [product.name, product.slug, product.id, product.collectionName, product.category]
             .filter(Boolean)
-            .some((field) => String(field).toLowerCase().includes(query))
+            .some((field) => String(field).toLowerCase().includes(query)) ||
+          product.variants.some((variant) => String(variant.sku || '').toLowerCase().includes(query))
         )
       : products;
 
@@ -211,6 +218,15 @@ export function CreateOrderModal({ products, onClose, onCreated, onPrint }: Crea
     const key = lineKey(product.slug, variant.color, variant.size);
     const existing = lines.find((line) => line.key === key);
     const nextQuantity = (existing?.quantity ?? 0) + 1;
+
+    if (nextQuantity > MAX_LINE_QUANTITY) {
+      setError(`A size can have at most ${MAX_LINE_QUANTITY} pieces in one order.`);
+      return;
+    }
+    if (!existing && lines.length >= MAX_LINES) {
+      setError(`An order can have at most ${MAX_LINES} different items.`);
+      return;
+    }
 
     // One prompt covers all three: the product is hidden from the site, we have
     // none recorded, or that is more than is recorded. Each time the merchant is
@@ -260,9 +276,6 @@ export function CreateOrderModal({ products, onClose, onCreated, onPrint }: Crea
       }
     ]);
 
-    // Collapse so the next search starts from a clean list.
-    setOpenSlug(null);
-    setOpenColor(null);
   };
 
   const changeQuantity = (key: string, delta: number) => {
@@ -270,6 +283,11 @@ export function CreateOrderModal({ products, onClose, onCreated, onPrint }: Crea
     if (!line) return;
 
     const next = line.quantity + delta;
+
+    if (next > MAX_LINE_QUANTITY) {
+      setError(`A size can have at most ${MAX_LINE_QUANTITY} pieces in one order.`);
+      return;
+    }
 
     if (next < 1) {
       removeLine(key);
@@ -361,7 +379,17 @@ export function CreateOrderModal({ products, onClose, onCreated, onPrint }: Crea
   const phoneTouched = customerPhone.trim().length > 0;
 
   const canSubmit =
-    lines.length > 0 && customerName.trim().length >= 2 && phoneTouched && !isCreating;
+    lines.length > 0 &&
+    customerName.trim().length >= 2 &&
+    customerPhone.trim().length >= 8 &&
+    incompleteExtras === 0 &&
+    !isCreating;
+
+  const nextStep =
+    lines.length === 0 ? 'Add at least one item.' :
+    customerName.trim().length < 2 ? 'Enter the customer name.' :
+    customerPhone.trim().length < 8 ? 'Enter a phone number with at least 8 characters.' :
+    incompleteExtras > 0 ? 'Complete or remove the unfinished extra charge.' : null;
 
   // ── Submit ────────────────────────────────────────────────────
   const handleCreate = async () => {
@@ -414,6 +442,7 @@ export function CreateOrderModal({ products, onClose, onCreated, onPrint }: Crea
       onCreated(result);
     } catch (err: any) {
       setError(err?.message || 'That order could not be created. Please try again.');
+      modalBodyRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
     } finally {
       setIsCreating(false);
     }
@@ -451,6 +480,9 @@ export function CreateOrderModal({ products, onClose, onCreated, onPrint }: Crea
   const startAnother = () => {
     setClientRequestId(newRequestId());
     setLines([]);
+    setShowExtras(false);
+    setShowCustomerDetails(false);
+    setShowPaymentDetails(false);
     setCustomerName('');
     setCustomerPhone('');
     setCustomerEmail('');
@@ -468,7 +500,10 @@ export function CreateOrderModal({ products, onClose, onCreated, onPrint }: Crea
     setError('');
     setResendMessage('');
     setCreated(null);
-    window.setTimeout(() => searchRef.current?.focus(), 0);
+    window.setTimeout(() => {
+      modalBodyRef.current?.scrollTo({ top: 0 });
+      searchRef.current?.focus();
+    }, 0);
   };
 
   function requestClose() {
@@ -580,9 +615,9 @@ export function CreateOrderModal({ products, onClose, onCreated, onPrint }: Crea
           </button>
         </div>
 
-        <div className={styles.orderModalBody}>
+        <div className={styles.orderModalBody} ref={modalBodyRef}>
           {error && (
-            <div className={`${styles.notification} ${styles.notificationError}`} style={{ margin: 0 }}>
+            <div className={`${styles.notification} ${styles.notificationError}`} role="alert" style={{ margin: 0 }}>
               <span>✕</span>
               <span>{error}</span>
             </div>
@@ -593,9 +628,16 @@ export function CreateOrderModal({ products, onClose, onCreated, onPrint }: Crea
             <p className={styles.orderBlockTitle}>1 · Add items</p>
 
             <input
+              aria-label="Search products"
               className={styles.input}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' && results[0]) {
+                  event.preventDefault();
+                  if (openSlug !== results[0].slug) toggleProduct(results[0]);
+                }
+              }}
               onChange={(event) => setSearch(event.target.value)}
-              placeholder="Search products by name, collection or category…"
+              placeholder="Search name, SKU, collection…"
               ref={searchRef}
               style={{ width: '100%', marginBottom: 'var(--space-3)' }}
               type="search"
@@ -678,26 +720,48 @@ export function CreateOrderModal({ products, onClose, onCreated, onPrint }: Crea
                                 ) : (
                                   openVariants.map((variant) => {
                                     const soldOut = !isVariantInStock(variant);
+                                    const key = lineKey(product.slug, variant.color, variant.size);
+                                    const selectedQuantity = lines.find(
+                                      (line) => line.key === key
+                                    )?.quantity ?? 0;
 
                                     return (
-                                      <button
-                                        className={`${styles.chip} ${
-                                          soldOut ? styles.chipSoldOut : ''
-                                        }`}
-                                        key={variant.id || `${variant.color}-${variant.size}`}
-                                        onClick={() => addVariant(product, variant)}
-                                        title={getVariantStockLabel(variant)}
-                                        type="button"
-                                      >
-                                        {variant.size}
-                                        <span className={styles.chipHint}>
-                                          {getVariantStockLabel(variant)}
-                                        </span>
-                                      </button>
+                                      <div className={styles.sizePickerItem} key={variant.id || key}>
+                                        <button
+                                          aria-label={`Add size ${variant.size}, ${selectedQuantity} selected, ${getVariantStockLabel(variant)}`}
+                                          className={`${styles.chip} ${styles.sizeChip} ${
+                                            soldOut ? styles.chipSoldOut : ''
+                                          }`}
+                                          onClick={() => addVariant(product, variant)}
+                                          title={getVariantStockLabel(variant)}
+                                          type="button"
+                                        >
+                                          <span className={styles.sizeChipTop}>
+                                            <span>+ {variant.size}</span>
+                                            <span className={`${styles.sizeChipQuantity} ${selectedQuantity > 0 ? styles.sizeChipQuantityActive : ''}`}>
+                                              Qty {selectedQuantity}
+                                            </span>
+                                          </span>
+                                          <span className={styles.chipHint}>
+                                            {getVariantStockLabel(variant)}
+                                          </span>
+                                        </button>
+                                        <button
+                                          aria-label={`Remove one size ${variant.size}, ${selectedQuantity} selected`}
+                                          className={styles.sizePickerMinus}
+                                          disabled={selectedQuantity === 0}
+                                          onClick={() => changeQuantity(key, -1)}
+                                          title={`Remove one ${variant.size}`}
+                                          type="button"
+                                        >
+                                          −
+                                        </button>
+                                      </div>
                                     );
                                   })
                                 )}
                               </div>
+                              <p className={styles.pickerHelp}>Tap + to add a size, or − to remove one. Quantities update below.</p>
                             </>
                           )}
                         </div>
@@ -770,10 +834,19 @@ export function CreateOrderModal({ products, onClose, onCreated, onPrint }: Crea
             </div>
 
             {/* ── Extra charges ───────────────────────────── */}
-            <p className={styles.orderBlockTitle} style={{ marginTop: 'var(--space-5)' }}>
-              Extra charges{extrasTotal > 0 ? ` · ${formatCurrency(extrasTotal)}` : ''}
-            </p>
+            <button
+              aria-expanded={showExtras}
+              className={styles.optionalToggle}
+              onClick={() => setShowExtras((open) => !open)}
+              type="button"
+            >
+              <span>{showExtras ? '−' : '+'} Extra charges{extrasTotal > 0 ? ` · ${formatCurrency(extrasTotal)}` : ''}</span>
+              <span className={styles.optionalToggleHint}>
+                {incompleteExtras > 0 ? `${incompleteExtras} unfinished` : 'Printing, delivery, custom work'}
+              </span>
+            </button>
 
+            {showExtras && <>
             <div className={styles.basket}>
               {extras.length === 0 ? (
                 <p className={styles.basketEmpty}>
@@ -839,6 +912,7 @@ export function CreateOrderModal({ products, onClose, onCreated, onPrint }: Crea
                 {incompleteExtras === 1 ? 'it is' : 'they are'} not counted in the total.
               </p>
             )}
+            </>}
           </div>
 
           {/* ── 3. Customer ───────────────────────────────── */}
@@ -876,6 +950,19 @@ export function CreateOrderModal({ products, onClose, onCreated, onPrint }: Crea
                 )}
               </div>
 
+              <button
+                aria-expanded={showCustomerDetails}
+                className={`${styles.optionalToggle} ${styles.formGridFull}`}
+                onClick={() => setShowCustomerDetails((open) => !open)}
+                type="button"
+              >
+                <span>{showCustomerDetails ? '−' : '+'} Delivery and contact details</span>
+                <span className={styles.optionalToggleHint}>
+                  {customerEmail || shippingCity || shippingAddress ? 'Details added' : 'Optional for walk-in orders'}
+                </span>
+              </button>
+
+              {showCustomerDetails && <>
               <div className={styles.field}>
                 <label className={styles.fieldLabel}>Email (optional)</label>
                 <input
@@ -913,6 +1000,7 @@ export function CreateOrderModal({ products, onClose, onCreated, onPrint }: Crea
                   value={shippingAddress}
                 />
               </div>
+              </>}
             </div>
           </div>
 
@@ -965,6 +1053,19 @@ export function CreateOrderModal({ products, onClose, onCreated, onPrint }: Crea
               </p>
             )}
 
+            <button
+              aria-expanded={showPaymentDetails}
+              className={styles.optionalToggle}
+              onClick={() => setShowPaymentDetails((open) => !open)}
+              type="button"
+            >
+              <span>{showPaymentDetails ? '−' : '+'} Discount and note</span>
+              <span className={styles.optionalToggleHint}>
+                {discount > 0 || note.trim() ? 'Details added' : 'Optional'}
+              </span>
+            </button>
+
+            {showPaymentDetails && <>
             <div className={styles.field} style={{ marginTop: 'var(--space-4)' }}>
               <label className={styles.fieldLabel}>Discount (optional)</label>
               <div style={{ display: 'flex', gap: '6px' }}>
@@ -1012,6 +1113,7 @@ export function CreateOrderModal({ products, onClose, onCreated, onPrint }: Crea
                 value={note}
               />
             </div>
+            </>}
           </div>
 
           {/* ── Totals ────────────────────────────────────── */}
@@ -1055,6 +1157,7 @@ export function CreateOrderModal({ products, onClose, onCreated, onPrint }: Crea
         </div>
 
         <div className={styles.orderModalFooter}>
+          {nextStep && <p className={styles.orderFooterHint}>{nextStep}</p>}
           <button
             className={styles.saveButton}
             disabled={!canSubmit}
