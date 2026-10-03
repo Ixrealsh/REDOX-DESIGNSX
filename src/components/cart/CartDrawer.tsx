@@ -4,9 +4,12 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/Button';
+import { DeliveryChoice } from '@/components/commerce/DeliveryChoice';
 import { MinusIcon, PlusIcon, TrashIcon, XIcon } from '@/components/ui/Icons';
 import { LinkButton } from '@/components/ui/LinkButton';
 import { formatCurrency } from '@/lib/format';
+import { deliveryQuote } from '@/lib/delivery';
+import { useDeliverySettings } from '@/lib/use-delivery-settings';
 import { getCartTotals, useCartStore } from '@/store/cart.store';
 import {
   effectiveUnitPrice,
@@ -93,6 +96,10 @@ export function CartDrawer() {
     address: '',
     city: 'Greater Accra'
   });
+  const [deliveryMethod, setDeliveryMethod] = useState<'standard' | 'urgent'>('standard');
+  const { settings: deliverySettings, loading: deliveryLoading } = useDeliverySettings();
+  const delivery = deliveryQuote(formData.city, deliveryMethod, deliverySettings);
+  const checkoutTotal = Math.round((orderTotal + delivery.fee) * 100) / 100;
 
   // Reset transient states when the drawer closes. A pending notice is kept:
   // the customer needs to see it again next time they open the bag.
@@ -212,6 +219,8 @@ export function CartDrawer() {
 
   const handleCheckoutSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (deliveryLoading) return;
+    if (delivery.error) { setError(delivery.error); return; }
     if (!formData.fullName || !formData.phone || !formData.email || !formData.address) {
       setError('Please fill in all required fields before continuing.');
       return;
@@ -231,7 +240,7 @@ export function CartDrawer() {
     try {
       // The order is recorded here — before any money moves. Everything after
       // this point can fail without losing the sale.
-      session = await startCheckout(formData, items.map((item) => ({
+      session = await startCheckout({ ...formData, deliveryMethod, expectedDeliveryFee: delivery.fee }, items.map((item) => ({
         productId: item.productId,
         productSlug: item.productSlug,
         variantId: item.variantId,
@@ -375,6 +384,7 @@ export function CartDrawer() {
                     <span className={styles.receiptTotalLabel}>Service fee (2%)</span>
                     <span className={styles.receiptTotalValue}>{formatCurrency(receiptServiceCharge)}</span>
                   </div>
+                  {checkoutSuccess.deliveryFee > 0 && <div className={styles.receiptTotalRow}><span className={styles.receiptTotalLabel}>Urgent delivery</span><span className={styles.receiptTotalValue}>{formatCurrency(checkoutSuccess.deliveryFee)}</span></div>}
                   <hr className={styles.receiptGrandDivider} />
                   <div className={styles.receiptGrandTotal}>
                     <span className={styles.receiptGrandLabel}>Total Paid</span>
@@ -390,6 +400,7 @@ export function CartDrawer() {
                       {checkoutSuccess.shippingAddress}, {checkoutSuccess.shippingCity}
                     </span>
                   </div>
+                  {checkoutSuccess.deliveryMethod !== 'none' && <div className={styles.receiptMetaRow}><span className={styles.receiptMetaKey}>Delivery</span><span className={styles.receiptMetaVal}>{checkoutSuccess.deliveryMethod === 'urgent' ? 'Urgent · timing confirmed by our team' : 'Standard · within 3 working days, Monday–Friday'}</span></div>}
                   <div className={styles.receiptMetaRow}>
                     <span className={styles.receiptMetaKey}>Payment</span>
                     <span className={styles.receiptMetaVal}>
@@ -545,7 +556,7 @@ export function CartDrawer() {
                     <label className={styles.fieldLabel}>City / Region *</label>
                     <select
                       className={styles.fieldSelect}
-                      onChange={(e) => setFormData({ ...formData, city: e.target.value })}
+                      onChange={(e) => { setFormData({ ...formData, city: e.target.value }); setDeliveryMethod('standard'); }}
                       value={formData.city}
                     >
                       <option value="Greater Accra">Greater Accra Region</option>
@@ -566,6 +577,7 @@ export function CartDrawer() {
                       <option value="Oti">Oti Region</option>
                     </select>
                   </div>
+                  <DeliveryChoice region={formData.city} method={deliveryMethod} settings={deliverySettings} loading={deliveryLoading} onChange={setDeliveryMethod} />
                 </div>
 
                 {/* Order summary */}
@@ -578,10 +590,11 @@ export function CartDrawer() {
                     <span className={styles.checkoutSummaryLabel}>Service fee (2%)</span>
                     <span className={styles.checkoutSummaryValue}>{formatCurrency(serviceCharge)}</span>
                   </div>
+                  {delivery.fee > 0 && <div className={styles.checkoutSummaryRow}><span className={styles.checkoutSummaryLabel}>Urgent delivery</span><span className={styles.checkoutSummaryValue}>{formatCurrency(delivery.fee)}</span></div>}
                   <hr className={styles.checkoutSummaryDivider} />
                   <div className={styles.checkoutSummaryTotal}>
                     <span className={styles.checkoutSummaryTotalLabel}>Order Total</span>
-                    <span className={styles.checkoutSummaryTotalValue}>{formatCurrency(orderTotal)}</span>
+                    <span className={styles.checkoutSummaryTotalValue}>{formatCurrency(checkoutTotal)}</span>
                   </div>
                 </div>
               </form>
@@ -589,15 +602,14 @@ export function CartDrawer() {
 
             <div className={styles.checkoutFooter}>
               <Button
-                disabled={checkoutLoading}
+                disabled={checkoutLoading || deliveryLoading}
                 form="checkout-form"
                 fullWidth
-                onClick={handleCheckoutSubmit}
-                type="button"
+                type="submit"
               >
                 {checkoutLoading
                   ? checkoutStage || 'Connecting to gateway…'
-                  : `Pay ${formatCurrency(orderTotal)} securely`}
+                  : `Pay ${formatCurrency(checkoutTotal)} securely`}
               </Button>
               <button
                 className={styles.backButton}

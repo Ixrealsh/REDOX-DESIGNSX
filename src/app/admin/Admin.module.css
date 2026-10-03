@@ -1840,13 +1840,27 @@
 .orderTableWrap { max-width: 100%; overflow-x: auto; border: 1px solid var(--color-border-light); border-radius: 8px; background: #111; }
 .orderFilters { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
 .filterButton { min-height: 40px; }
+.activeOrderBar { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; margin: 0 0 14px; padding: 9px 12px; border: 1px solid rgba(215, 38, 56, 0.4); border-radius: 6px; background: rgba(215, 38, 56, 0.08); color: #f5f3ee; font-size: 0.76rem; }
+.activeOrderBar strong { color: #ff6b7a; margin-right: 6px; }
+.activeOrderBarActions { display: flex; gap: 8px; }
+.activeOrderBarActions button { border: 0; background: transparent; color: #ff8a94; font: inherit; font-weight: 700; cursor: pointer; }
+.activeOrderBarActions button:hover { text-decoration: underline; }
 .orderTable { width: 100%; min-width: 1180px; border-collapse: collapse; text-align: left; font-family: var(--font-body), sans-serif; font-size: 0.82rem; }
 .orderTable th { position: sticky; top: 0; z-index: 1; padding: 14px !important; background: #1b1b1b; color: var(--color-text-secondary) !important; white-space: nowrap; }
+.orderTable tbody tr { cursor: pointer; }
 .orderTable td { padding: 14px !important; border-top: 1px solid var(--color-border); vertical-align: top; }
-.orderTable td[data-label='Order'] { color: var(--color-white) !important; font-weight: 700; }
+.orderTable td[data-label='Order'] { position: relative; color: var(--color-white) !important; font-weight: 700; }
+.orderTable td[data-label='Order']::after { content: ''; position: absolute; left: 0; top: 50%; width: 3px; height: 32px; transform: translateY(-50%) scaleY(0.65); border-radius: 3px; background: #f04454; box-shadow: 0 0 8px rgba(240, 68, 84, 0.65); opacity: 0; pointer-events: none; transition: opacity 0.16s, transform 0.16s; }
+.orderTable tbody tr:hover td[data-label='Order']::after,
+.orderTable tbody tr[data-active='true'] td[data-label='Order']::after { opacity: 1; transform: translateY(-50%) scaleY(1); }
+.orderActiveButton { display: inline-block; margin-top: 7px; padding: 3px 6px; border: 1px solid rgba(255, 255, 255, 0.18); border-radius: 3px; background: transparent; color: #999; font: 700 0.62rem var(--font-mono), monospace; cursor: pointer; }
+.orderActiveButton:hover,
+.orderActiveButtonSelected { border-color: rgba(240, 68, 84, 0.7); color: #ff8a94; background: rgba(215, 38, 56, 0.12); }
 .orderTable td[data-label='Placed'] { color: var(--color-text-secondary) !important; }
 .orderExpandButton { display: none; }
-.orderTable tr:hover { background-color: rgba(255, 255, 255, 0.035) !important; }
+.orderTable tbody tr:hover { background: rgba(215, 38, 56, 0.045) !important; }
+.orderTable tbody tr[data-active='true'],
+.orderTable tbody tr[data-active='true']:hover { background: rgba(215, 38, 56, 0.12) !important; }
 .adminContainer :is(button, a, input, select, textarea, summary):focus-visible { outline: 2px solid var(--color-white); outline-offset: 3px; }
 
 @media (max-width: 900px) {

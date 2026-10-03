@@ -146,6 +146,9 @@ export interface Order {
   /** Sum of the product lines alone. Extras and discounts sit outside it. */
   subtotal: number;
   serviceCharge: number;
+  /** Extra amount charged for urgent regional delivery; zero for standard or local orders. */
+  deliveryFee?: number;
+  deliveryMethod?: 'none' | 'standard' | 'urgent';
   /** Non-product charges: printing, customisation, delivery. Empty for web orders. */
   extras: OrderExtra[];
   /**
@@ -155,7 +158,7 @@ export interface Order {
   discount: number;
   /**
    * Grand total actually charged.
-   *   web   → subtotal + service charge
+   *   web   → subtotal + service charge + delivery fee
    *   admin → subtotal + extras − discount (no service charge on an in-person sale)
    */
   price: number;

@@ -4,6 +4,17 @@ import { effectiveUnitPrice, quantityByProduct } from '../src/lib/wholesale.ts';
 import { adminOrderSchema, resolveDiscount, sumOrderExtras } from '../src/lib/order-schema.ts';
 import { adjudicatePayment, buildPaymentReference } from '../src/lib/paystack-server.ts';
 import { parsePublicOrderId } from '../src/lib/order-reference.ts';
+import { deliveryQuote, normalizeDeliverySettings } from '../src/lib/delivery.ts';
+
+test('delivery options apply only to selected regions and price urgent delivery', () => {
+  const settings = normalizeDeliverySettings({ eligibleRegions: ['Ashanti', 'Greater Accra'], urgentFee: 25 });
+  assert.deepEqual(settings.eligibleRegions, ['Ashanti']);
+  assert.deepEqual(deliveryQuote('Ashanti', 'standard', settings), { method: 'standard', fee: 0 });
+  assert.deepEqual(deliveryQuote('Ashanti', 'urgent', settings), { method: 'urgent', fee: 25 });
+  assert.equal(deliveryQuote('Greater Accra', 'urgent', settings).error, 'Urgent delivery is not available for this region.');
+  assert.deepEqual(deliveryQuote('Western', 'standard', settings), { method: 'none', fee: 0 });
+  assert.ok(deliveryQuote('Ashanti', 'urgent', { ...settings, urgentFee: 0 }).error);
+});
 
 test('bulk pricing combines sizes and colors of one product', () => {
   const counts = quantityByProduct([

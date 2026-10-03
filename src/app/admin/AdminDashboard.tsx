@@ -10,6 +10,7 @@ import { getProductStockSummary } from '@/lib/inventory';
 import { sumOrderExtras } from '@/lib/order-schema';
 import { formatAdminDateTime, revenueForRange, type RevenueRange } from '@/lib/admin-metrics';
 import { CreateOrderModal, type CreatedOrderResult } from './CreateOrderModal';
+import { DeliverySettingsPanel } from './DeliverySettingsPanel';
 import styles from './Admin.module.css';
 
 interface AdminDashboardProps {
@@ -241,6 +242,7 @@ function buildOrderSlipHtml(order: Order, origin: string): string {
         <div class="l">Phone</div>
         <div class="d">${escapeHtml(order.customerPhone)}</div>
       </div>
+      ${order.deliveryMethod && order.deliveryMethod !== 'none' ? `<div class="field"><div class="l">Delivery</div><div class="d">${order.deliveryMethod === 'urgent' ? 'Urgent' : 'Standard (within 3 working days)'}</div></div>` : ''}
       <div class="field">
         <div class="l">Email</div>
         <div class="d">${escapeHtml(order.customerEmail)}</div>
@@ -262,7 +264,7 @@ function buildOrderSlipHtml(order: Order, origin: string): string {
     </div>
 
     ${
-      order.extras.length > 0 || order.discount > 0
+      order.extras.length > 0 || order.discount > 0 || Number(order.deliveryFee) > 0
         ? `<div class="gap">
       <div class="section-title">Breakdown</div>
       <div class="field">
@@ -277,6 +279,7 @@ function buildOrderSlipHtml(order: Order, origin: string): string {
       </div>`
         )
         .join('')}
+      ${Number(order.deliveryFee) > 0 ? `<div class="field"><div class="l">Urgent delivery</div><div class="d">${ghs(Number(order.deliveryFee))}</div></div>` : ''}
       ${
         order.discount > 0
           ? `<div class="field">
@@ -313,7 +316,7 @@ export function AdminDashboard({
   initialLookbooks,
   initialWaitlist
 }: AdminDashboardProps) {
-  const [activeTab, setActiveTab] = useState<'products' | 'drops' | 'collections' | 'lookbooks' | 'waitlist' | 'orders'>('products');
+  const [activeTab, setActiveTab] = useState<'products' | 'drops' | 'collections' | 'lookbooks' | 'waitlist' | 'orders' | 'delivery'>('products');
   const [products, setProducts] = useState<Product[]>(initialProducts);
   const [drops, setDrops] = useState<Drop[]>(initialDrops);
   const [collections, setCollections] = useState<Collection[]>(initialCollections);
@@ -323,11 +326,13 @@ export function AdminDashboard({
   const [paymentSummary, setPaymentSummary] = useState<OrderPaymentSummary | null>(null);
   const [paymentFilter, setPaymentFilter] = useState<PaymentFilter>('paid');
   const [expandedOrders, setExpandedOrders] = useState<number[]>([]);
+  const [activeOrderId, setActiveOrderId] = useState<number | null>(null);
   const [revenueRange, setRevenueRange] = useState<RevenueRange>('last30');
   const [reportNow, setReportNow] = useState(() => new Date());
   const [ordersLoaded, setOrdersLoaded] = useState(false);
   const [isDbConnected, setIsDbConnected] = useState(initialDbStatus);
   const revenue = useMemo(() => revenueForRange(orders, revenueRange, reportNow), [orders, revenueRange, reportNow]);
+  const activeOrder = orders.find((order) => order.id === activeOrderId);
 
   // Database Initializing State
   const [isInitializing, setIsInitializing] = useState(false);
@@ -592,6 +597,7 @@ export function AdminDashboard({
       const data = await response.json();
       if (response.ok) {
         setOrders(prev => prev.filter(o => o.id !== orderId));
+        if (activeOrderId === orderId) setActiveOrderId(null);
         triggerNotification(`Order #RD-${orderId} deleted permanently!`, 'success');
       } else {
         throw new Error(data.error || 'Failed to delete order.');
@@ -1570,7 +1576,17 @@ export function AdminDashboard({
         >
           Orders ({orders.length})
         </button>
+        <button
+          className={`${styles.tab} ${activeTab === 'delivery' ? styles.activeTab : ''}`}
+          aria-pressed={activeTab === 'delivery'}
+          onClick={() => setActiveTab('delivery')}
+          type="button"
+        >
+          Delivery
+        </button>
       </nav>
+
+      {activeTab === 'delivery' && <DeliverySettingsPanel />}
 
       {/* Products Tab View */}
       {activeTab === 'products' && (
@@ -1833,6 +1849,18 @@ export function AdminDashboard({
             </div>
           )}
 
+          {activeOrder && (
+            <div className={styles.activeOrderBar}>
+              <span><strong>Active order</strong> #RD-{activeOrder.id} · {activeOrder.customerName}</span>
+              <div className={styles.activeOrderBarActions}>
+                {!matchesPaymentFilter(activeOrder, paymentFilter) && (
+                  <button onClick={() => setPaymentFilter('all')} type="button">Show order</button>
+                )}
+                <button onClick={() => setActiveOrderId(null)} type="button">Clear</button>
+              </div>
+            </div>
+          )}
+
           {orders.length === 0 ? (
             <div style={{ padding: 'var(--space-8) var(--space-4)', textAlign: 'center', background: '#090909', border: '1px dashed rgba(255,255,255,0.08)', borderRadius: '4px' }}>
               <p style={{ color: '#888', fontSize: '0.9rem' }}>
@@ -1861,7 +1889,12 @@ export function AdminDashboard({
                   {orders.filter((o) => matchesPaymentFilter(o, paymentFilter)).map((o) => (
                     <tr
                       key={o.id}
+                      data-active={activeOrderId === o.id}
                       data-expanded={expandedOrders.includes(o.id)}
+                      onClick={(event) => {
+                        if ((event.target as Element).closest('button, a, input, select, textarea, [data-order-action]')) return;
+                        setActiveOrderId((current) => current === o.id ? null : o.id);
+                      }}
                       style={{
                         borderBottom: '1px solid rgba(255,255,255,0.03)',
                         // An unpaid card order left hanging gets a red rail down
@@ -1879,6 +1912,15 @@ export function AdminDashboard({
                     >
                       <td data-label="Order" style={{ padding: 'var(--space-3)', color: '#555' }}>
                         <div>#RD-{o.id}</div>
+                        <button
+                          aria-label={activeOrderId === o.id ? `Clear active order #RD-${o.id}` : `Mark order #RD-${o.id} active`}
+                          aria-pressed={activeOrderId === o.id}
+                          className={`${styles.orderActiveButton} ${activeOrderId === o.id ? styles.orderActiveButtonSelected : ''}`}
+                          onClick={() => setActiveOrderId((current) => current === o.id ? null : o.id)}
+                          type="button"
+                        >
+                          {activeOrderId === o.id ? 'Active' : 'Mark active'}
+                        </button>
                         <button className={styles.orderExpandButton} aria-expanded={expandedOrders.includes(o.id)} onClick={() => setExpandedOrders((current) => current.includes(o.id) ? current.filter((id) => id !== o.id) : [...current, o.id])} type="button">
                           {expandedOrders.includes(o.id) ? 'Less details' : 'More details'}
                         </button>
@@ -1960,6 +2002,7 @@ export function AdminDashboard({
                       <td data-label="Ship to" style={{ padding: 'var(--space-3)' }}>
                         <div style={{ color: '#f5f3ee' }}>{o.shippingAddress}</div>
                         <div style={{ color: '#888', fontSize: '0.75rem' }}>{o.shippingCity}</div>
+                        {o.deliveryMethod && o.deliveryMethod !== 'none' && <div style={{ color: o.deliveryMethod === 'urgent' ? '#f5b459' : '#aaa', fontSize: '0.72rem', marginTop: '4px' }}>{o.deliveryMethod === 'urgent' ? `Urgent delivery · +${formatCurrency(o.deliveryFee || 0)}` : 'Standard · within 3 working days'}</div>}
                       </td>
                       <td data-label="Payment" style={{ padding: 'var(--space-3)', verticalAlign: 'top' }}>
                         {(() => {
@@ -1997,6 +2040,7 @@ export function AdminDashboard({
 
                                 {reference && (
                                   <div
+                                    data-order-action
                                     onClick={() => {
                                       navigator.clipboard?.writeText(reference);
                                       triggerNotification('Payment reference copied.', 'success');

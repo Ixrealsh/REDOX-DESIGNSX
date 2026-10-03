@@ -800,6 +800,12 @@ async function ensureOrdersSchema(): Promise<void> {
       `;
 
       await sql`
+        ALTER TABLE orders
+          ADD COLUMN IF NOT EXISTS delivery_method VARCHAR(20) NOT NULL DEFAULT 'none',
+          ADD COLUMN IF NOT EXISTS delivery_fee NUMERIC(10, 2) NOT NULL DEFAULT 0
+      `;
+
+      await sql`
         CREATE TABLE IF NOT EXISTS schema_migrations (
           name VARCHAR(160) PRIMARY KEY,
           applied_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
@@ -978,7 +984,8 @@ async function ensureOrdersSchema(): Promise<void> {
             subtotal, service_charge, payment_status, payment_reference, paid_at,
             amount_paid, payment_channel, paystack_transaction_id, last_verified_at,
             payment_verified_by, gateway_response, stock_reserved, stock_released,
-            sms_sent, discount, source, client_request_id, payment_note, extras
+            sms_sent, discount, source, client_request_id, payment_note, extras,
+            delivery_method, delivery_fee
           ) VALUES (
             p_order->>'productId', p_order->>'productName', p_order->>'productSlug',
             p_order->>'selectedColor', p_order->>'selectedSize', (p_order->>'price')::NUMERIC,
@@ -994,7 +1001,8 @@ async function ensureOrdersSchema(): Promise<void> {
             p_order->>'paymentVerifiedBy', p_order->>'gatewayResponse', TRUE, FALSE,
             FALSE, COALESCE((p_order->>'discount')::NUMERIC, 0),
             COALESCE(p_order->>'source', 'web'), p_order->>'clientRequestId',
-            p_order->>'paymentNote', COALESCE(p_order->'extras', '[]'::jsonb)
+            p_order->>'paymentNote', COALESCE(p_order->'extras', '[]'::jsonb),
+            COALESCE(p_order->>'deliveryMethod', 'none'), COALESCE((p_order->>'deliveryFee')::NUMERIC, 0)
           ) RETURNING *;
         END;
         $fn$;
@@ -1110,6 +1118,8 @@ function mapOrderRow(row: any): Order {
     totalQuantity,
     subtotal,
     serviceCharge,
+    deliveryMethod: row.delivery_method === 'urgent' || row.delivery_method === 'standard' ? row.delivery_method : 'none',
+    deliveryFee: Number(row.delivery_fee) || 0,
     extras: parseOrderExtras(row.extras),
     discount: row.discount != null ? Number(row.discount) : 0,
     price,
@@ -1292,7 +1302,9 @@ export async function addDbOrder(o: NewOrderInput): Promise<Order> {
     smsSent: o.smsSent === true,
     discount: Number.isFinite(o.discount) ? Math.max(0, Number(o.discount)) : 0,
     source: o.source === 'admin' ? ('admin' as const) : ('web' as const),
-    extras: parseOrderExtras(o.extras)
+    extras: parseOrderExtras(o.extras),
+    deliveryMethod: o.deliveryMethod || 'none',
+    deliveryFee: Number(o.deliveryFee) || 0
   };
 
   if (!isDbConfigured) {
@@ -1317,7 +1329,8 @@ export async function addDbOrder(o: NewOrderInput): Promise<Order> {
         payment_status, payment_reference, paid_at, amount_paid, payment_channel,
         paystack_transaction_id, last_verified_at, payment_verified_by, gateway_response,
         stock_reserved, stock_released, sms_sent,
-        discount, source, client_request_id, payment_note, extras
+        discount, source, client_request_id, payment_note, extras,
+        delivery_method, delivery_fee
       ) VALUES (
         ${o.productId}, ${o.productName}, ${o.productSlug}, ${o.selectedColor}, ${o.selectedSize}, ${o.price},
         ${o.customerName}, ${o.customerPhone}, ${o.customerEmail}, ${o.shippingAddress}, ${o.shippingCity},
@@ -1328,7 +1341,7 @@ export async function addDbOrder(o: NewOrderInput): Promise<Order> {
         ${o.paymentVerifiedBy || null}, ${o.gatewayResponse || null},
         ${defaults.stockReserved}, ${defaults.stockReleased}, ${defaults.smsSent},
         ${defaults.discount}, ${defaults.source}, ${o.clientRequestId || null}, ${o.paymentNote || null},
-        ${JSON.stringify(defaults.extras)}
+        ${JSON.stringify(defaults.extras)}, ${defaults.deliveryMethod}, ${defaults.deliveryFee}
       )
       RETURNING *;
     `;

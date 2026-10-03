@@ -27,7 +27,8 @@ export const customerSchema = z.object({
   customerPhone: z.string().trim().min(8).max(100),
   customerEmail: z.string().trim().email().max(255),
   shippingAddress: z.string().trim().min(5).max(500),
-  shippingCity: z.string().trim().min(2).max(255)
+  shippingCity: z.string().trim().min(2).max(255),
+  deliveryMethod: z.enum(['standard', 'urgent']).optional()
 });
 
 const basketShape = {
@@ -56,6 +57,7 @@ function requireBasket(data: any, ctx: z.RefinementCtx) {
 /** Body accepted by `POST /api/checkout/initialize`. */
 export const checkoutInitSchema = customerSchema.extend({
   ...basketShape,
+  expectedDeliveryFee: z.number().finite().min(0).max(10000).optional(),
   clientRequestId: z.string().trim().min(8).max(80).optional()
 }).superRefine(requireBasket);
 

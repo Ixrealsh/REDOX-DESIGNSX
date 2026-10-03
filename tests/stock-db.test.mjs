@@ -48,7 +48,8 @@ test('stock and order creation commit or roll back together', async () => {
         paystack_transaction_id TEXT, last_verified_at TIMESTAMPTZ,
         payment_verified_by TEXT, gateway_response TEXT, stock_reserved BOOLEAN,
         stock_released BOOLEAN, sms_sent BOOLEAN, discount NUMERIC, source TEXT,
-        client_request_id TEXT UNIQUE, payment_note TEXT, extras JSONB
+        client_request_id TEXT UNIQUE, payment_note TEXT, extras JSONB,
+        delivery_method TEXT NOT NULL DEFAULT 'none', delivery_fee NUMERIC NOT NULL DEFAULT 0
       );
       CREATE UNIQUE INDEX orders_payment_reference_uidx ON orders (payment_reference)
         WHERE payment_reference IS NOT NULL;
@@ -89,6 +90,12 @@ test('stock and order creation commit or roll back together', async () => {
     await db.query("UPDATE products SET visibility='hidden' WHERE slug='f'");
     await assert.rejects(create('hidden-web', [line('f')]));
     await create('hidden-admin', [line('f')], 'f', { allowShortfall: true, source: 'admin' });
+
+    await create('urgent-order', [line('e')], 'e', { price: 125, deliveryMethod: 'urgent', deliveryFee: 25 });
+    const urgent = (await db.query("SELECT delivery_method, delivery_fee::NUMERIC AS delivery_fee, price::NUMERIC AS price FROM orders WHERE client_request_id='urgent-order'")).rows[0];
+    assert.equal(urgent.delivery_method, 'urgent');
+    assert.equal(Number(urgent.delivery_fee), 25);
+    assert.equal(Number(urgent.price), 125);
   } finally {
     await db.close();
   }

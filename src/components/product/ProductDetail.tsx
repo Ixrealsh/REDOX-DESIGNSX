@@ -6,8 +6,11 @@ import Script from 'next/script';
 import type { CSSProperties, MouseEvent } from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Button } from '@/components/ui/Button';
+import { DeliveryChoice } from '@/components/commerce/DeliveryChoice';
 import { HeartIcon, RulerIcon, ShareIcon, StarIcon } from '@/components/ui/Icons';
 import { calcOrderTotal, calcServiceCharge, formatCurrency } from '@/lib/format';
+import { deliveryQuote } from '@/lib/delivery';
+import { useDeliverySettings } from '@/lib/use-delivery-settings';
 import { useWishlistStore } from '@/store/wishlist.store';
 import { useCartStore } from '@/store/cart.store';
 import type { Product } from '@/types/product';
@@ -290,6 +293,10 @@ export function ProductDetail({ product }: ProductDetailProps) {
     momoNetwork: 'MTN',
     momoNumber: ''
   });
+  const [deliveryMethod, setDeliveryMethod] = useState<'standard' | 'urgent'>('standard');
+  const { settings: deliverySettings, loading: deliveryLoading } = useDeliverySettings();
+  const delivery = deliveryQuote(formData.city, deliveryMethod, deliverySettings);
+  const checkoutTotal = Math.round((calcOrderTotal(totalPrice) + delivery.fee) * 100) / 100;
 
   const imageRef = useRef<HTMLDivElement>(null);
   const checkoutRef = useRef<HTMLDivElement>(null);
@@ -452,6 +459,8 @@ export function ProductDetail({ product }: ProductDetailProps) {
 
   const handleOrderSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (deliveryLoading) return;
+    if (delivery.error) { setError(delivery.error); return; }
     if (selectedItems.length === 0) {
       setError('Please select at least one size with quantity.');
       return;
@@ -471,7 +480,9 @@ export function ProductDetail({ product }: ProductDetailProps) {
           phone: formData.phone,
           email: formData.email,
           address: formData.address,
-          city: formData.city
+          city: formData.city,
+          deliveryMethod,
+          expectedDeliveryFee: delivery.fee
         },
         selectedItems.map((item) => ({
           productId: item.productId,
@@ -1051,7 +1062,7 @@ export function ProductDetail({ product }: ProductDetailProps) {
           {showCheckout && !checkoutSuccess && !pendingNotice && (
             <div className={styles.directCheckout} ref={checkoutRef}>
               <div className={styles.checkoutHeader}>
-                SECURE CHECKOUT — {formatCurrency(calcOrderTotal(totalPrice))}
+                SECURE CHECKOUT — {formatCurrency(checkoutTotal)}
               </div>
               
               <form onSubmit={handleOrderSubmit} className={styles.checkoutForm}>
@@ -1111,7 +1122,7 @@ export function ProductDetail({ product }: ProductDetailProps) {
                     <select
                       className={styles.formSelect}
                       value={formData.city}
-                      onChange={(e) => setFormData(f => ({ ...f, city: e.target.value }))}
+                      onChange={(e) => { setFormData(f => ({ ...f, city: e.target.value })); setDeliveryMethod('standard'); }}
                     >
                       <option value="Greater Accra">Greater Accra Region</option>
                       <option value="Ashanti">Ashanti Region</option>
@@ -1130,6 +1141,10 @@ export function ProductDetail({ product }: ProductDetailProps) {
                       <option value="Western North">Western North Region</option>
                       <option value="Oti">Oti Region</option>
                     </select>
+                  </div>
+
+                  <div style={{ gridColumn: '1 / -1' }}>
+                    <DeliveryChoice region={formData.city} method={deliveryMethod} settings={deliverySettings} loading={deliveryLoading} onChange={setDeliveryMethod} />
                   </div>
 
                   <div className={styles.formGroup} style={{ gridColumn: 'span 2' }}>
@@ -1154,16 +1169,18 @@ export function ProductDetail({ product }: ProductDetailProps) {
                   </div>
                 </div>
 
+                {delivery.fee > 0 && <p>Urgent delivery: {formatCurrency(delivery.fee)} extra · Total: {formatCurrency(checkoutTotal)}</p>}
+
                 {error && <p className={styles.error}>{error}</p>}
 
                 <button
                   type="submit"
-                  disabled={checkoutLoading}
+                  disabled={checkoutLoading || deliveryLoading}
                   className={styles.placeOrderButton}
                 >
                   {checkoutLoading
                     ? checkoutStage || 'Processing Secure Order…'
-                    : `Confirm & Pay ${formatCurrency(calcOrderTotal(totalPrice))}`}
+                    : `Confirm & Pay ${formatCurrency(checkoutTotal)}`}
                 </button>
               </form>
             </div>
@@ -1190,6 +1207,7 @@ export function ProductDetail({ product }: ProductDetailProps) {
                   </p>
                 ))}
                 <p><strong>Total:</strong> {formatCurrency(checkoutSuccess.price)}</p>
+                {checkoutSuccess.deliveryMethod !== 'none' && <p><strong>Delivery:</strong> {checkoutSuccess.deliveryMethod === 'urgent' ? `Urgent (+${formatCurrency(checkoutSuccess.deliveryFee || 0)})` : 'Standard · within 3 working days, Monday–Friday'}</p>}
                 <p><strong>Shipping to:</strong> {checkoutSuccess.shippingAddress}, {checkoutSuccess.shippingCity}</p>
                 <p>
                   <strong>Payment:</strong>{' '}

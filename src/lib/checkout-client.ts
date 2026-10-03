@@ -22,6 +22,8 @@ export interface CheckoutCustomer {
   email: string;
   address: string;
   city: string;
+  deliveryMethod?: 'standard' | 'urgent';
+  expectedDeliveryFee?: number;
 }
 
 export interface CheckoutLine {
@@ -164,6 +166,8 @@ export async function startCheckout(
       customerEmail: customer.email,
       shippingAddress: customer.address,
       shippingCity: customer.city,
+      deliveryMethod: customer.deliveryMethod,
+      expectedDeliveryFee: customer.expectedDeliveryFee,
       items: lines,
       clientRequestId
     })

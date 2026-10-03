@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import { rateLimit, requestKey } from '@/lib/rate-limit';
 import { createDbOrderWithStock, findDbOrderByPaymentRef, type NewOrderInput } from '@/lib/catalog-db';
 import { isDbConfigured } from '@/lib/db';
+import { deliveryQuote } from '@/lib/delivery';
+import { getDeliverySettings } from '@/lib/delivery-settings-db';
 import { priceOrderDraft } from '@/lib/order-pricing';
 import { directOrderSchema, toRequestedLines } from '@/lib/order-schema';
 import { toCustomerReceipt } from '@/lib/order-receipt';
@@ -74,6 +76,9 @@ export async function POST(request: Request) {
     }
 
     const draft = pricing.draft;
+    const delivery = deliveryQuote(orderData.shippingCity, orderData.deliveryMethod, await getDeliverySettings());
+    if (delivery.error) return NextResponse.json({ error: delivery.error }, { status: 400 });
+    const grandTotal = Math.round((draft.grandTotal + delivery.fee) * 100) / 100;
 
     // 2. For a card order arriving here, confirm the money before recording it.
     let paymentFields: Partial<NewOrderInput> = {};
@@ -89,7 +94,7 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: message }, { status: verification.retryable ? 504 : 400 });
       }
 
-      const verdict = adjudicatePayment(verification.transaction, draft.grandTotal);
+      const verdict = adjudicatePayment(verification.transaction, grandTotal);
       if (verdict.outcome !== 'paid') {
         const reason =
           verdict.outcome === 'mismatch' || verdict.outcome === 'failed'
@@ -126,7 +131,9 @@ export async function POST(request: Request) {
         totalQuantity: draft.totalQuantity,
         subtotal: draft.subtotal,
         serviceCharge: draft.serviceCharge,
-        price: draft.grandTotal,
+        deliveryMethod: delivery.method,
+        deliveryFee: delivery.fee,
+        price: grandTotal,
         customerName: orderData.customerName,
         customerPhone: orderData.customerPhone,
         customerEmail: orderData.customerEmail,
@@ -213,6 +220,8 @@ export async function GET(request: Request) {
         totalQuantity: order.totalQuantity,
         subtotal: order.subtotal,
         serviceCharge: order.serviceCharge,
+        deliveryMethod: order.deliveryMethod || 'none',
+        deliveryFee: order.deliveryFee || 0,
         extras: order.extras,
         discount: order.discount,
         price: order.price,

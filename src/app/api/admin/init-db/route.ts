@@ -122,6 +122,8 @@ export async function POST() {
         total_quantity INTEGER NOT NULL DEFAULT 1,
         subtotal NUMERIC,
         service_charge NUMERIC,
+        delivery_method VARCHAR(20) NOT NULL DEFAULT 'none',
+        delivery_fee NUMERIC(10, 2) NOT NULL DEFAULT 0,
         created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
 
         -- Payment ledger. Money state is tracked separately from the fulfilment

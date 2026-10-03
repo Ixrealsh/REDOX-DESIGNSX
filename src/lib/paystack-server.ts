@@ -334,6 +334,8 @@ export interface OrderMetadataInput {
   totalQuantity: number;
   subtotal: number;
   serviceCharge: number;
+  deliveryMethod?: 'none' | 'standard' | 'urgent';
+  deliveryFee?: number;
   grandTotal: number;
   siteUrl?: string;
 }
@@ -374,6 +376,8 @@ export function buildOrderMetadata(input: OrderMetadataInput): Record<string, an
     { display_name: 'Total Quantity', variable_name: 'total_quantity', value: String(input.totalQuantity) },
     { display_name: 'Subtotal', variable_name: 'subtotal', value: ghs(input.subtotal) },
     { display_name: 'Service Fee (2%)', variable_name: 'service_charge', value: ghs(input.serviceCharge) },
+    { display_name: 'Delivery', variable_name: 'delivery_method', value: input.deliveryMethod === 'urgent' ? 'Urgent' : input.deliveryMethod === 'standard' ? 'Standard (up to 3 working days)' : 'Local' },
+    { display_name: 'Urgent Delivery Fee', variable_name: 'delivery_fee', value: ghs(input.deliveryFee || 0) },
     { display_name: 'Order Total', variable_name: 'order_total', value: ghs(input.grandTotal) },
     { display_name: 'Track Order', variable_name: 'track_url', value: clip(trackUrl) }
   ];
@@ -391,6 +395,8 @@ export function buildOrderMetadata(input: OrderMetadataInput): Record<string, an
     total_quantity: input.totalQuantity,
     subtotal_ghs: Number(input.subtotal.toFixed(2)),
     service_charge_ghs: Number(input.serviceCharge.toFixed(2)),
+    delivery_method: input.deliveryMethod || 'none',
+    delivery_fee_ghs: Number((input.deliveryFee || 0).toFixed(2)),
     total_ghs: Number(input.grandTotal.toFixed(2)),
     track_url: trackUrl,
     items: input.items.slice(0, MAX_METADATA_ITEMS).map((item) => ({
@@ -420,6 +426,8 @@ export function buildOrderMetadataFromOrder(order: Order, siteUrl?: string): Rec
     totalQuantity: order.totalQuantity,
     subtotal: order.subtotal,
     serviceCharge: order.serviceCharge,
+    deliveryMethod: order.deliveryMethod,
+    deliveryFee: order.deliveryFee,
     grandTotal: order.price,
     siteUrl
   });

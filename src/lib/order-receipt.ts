@@ -14,6 +14,8 @@ export interface CustomerReceipt {
   totalQuantity: number;
   subtotal: number;
   serviceCharge: number;
+  deliveryFee: number;
+  deliveryMethod: 'none' | 'standard' | 'urgent';
   /** Printing, customisation and the like — the customer paid for these too. */
   extras: OrderExtra[];
   discount: number;
@@ -105,6 +107,8 @@ export function toCustomerReceipt(order: Order): CustomerReceipt {
     totalQuantity: order.totalQuantity,
     subtotal: order.subtotal,
     serviceCharge: order.serviceCharge,
+    deliveryFee: order.deliveryFee || 0,
+    deliveryMethod: order.deliveryMethod || 'none',
     extras: order.extras,
     discount: order.discount,
     price: order.price,

@@ -1,0 +1,17 @@
+.panel { max-width: 760px; padding: 24px; border: 1px solid rgba(255,255,255,.12); border-radius: 8px; background: #111; color: #eee; }
+.panel h2 { margin: 0 0 8px; font-size: 1.35rem; }
+.panel h3 { margin: 0; font-size: .9rem; }
+.panel p { color: #aaa; line-height: 1.5; }
+.info { margin: 22px 0; padding: 14px; border: 1px solid rgba(16,185,129,.28); border-radius: 6px; background: rgba(16,185,129,.08); color: #b8f0d5; }
+.feeLabel { display: block; margin-bottom: 8px; font-weight: 700; }
+.panel input[type='number'] { width: min(100%, 240px); min-height: 44px; padding: 8px 12px; border: 1px solid #555; border-radius: 5px; background: #1c1c1c; color: #fff; font: inherit; }
+.helper { margin: 7px 0 22px; font-size: .78rem; }
+.regionHeader { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 12px; }
+.regionHeader div { display: flex; gap: 12px; }
+.regionHeader button { padding: 6px 0; border: 0; background: transparent; color: #ff8a94; font: inherit; font-size: .75rem; cursor: pointer; }
+.regions { display: grid; grid-template-columns: repeat(auto-fit, minmax(155px, 1fr)); gap: 8px; }
+.regions label { display: flex; align-items: center; gap: 9px; min-height: 40px; padding: 8px 10px; border: 1px solid rgba(255,255,255,.1); border-radius: 5px; background: #191919; cursor: pointer; }
+.regions input { width: 16px; height: 16px; accent-color: #d72638; }
+.message { margin-top: 14px; }
+.save { min-height: 44px; margin-top: 20px; padding: 10px 18px; border: 0; border-radius: 5px; background: #fff; color: #111; font: inherit; font-weight: 700; cursor: pointer; }
+.save:disabled { opacity: .6; cursor: wait; }

@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import { rateLimit, requestKey } from '@/lib/rate-limit';
 import { createDbOrderWithStock, findDbOrderByClientRequestId, rebrandDbOrderReference } from '@/lib/catalog-db';
 import { isDbConfigured } from '@/lib/db';
+import { deliveryQuote } from '@/lib/delivery';
+import { getDeliverySettings } from '@/lib/delivery-settings-db';
 import { priceOrderDraft } from '@/lib/order-pricing';
 import { checkoutInitSchema, toRequestedLines } from '@/lib/order-schema';
 import {
@@ -102,6 +104,12 @@ export async function POST(request: Request) {
     }
 
     const draft = pricing.draft;
+    const delivery = deliveryQuote(input.shippingCity, input.deliveryMethod, await getDeliverySettings());
+    if (delivery.error) return NextResponse.json({ error: delivery.error }, { status: 400 });
+    if (input.expectedDeliveryFee !== undefined && Math.abs(input.expectedDeliveryFee - delivery.fee) > 0.001) {
+      return NextResponse.json({ error: 'Delivery options changed. Refresh the page to see the current price before paying.' }, { status: 409 });
+    }
+    const grandTotal = Math.round((draft.grandTotal + delivery.fee) * 100) / 100;
 
     // 2. Reserve stock and persist the unpaid order in one database transaction.
     const primary = draft.items[0];
@@ -119,7 +127,9 @@ export async function POST(request: Request) {
         totalQuantity: draft.totalQuantity,
         subtotal: draft.subtotal,
         serviceCharge: draft.serviceCharge,
-        price: draft.grandTotal,
+        deliveryMethod: delivery.method,
+        deliveryFee: delivery.fee,
+        price: grandTotal,
         customerName: input.customerName,
         customerPhone: input.customerPhone,
         customerEmail: input.customerEmail,
@@ -163,7 +173,7 @@ export async function POST(request: Request) {
     // 5. The purchase, attached to the transaction itself: Paystack renders these
     //    custom fields on the dashboard and in the receipt email.
     console.log(
-      `[checkout] Order #RD-${order.id} recorded before payment (${reference}), GH₵${draft.grandTotal.toFixed(2)}.`
+      `[checkout] Order #RD-${order.id} recorded before payment (${reference}), GH₵${grandTotal.toFixed(2)}.`
     );
 
     return checkoutResponse(order, reference, publicKey, request);
