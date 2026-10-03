@@ -24,7 +24,7 @@ export function AdminLogin() {
       });
       const data = await response.json().catch(() => null);
       if (response.ok && data?.success) {
-        router.refresh();
+        window.location.reload();
       } else if (response.status === 403) {
         router.replace('/404');
       } else {

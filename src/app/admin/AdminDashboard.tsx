@@ -173,62 +173,66 @@ function buildOrderSlipHtml(order: Order, origin: string): string {
     print-color-adjust: exact;
   }
   .sheet {
-    width: 76mm;
-    min-height: 130mm;
+    width: 80mm;
+    height: 130mm;
     margin: 12px auto;
     background: #fff;
-    padding: 7mm 6mm;
+    padding: 4mm 5mm;
     box-shadow: 0 4px 24px rgba(0,0,0,0.12);
+    overflow: hidden;
   }
+  .receipt-content { height: 100%; display: flex; flex-direction: column; transform-origin: top left; }
+  .receipt-content > * { flex-shrink: 0; }
   .brand {
     text-align: center;
-    border-bottom: 1.5px solid #111;
-    padding-bottom: 9px;
+    border-bottom: 2px solid #111;
+    padding-bottom: 8px;
   }
-  .brand img { height: 40px; width: auto; object-fit: contain; display: block; margin: 0 auto; }
+  .brand img { height: 34px; width: auto; object-fit: contain; display: block; margin: 0 auto; }
   .brand .name {
-    margin-top: 6px;
-    font-size: 14px;
+    margin-top: 4px;
+    font-size: 13px;
     font-weight: 800;
     letter-spacing: 0.05em;
     text-transform: uppercase;
   }
-  .gap { margin-top: 14px; }
+  .gap { margin-top: 12px; }
   .section-title {
-    font-size: 8px; letter-spacing: 0.18em; text-transform: uppercase;
-    color: #999; margin-bottom: 7px;
+    font-size: 9px; font-weight: 800; letter-spacing: 0.12em; text-transform: uppercase;
+    color: #222; margin-bottom: 5px;
   }
-  .recipient { font-size: 14px; font-weight: 800; margin-bottom: 8px; }
-  .field { padding: 5px 0; border-bottom: 1px dashed #e6e6e6; }
+  .recipient { font-size: 14px; font-weight: 800; margin-bottom: 6px; }
+  .field { padding: 5px 0; border-bottom: 1px solid #d4d4d4; }
   .field:last-child { border-bottom: none; }
-  .field .l { font-size: 7.5px; letter-spacing: 0.14em; text-transform: uppercase; color: #aaa; }
-  .field .d { font-size: 11px; color: #111; margin-top: 2px; word-break: break-word; }
+  .field .l { font-size: 8.5px; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase; color: #333; }
+  .field .d { font-size: 11px; font-weight: 600; color: #111; margin-top: 3px; word-break: break-word; }
   .stats { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 6px; }
-  .stat { min-width: 0; border: 1px solid #eaeaea; border-radius: 5px; padding: 9px 7px; text-align: left; }
-  .stat .l { font-size: 7.5px; letter-spacing: 0.14em; text-transform: uppercase; color: #aaa; }
-  .stat .d { font-size: 14px; font-weight: 800; line-height: 1.2; margin-top: 4px; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+  .stat { min-width: 0; border: 1px solid #bdbdbd; border-radius: 5px; padding: 9px; text-align: left; background: #fafafa; }
+  .stat .l { font-size: 8.5px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; color: #333; }
+  .stat .d { font-size: 16px; font-weight: 800; line-height: 1.2; margin-top: 5px; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
   .stat.order-id { text-align: right; }
-  .stat.order-id .d { font-size: 12px; }
+  .stat.order-id .d { font-size: 13px; }
   .total {
     display: flex; justify-content: space-between; align-items: center;
-    margin-top: 16px; padding: 11px 12px; background: #111; border-radius: 5px;
+    margin-top: 13px; padding: 10px 12px; background: #111; border-radius: 5px;
   }
-  .total .k { font-size: 8.5px; letter-spacing: 0.16em; text-transform: uppercase; color: #bbb; }
-  .total .v { font-size: 19px; font-weight: 800; color: #fff; }
+  .total .k { font-size: 10px; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase; color: #fff; }
+  .total .v { font-size: 21px; font-weight: 800; color: #fff; }
   .foot {
-    margin-top: 20px; padding-top: 10px; border-top: 1px solid #ddd;
-    text-align: center; font-size: 9px; color: #666; line-height: 1.6;
+    margin-top: auto; padding-top: 9px; border-top: 1px solid #333;
+    text-align: center; font-size: 9px; font-weight: 600; color: #222; line-height: 1.45;
   }
-  .foot .thanks { font-weight: 700; color: #111; margin-bottom: 3px; }
+  .foot .thanks { font-weight: 800; color: #111; margin-bottom: 3px; }
   @media print {
     html, body { background: #fff; }
-    .sheet { margin: 0; box-shadow: none; width: auto; min-height: auto; padding: 0; }
-    @page { size: 76mm 130mm; margin: 5mm; }
+    .sheet { margin: 0; box-shadow: none; }
+    @page { size: 80mm 130mm; margin: 0; }
   }
 </style>
 </head>
 <body>
   <div class="sheet">
+    <div class="receipt-content">
     <div class="brand">
       <img src="${escapeHtml(logoSrc)}" alt="RedoxDesignx" />
       <div class="name">RedoxDesignx</div>
@@ -266,35 +270,6 @@ function buildOrderSlipHtml(order: Order, origin: string): string {
       </div>
     </div>
 
-    ${
-      order.extras.length > 0 || order.discount > 0 || Number(order.deliveryFee) > 0
-        ? `<div class="gap">
-      <div class="section-title">Breakdown</div>
-      <div class="field">
-        <div class="l">Items</div>
-        <div class="d">${ghs(order.subtotal)}</div>
-      </div>
-      ${order.extras
-        .map(
-          (extra) => `<div class="field">
-        <div class="l">${escapeHtml(extra.label)}</div>
-        <div class="d">${ghs(extra.amount)}</div>
-      </div>`
-        )
-        .join('')}
-      ${Number(order.deliveryFee) > 0 ? `<div class="field"><div class="l">${URGENT_STATION_DELIVERY_LABEL}</div><div class="d">${ghs(Number(order.deliveryFee))}</div></div>` : ''}
-      ${
-        order.discount > 0
-          ? `<div class="field">
-        <div class="l">Discount</div>
-        <div class="d">- ${ghs(order.discount)}</div>
-      </div>`
-          : ''
-      }
-    </div>`
-        : ''
-    }
-
     <div class="total">
       <span class="k">Total Items</span>
       <span class="v">${escapeHtml(order.totalQuantity)}</span>
@@ -304,6 +279,7 @@ function buildOrderSlipHtml(order: Order, origin: string): string {
       <div class="thanks">Thank you for shopping with RedoxDesignx.</div>
       <div>${escapeHtml(BRAND_PHONE)}</div>
       <div>${escapeHtml(BRAND_URL)}</div>
+    </div>
     </div>
   </div>
 </body>
@@ -655,8 +631,22 @@ export function AdminDashboard({
     // Wait for the document (including the logo image) to finish loading, so the
     // logo is never missing from the printout.
     printWindow.onload = () => {
-      printWindow.focus();
-      printWindow.print();
+      const sheet = printWindow.document.querySelector<HTMLElement>('.sheet');
+      const content = printWindow.document.querySelector<HTMLElement>('.receipt-content');
+      if (sheet && content) {
+        const style = printWindow.getComputedStyle(sheet);
+        const availableHeight = sheet.clientHeight - parseFloat(style.paddingTop) - parseFloat(style.paddingBottom);
+        const naturalHeight = content.scrollHeight;
+        if (naturalHeight > availableHeight) {
+          const scale = availableHeight / naturalHeight;
+          content.style.width = `${100 / scale}%`;
+          content.style.transform = `scale(${scale})`;
+        }
+      }
+      printWindow.requestAnimationFrame(() => {
+        printWindow.focus();
+        printWindow.print();
+      });
     };
   };
 

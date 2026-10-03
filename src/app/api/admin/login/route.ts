@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
-import { createAdminSignature, getAdminEmail } from '@/lib/admin-auth';
+import { createAdminSession, getAdminEmail } from '@/lib/admin-auth';
+import { ADMIN_SESSION_SECONDS } from '@/lib/admin-session';
 import { rateLimit, requestKey } from '@/lib/rate-limit';
 
 export async function POST(request: Request) {
@@ -47,17 +48,17 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: errMsg || 'Authentication failed via Firebase.' }, { status: 401 });
     }
 
-    // 3. Create a secure cryptographic signature of the admin email using a fixed secret
-    const signature = createAdminSignature(adminEmail);
+    // 3. Sign the issue time so the session cannot outlive twelve hours.
+    const sessionToken = createAdminSession(adminEmail);
     
     const response = NextResponse.json({ success: true, message: 'Authenticated successfully!' });
     
     // Set secure HTTP-only cookie
-    response.cookies.set('admin_session', signature, {
+    response.cookies.set('admin_session', sessionToken, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
-      maxAge: 60 * 60 * 24 * 7, // 1 week
+      secure: new URL(request.url).protocol === 'https:',
+      sameSite: 'lax',
+      maxAge: ADMIN_SESSION_SECONDS,
       path: '/'
     });
 

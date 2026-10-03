@@ -1,6 +1,6 @@
-import crypto from 'crypto';
 import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
+import { createAdminSessionToken, isAdminSessionTokenValid } from '@/lib/admin-session';
 
 const fallbackSessionSecret = 'redox-secret-key-129847192';
 
@@ -8,20 +8,16 @@ export function getAdminEmail() {
   return process.env.ADMIN_EMAIL || 'admin@redoxdesignx.com';
 }
 
-export function createAdminSignature(email = getAdminEmail()) {
-  const secret = process.env.ADMIN_SESSION_SECRET || process.env.NEXTAUTH_SECRET || fallbackSessionSecret;
-  return crypto.createHmac('sha256', secret).update(email.trim().toLowerCase()).digest('hex');
+function getAdminSessionSecret() {
+  return process.env.ADMIN_SESSION_SECRET || process.env.NEXTAUTH_SECRET || fallbackSessionSecret;
+}
+
+export function createAdminSession(email = getAdminEmail()) {
+  return createAdminSessionToken(email, getAdminSessionSecret());
 }
 
 export function isAdminSessionValid(token?: string) {
-  if (!token) return false;
-
-  const expected = createAdminSignature();
-  const tokenBuffer = Buffer.from(token, 'hex');
-  const expectedBuffer = Buffer.from(expected, 'hex');
-
-  if (tokenBuffer.length !== expectedBuffer.length) return false;
-  return crypto.timingSafeEqual(tokenBuffer, expectedBuffer);
+  return isAdminSessionTokenValid(token, getAdminEmail(), getAdminSessionSecret());
 }
 
 export async function getAdminSessionToken() {

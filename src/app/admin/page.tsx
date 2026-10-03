@@ -3,7 +3,6 @@ import { getDbProducts, getDbDrops, getDbCollections, getDbLookbooks, getDbWaitl
 import { AdminDashboard } from './AdminDashboard';
 import { AdminLogin } from './AdminLogin';
 import { cookies } from 'next/headers';
-import { notFound } from 'next/navigation';
 import { isAdminSessionValid } from '@/lib/admin-auth';
 
 export const metadata = {
@@ -24,7 +23,7 @@ export default async function AdminPage() {
   }
 
   if (!isAdminSessionValid(sessionToken)) {
-    notFound();
+    return <AdminLogin />;
   }
 
   const isDbConnected = isDbConfigured;
