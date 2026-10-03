@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import Image from 'next/image';
 import type { Product, Drop, Collection, LookbookIssue, Order } from '@/types/product';
 import type { OrderPaymentSummary } from '@/lib/order-receipt';
@@ -8,6 +8,7 @@ import type { WaitlistSignup } from '@/lib/catalog-db';
 import { formatCurrency } from '@/lib/format';
 import { getProductStockSummary } from '@/lib/inventory';
 import { sumOrderExtras } from '@/lib/order-schema';
+import { formatAdminDateTime, revenueForRange, type RevenueRange } from '@/lib/admin-metrics';
 import { CreateOrderModal, type CreatedOrderResult } from './CreateOrderModal';
 import styles from './Admin.module.css';
 
@@ -321,7 +322,12 @@ export function AdminDashboard({
   const [orders, setOrders] = useState<Order[]>([]);
   const [paymentSummary, setPaymentSummary] = useState<OrderPaymentSummary | null>(null);
   const [paymentFilter, setPaymentFilter] = useState<PaymentFilter>('paid');
+  const [expandedOrders, setExpandedOrders] = useState<number[]>([]);
+  const [revenueRange, setRevenueRange] = useState<RevenueRange>('last30');
+  const [reportNow, setReportNow] = useState(() => new Date());
+  const [ordersLoaded, setOrdersLoaded] = useState(false);
   const [isDbConnected, setIsDbConnected] = useState(initialDbStatus);
+  const revenue = useMemo(() => revenueForRange(orders, revenueRange, reportNow), [orders, revenueRange, reportNow]);
 
   // Database Initializing State
   const [isInitializing, setIsInitializing] = useState(false);
@@ -442,9 +448,13 @@ export function AdminDashboard({
       if (response.ok && Array.isArray(data.orders)) {
         setOrders(data.orders);
         setPaymentSummary(data.summary || null);
+        setReportNow(new Date());
+        setOrdersLoaded(true);
         if (!options?.silent) {
           triggerNotification('Customer orders synced live from Neon DB!', 'success');
         }
+      } else {
+        throw new Error(data?.error || 'Could not load orders.');
       }
     } catch (err: any) {
       triggerNotification(err.message || 'Failed to sync orders.', 'error');
@@ -671,6 +681,11 @@ export function AdminDashboard({
   useEffect(() => {
     refreshOrders();
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setReportNow(new Date()), 60_000);
+    return () => window.clearInterval(timer);
   }, []);
 
   // The green flash on a freshly created order is a "here it is" cue, not a
@@ -1377,31 +1392,10 @@ export function AdminDashboard({
           <h1 className={styles.adminTitle}>REDOXDESIGNX Admin</h1>
         </div>
         
-        <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
-          {isDbConnected && (
-            <button 
-              className={styles.initButton}
-              onClick={handleInitDb}
-              disabled={isInitializing}
-            >
-              {isInitializing ? 'Re-seeding...' : 'Reset & Seed DB'}
-            </button>
-          )}
-          <button 
+        <div className={styles.headerActions}>
+          <button
+            className={styles.signOutButton}
             onClick={handleLogout}
-            style={{
-              background: 'transparent',
-              color: '#888',
-              border: '1px solid rgba(255,255,255,0.1)',
-              padding: '6px 16px',
-              fontSize: '0.75rem',
-              borderRadius: '4px',
-              cursor: 'pointer',
-              fontWeight: 'bold',
-              fontFamily: 'var(--font-mono), monospace',
-              textTransform: 'uppercase',
-              letterSpacing: '0.05em'
-            }}
           >
             Sign Out
           </button>
@@ -1409,15 +1403,15 @@ export function AdminDashboard({
       </header>
 
       {notification && (
-        <div className={`${styles.notification} ${notification.type === 'success' ? styles.notificationSuccess : styles.notificationError}`}>
+        <div className={`${styles.notification} ${notification.type === 'success' ? styles.notificationSuccess : styles.notificationError}`} role={notification.type === 'error' ? 'alert' : 'status'}>
           <span className={styles.dot}></span>
           <p>{notification.message}</p>
         </div>
       )}
 
       {/* Integration Status Indicator Panel */}
-      <section className={styles.statusCard}>
-        <h2 className={styles.statusTitle}>External Services Integration</h2>
+      <details className={styles.statusCard} open={!isDbConnected || !initialCloudinaryStatus}>
+        <summary className={styles.statusTitle}>System connections <span>{isDbConnected && initialCloudinaryStatus ? 'Ready' : 'Check setup'}</span></summary>
         <div className={styles.statusGrid}>
           {/* Neon DB Status */}
           <div className={styles.statusItem}>
@@ -1452,7 +1446,14 @@ export function AdminDashboard({
             </button>
           </div>
         )}
-      </section>
+        {isDbConnected && (
+          <div className={styles.connectionActions}>
+            <button className={styles.initButton} disabled={isInitializing} onClick={handleInitDb} type="button">
+              {isInitializing ? 'Re-seeding...' : 'Reset & Seed DB'}
+            </button>
+          </div>
+        )}
+      </details>
 
       {/* Hidden file input for Cloudinary upload */}
       <input 
@@ -1476,32 +1477,22 @@ export function AdminDashboard({
       />
 
       {/* ── Quick-glance Dashboard ─────────────────────────────────── */}
-      <section
-        style={{
-          background: 'rgba(10,10,10,0.5)',
-          border: '1px solid rgba(255,255,255,0.06)',
-          borderRadius: '10px',
-          padding: 'var(--space-5) var(--space-6)',
-          marginBottom: 'var(--space-6)',
-          position: 'relative',
-          overflow: 'hidden'
-        }}
-      >
-        {/* red accent line top */}
-        <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '2px', background: 'linear-gradient(90deg, #d72638, transparent 60%)' }} />
-
-        <p style={{ fontSize: '0.62rem', fontFamily: 'var(--font-mono), monospace', letterSpacing: '0.18em', textTransform: 'uppercase', color: '#555', margin: '0 0 var(--space-4) 0' }}>
-          Dashboard Overview
-        </p>
-
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '10px' }}>
-          {/* Revenue confirmed */}
+      <section className={styles.overview} aria-label="Dashboard overview">
+        <p className={styles.overviewHeading}>Overview</p>
+        <div className={styles.metricGrid}>
+          {/* Revenue confirmed in the selected Ghana-time period. */}
           <div style={{ background: '#0a0a0a', border: '1px solid rgba(16,185,129,0.2)', borderRadius: '7px', padding: '12px 14px' }}>
-            <div style={{ fontSize: '0.6rem', fontFamily: 'monospace', letterSpacing: '0.12em', textTransform: 'uppercase', color: '#555', marginBottom: '6px' }}>Revenue</div>
+            <label className={styles.revenueLabel} htmlFor="revenue-range">Revenue</label>
+            <select className={styles.revenueSelect} id="revenue-range" onChange={(event) => setRevenueRange(event.target.value as RevenueRange)} value={revenueRange}>
+              <option value="today">Today</option>
+              <option value="week">This week</option>
+              <option value="last30">Last 30 days</option>
+              <option value="lastMonth">Last month</option>
+            </select>
             <div style={{ fontSize: '1.35rem', fontWeight: 800, fontFamily: 'monospace', color: '#10b981', lineHeight: 1 }}>
-              GH₵{orders.filter(o => o.paymentStatus === 'paid').reduce((s, o) => s + o.price, 0).toFixed(2)}
+              {ordersLoaded ? formatCurrency(revenue.amount) : '—'}
             </div>
-            <div style={{ fontSize: '0.62rem', color: '#444', marginTop: '4px' }}>from {orders.filter(o => o.paymentStatus === 'paid').length} paid order{orders.filter(o => o.paymentStatus === 'paid').length !== 1 ? 's' : ''}</div>
+            <div className={styles.metricNote}>{ordersLoaded ? `${revenue.count} paid order${revenue.count === 1 ? '' : 's'} · Ghana time` : 'Loading orders…'}</div>
           </div>
 
           {/* Pending value */}
@@ -1557,23 +1548,27 @@ export function AdminDashboard({
       </section>
 
       {/* Tabs Layout */}
-      <div className={styles.tabs}>
+      <nav className={styles.tabs} aria-label="Admin sections">
         <button 
           className={`${styles.tab} ${activeTab === 'products' ? styles.activeTab : ''}`}
+          aria-pressed={activeTab === 'products'}
           onClick={() => setActiveTab('products')}
+          type="button"
         >
           Products ({products.length})
         </button>
         <button 
           className={`${styles.tab} ${activeTab === 'orders' ? styles.activeTab : ''}`}
+          aria-pressed={activeTab === 'orders'}
           onClick={() => {
             setActiveTab('orders');
             refreshOrders();
           }}
+          type="button"
         >
-          Customer Orders ({orders.length})
+          Orders ({orders.length})
         </button>
-      </div>
+      </nav>
 
       {/* Products Tab View */}
       {activeTab === 'products' && (
@@ -1802,7 +1797,7 @@ export function AdminDashboard({
           )}
 
           {orders.length > 0 && (
-            <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: 'var(--space-3)' }}>
+            <div className={styles.orderFilters}>
               {([
                 ['paid', `Paid (${orders.filter((o) => o.paymentStatus === 'paid').length})`],
                 ['unpaid', `Unpaid (${orders.filter((o) => o.paymentStatus === 'unpaid').length})`],
@@ -1812,6 +1807,7 @@ export function AdminDashboard({
                 ['all', `All (${orders.length})`]
               ] as [PaymentFilter, string][]).map(([key, label]) => (
                 <button
+                  className={styles.filterButton}
                   key={key}
                   onClick={() => setPaymentFilter(key)}
                   style={{
@@ -1843,8 +1839,8 @@ export function AdminDashboard({
               </p>
             </div>
           ) : (
-            <div style={{ overflowX: 'auto', background: '#080808', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '4px' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontFamily: 'monospace', fontSize: '0.85rem' }}>
+            <div className={styles.orderTableWrap}>
+              <table className={styles.orderTable}>
                 <thead>
                   <tr style={{ background: '#111', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
                     <th style={{ padding: 'var(--space-3)', color: '#aaa', fontWeight: 600 }}>Order ID</th>
@@ -1863,6 +1859,7 @@ export function AdminDashboard({
                   {orders.filter((o) => matchesPaymentFilter(o, paymentFilter)).map((o) => (
                     <tr
                       key={o.id}
+                      data-expanded={expandedOrders.includes(o.id)}
                       style={{
                         borderBottom: '1px solid rgba(255,255,255,0.03)',
                         // An unpaid card order left hanging gets a red rail down
@@ -1878,8 +1875,11 @@ export function AdminDashboard({
                         transition: 'opacity 0.15s, background 0.3s'
                       }}
                     >
-                      <td style={{ padding: 'var(--space-3)', color: '#555' }}>
+                      <td data-label="Order" style={{ padding: 'var(--space-3)', color: '#555' }}>
                         <div>#RD-{o.id}</div>
+                        <button className={styles.orderExpandButton} aria-expanded={expandedOrders.includes(o.id)} onClick={() => setExpandedOrders((current) => current.includes(o.id) ? current.filter((id) => id !== o.id) : [...current, o.id])} type="button">
+                          {expandedOrders.includes(o.id) ? 'Less details' : 'More details'}
+                        </button>
                         {o.source === 'admin' && (
                           <div
                             style={{
@@ -1900,12 +1900,12 @@ export function AdminDashboard({
                           </div>
                         )}
                       </td>
-                      <td style={{ padding: 'var(--space-3)' }}>
+                      <td data-label="Customer" style={{ padding: 'var(--space-3)' }}>
                         <div style={{ fontWeight: 'bold', color: '#fff' }}>{o.customerName}</div>
                         <div style={{ color: '#aaa', fontSize: '0.75rem' }}>{o.customerPhone}</div>
                         <div style={{ color: '#777', fontSize: '0.7rem' }}>{o.customerEmail}</div>
                       </td>
-                      <td style={{ padding: 'var(--space-3)', minWidth: '260px' }}>
+                      <td data-label="Items" style={{ padding: 'var(--space-3)', minWidth: '260px' }}>
                         <div style={{ display: 'grid', gap: '6px' }}>
                           {o.items.map((item, index) => (
                             <div key={`${item.productSlug}-${item.color}-${item.size}-${index}`}>
@@ -1928,10 +1928,10 @@ export function AdminDashboard({
                           ))}
                         </div>
                       </td>
-                      <td style={{ padding: 'var(--space-3)', color: '#fff', fontWeight: 'bold', textAlign: 'center' }}>
+                      <td data-label="Quantity" style={{ padding: 'var(--space-3)', color: '#fff', fontWeight: 'bold', textAlign: 'center' }}>
                         {o.totalQuantity}
                       </td>
-                      <td style={{ padding: 'var(--space-3)', color: '#fff', fontWeight: 'bold', whiteSpace: 'nowrap' }}>
+                      <td data-label="Total" style={{ padding: 'var(--space-3)', color: '#fff', fontWeight: 'bold', whiteSpace: 'nowrap' }}>
                         GH₵{o.price.toFixed(2)}
                         <div style={{ color: '#666', fontSize: '0.7rem', fontWeight: 'normal', marginTop: '2px' }}>
                           sub GH₵{o.subtotal.toFixed(2)}
@@ -1955,11 +1955,11 @@ export function AdminDashboard({
                           </div>
                         )}
                       </td>
-                      <td style={{ padding: 'var(--space-3)' }}>
+                      <td data-label="Ship to" style={{ padding: 'var(--space-3)' }}>
                         <div style={{ color: '#f5f3ee' }}>{o.shippingAddress}</div>
                         <div style={{ color: '#888', fontSize: '0.75rem' }}>{o.shippingCity}</div>
                       </td>
-                      <td style={{ padding: 'var(--space-3)', verticalAlign: 'top' }}>
+                      <td data-label="Payment" style={{ padding: 'var(--space-3)', verticalAlign: 'top' }}>
                         {(() => {
                           const badge = paymentBadge(o);
                           const reference = o.paymentReference || o.momoNumber;
@@ -1989,7 +1989,7 @@ export function AdminDashboard({
                                 {o.paymentStatus === 'paid' && (
                                   <div style={{ color: '#10b981' }}>
                                     GH₵{Number(o.amountPaid ?? o.price).toFixed(2)} received
-                                    {o.paidAt ? ` · ${new Date(o.paidAt).toLocaleString()}` : ''}
+                                    {o.paidAt ? ` · ${formatAdminDateTime(o.paidAt)}` : ''}
                                   </div>
                                 )}
 
@@ -2009,7 +2009,7 @@ export function AdminDashboard({
                                 {o.paymentVerifiedBy && (
                                   <div style={{ color: '#555', fontSize: '0.66rem' }}>
                                     Confirmed by: {o.paymentVerifiedBy}
-                                    {o.lastVerifiedAt ? ` · checked ${new Date(o.lastVerifiedAt).toLocaleString()}` : ''}
+                                    {o.lastVerifiedAt ? ` · checked ${formatAdminDateTime(o.lastVerifiedAt)}` : ''}
                                   </div>
                                 )}
 
@@ -2124,7 +2124,7 @@ export function AdminDashboard({
                           );
                         })()}
                       </td>
-                      <td style={{ padding: 'var(--space-3)' }}>
+                      <td data-label="Status" style={{ padding: 'var(--space-3)' }}>
                         <select
                           value={o.status || 'Pending'}
                           onChange={(e) => handleUpdateOrderStatus(o.id, e.target.value)}
@@ -2164,8 +2164,8 @@ export function AdminDashboard({
                             </div>
                           )}
                       </td>
-                      <td style={{ padding: 'var(--space-3)', color: '#777' }}>{new Date(o.createdAt).toLocaleString()}</td>
-                      <td style={{ padding: 'var(--space-3)' }}>
+                      <td data-label="Placed" style={{ padding: 'var(--space-3)', color: '#777' }}>{formatAdminDateTime(o.createdAt)}</td>
+                      <td data-label="Actions" style={{ padding: 'var(--space-3)' }}>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                           <button
                             onClick={() => handlePrintOrder(o)}
@@ -2308,7 +2308,7 @@ export function AdminDashboard({
               <div class="section-title">Stock by Colour & Size</div>
               <table><thead><tr><th>Colour</th><th>Sizes & Stock</th></tr></thead><tbody>${colorRows}</tbody></table>
             </div>
-            <div class="footer">Generated ${new Date().toLocaleString()} · redoxdesignx.com</div>
+            <div class="footer">Generated ${formatAdminDateTime(new Date())} · redoxdesignx.com</div>
           </div></body></html>`;
 
           const w = window.open('', '_blank', 'width=860,height=1000');
@@ -2517,10 +2517,10 @@ export function AdminDashboard({
       {/* Product Creation / Edition Modal */}
       {showProductModal && (
         <div className={styles.modalOverlay}>
-          <div className={styles.modalContent}>
+          <div className={styles.modalContent} role="dialog" aria-modal="true" aria-labelledby="product-editor-title">
             <div className={styles.modalHeader}>
-              <h3 className={styles.modalTitle}>{productForm.id ? 'Modify Product' : 'Add New Product'}</h3>
-              <button className={styles.closeButton} onClick={() => setShowProductModal(false)}>&times;</button>
+              <h3 className={styles.modalTitle} id="product-editor-title">{productForm.id ? 'Modify Product' : 'Add New Product'}</h3>
+              <button aria-label="Close product editor" className={styles.closeButton} onClick={() => setShowProductModal(false)} type="button">&times;</button>
             </div>
             
             <form onSubmit={handleProductSubmit} className={styles.form}>
@@ -2666,8 +2666,9 @@ export function AdminDashboard({
 
                 {/* Product Name */}
                 <div className={styles.field}>
-                  <label className={styles.fieldLabel}>Product Name *</label>
+                  <label className={styles.fieldLabel} htmlFor="product-name">Product Name *</label>
                   <input 
+                    id="product-name"
                     type="text" 
                     required 
                     className={styles.input}
@@ -2679,8 +2680,9 @@ export function AdminDashboard({
 
                 {/* Price */}
                 <div className={styles.field}>
-                  <label className={styles.fieldLabel}>Price (GH₵ GHS) *</label>
+                  <label className={styles.fieldLabel} htmlFor="product-price">Price (GH₵ GHS) *</label>
                   <input 
+                    id="product-price"
                     type="number" 
                     required 
                     className={styles.input}
@@ -2691,34 +2693,25 @@ export function AdminDashboard({
                 </div>
 
                 {/* Product Unique ID */}
-                <div className={styles.field}>
-                  <label className={styles.fieldLabel}>Unique ID (SKU base)</label>
-                  <input 
-                    type="text" 
-                    className={styles.input}
-                    placeholder="e.g. jkt-002 (Leave blank for automatic)"
-                    disabled={Boolean(productForm.id)}
-                    value={productForm.id}
-                    onChange={(e) => setProductForm((p) => ({ ...p, id: e.target.value }))}
-                  />
-                </div>
-
-                {/* Slug */}
-                <div className={styles.field}>
-                  <label className={styles.fieldLabel}>URL Slug</label>
-                  <input 
-                    type="text" 
-                    className={styles.input}
-                    placeholder="e.g. cobalt-utility-vest (Automatic if blank)"
-                    value={productForm.slug}
-                    onChange={(e) => setProductForm((p) => ({ ...p, slug: e.target.value }))}
-                  />
-                </div>
+                <details className={`${styles.advancedDetails} ${styles.formGridFull}`}>
+                  <summary>Advanced product settings <span>SKU and URL</span></summary>
+                  <div className={styles.advancedGrid}>
+                    <div className={styles.field}>
+                      <label className={styles.fieldLabel} htmlFor="product-sku">Unique ID (SKU base)</label>
+                      <input id="product-sku" type="text" className={styles.input} placeholder="Automatic if blank" disabled={Boolean(productForm.id)} value={productForm.id} onChange={(e) => setProductForm((p) => ({ ...p, id: e.target.value }))} />
+                    </div>
+                    <div className={styles.field}>
+                      <label className={styles.fieldLabel} htmlFor="product-slug">URL Slug</label>
+                      <input id="product-slug" type="text" className={styles.input} placeholder="Automatic if blank" value={productForm.slug} onChange={(e) => setProductForm((p) => ({ ...p, slug: e.target.value }))} />
+                    </div>
+                  </div>
+                </details>
 
                 {/* Category */}
                 <div className={styles.field}>
-                  <label className={styles.fieldLabel}>Product Category *</label>
+                  <label className={styles.fieldLabel} htmlFor="product-category">Product Category *</label>
                   <input 
+                    id="product-category"
                     type="text" 
                     required 
                     className={styles.input}

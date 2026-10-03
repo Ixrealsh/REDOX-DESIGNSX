@@ -1,0 +1,14 @@
+.page { display: grid; min-height: 100vh; place-items: center; padding: 110px 16px 48px; background: #080808; }
+.card { width: min(100%, 440px); padding: clamp(24px, 5vw, 40px); border: 1px solid var(--color-border-light); border-radius: 12px; background: #111; box-shadow: 0 24px 60px rgba(0, 0, 0, 0.4); }
+.brand { margin-bottom: 28px; }
+.logo { display: block; border: 1px solid var(--color-border-light); border-radius: 50%; object-fit: cover; }
+.eyebrow { margin: 18px 0 8px; color: var(--color-red); font: 700 0.72rem var(--font-mono), monospace; letter-spacing: 0.12em; }
+.brand h1 { margin: 0; color: var(--color-white); font-family: var(--font-display), sans-serif; font-size: clamp(1.8rem, 5vw, 2.4rem); line-height: 1.1; text-transform: uppercase; }
+.brand p:last-child { margin: 10px 0 0; color: var(--color-text-secondary); font-size: 0.9rem; }
+.form { display: grid; gap: 10px; }
+.form label { color: var(--color-white); font-size: 0.82rem; font-weight: 700; }
+.form input { min-height: 48px; margin-bottom: 8px; padding: 0 14px; border: 1px solid var(--color-border-light); border-radius: 6px; background: #080808; color: var(--color-white); font: inherit; font-size: 16px; }
+.form button { min-height: 48px; margin-top: 10px; border: 0; border-radius: 6px; background: var(--color-white); color: var(--color-void); font: inherit; font-weight: 700; cursor: pointer; }
+.form button:disabled { opacity: 0.65; cursor: wait; }
+.form :is(input, button):focus-visible { outline: 2px solid var(--color-white); outline-offset: 3px; }
+.error { margin: 0 0 18px; padding: 12px; border: 1px solid var(--color-red); border-radius: 6px; color: #ff9aa4; font-size: 0.85rem; line-height: 1.4; }
