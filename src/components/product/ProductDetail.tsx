@@ -1131,20 +1131,20 @@ export function ProductDetail({ product }: ProductDetailProps) {
                     </select>
                   </div>
 
-                  <div style={{ gridColumn: '1 / -1' }}>
-                    <DeliveryChoice region={formData.city} method={deliveryMethod} settings={deliverySettings} loading={deliveryLoading} onChange={setDeliveryMethod} />
-                  </div>
-
-                  <div className={styles.formGroup} style={{ gridColumn: '1 / -1' }}>
+                  <div className={styles.formGroup}>
                     <label className={styles.fieldLabel}>{delivery.method !== 'none' ? 'PREFERRED STATION / TOWN *' : 'DELIVERY LOCATION *'}</label>
                     <input
                       type="text"
                       required
                       className={styles.formInput}
-                      placeholder={delivery.method !== 'none' ? 'Station name and town (e.g. Ho station)' : 'e.g. Dansoman, Accra, Tarkwa, Kumasi'}
+                      placeholder={delivery.method !== 'none' ? 'Station name (e.g Kumasi, Tarkwa & Temale station)' : 'e.g. Dansoman, Accra, Tarkwa, Kumasi'}
                       value={formData.address}
                       onChange={(e) => setFormData(f => ({ ...f, address: e.target.value }))}
                     />
+                  </div>
+
+                  <div style={{ gridColumn: '1 / -1' }}>
+                    <DeliveryChoice region={formData.city} method={deliveryMethod} settings={deliverySettings} loading={deliveryLoading} onChange={setDeliveryMethod} />
                   </div>
 
                   <div className={styles.formGroup} style={{ gridColumn: 'span 2' }}>

@@ -468,9 +468,9 @@ export function AdminDashboard({
 
   const handleUpdateOrderStatus = async (orderId: number, status: string) => {
     try {
-      await postOrderAction({ action: 'updateStatus', orderId, status });
-      setOrders(prev => prev.map(o => o.id === orderId ? { ...o, status } : o));
-      triggerNotification(`Order #RD-${orderId} status set to "${status}" successfully!`, 'success');
+      const data = await postOrderAction({ action: 'updateStatus', orderId, status });
+      patchOrder(data.order, orderId);
+      triggerNotification(data.message, data.shippedSmsSent === false ? 'error' : 'success');
     } catch (err: any) {
       triggerNotification(err.message || 'Error updating order status.', 'error');
     }
@@ -2196,6 +2196,16 @@ export function AdminDashboard({
                           <option value="Cancelled" style={{ background: '#111', color: '#ef4444' }}>Cancelled</option>
                           <option value="Payment Failed" style={{ background: '#111', color: '#ef4444' }}>Payment Failed</option>
                         </select>
+
+                        {o.status === 'Shipped' && !o.shippedSmsSent && (
+                          <button
+                            type="button"
+                            className={styles.smsEditButton}
+                            onClick={() => handleUpdateOrderStatus(o.id, 'Shipped')}
+                          >
+                            Retry shipping SMS
+                          </button>
+                        )}
 
                         {/* Fulfilment and money are separate states: shipping an
                             unpaid order is a decision, never an accident. */}

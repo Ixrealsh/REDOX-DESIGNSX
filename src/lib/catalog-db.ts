@@ -794,6 +794,7 @@ async function ensureOrdersSchema(): Promise<void> {
           ADD COLUMN IF NOT EXISTS stock_released BOOLEAN NOT NULL DEFAULT FALSE,
           ADD COLUMN IF NOT EXISTS sms_sent BOOLEAN NOT NULL DEFAULT FALSE,
           ADD COLUMN IF NOT EXISTS sms_deferred BOOLEAN NOT NULL DEFAULT FALSE,
+          ADD COLUMN IF NOT EXISTS shipped_sms_sent BOOLEAN NOT NULL DEFAULT FALSE,
           ADD COLUMN IF NOT EXISTS discount NUMERIC NOT NULL DEFAULT 0,
           ADD COLUMN IF NOT EXISTS source VARCHAR(20) NOT NULL DEFAULT 'web',
           ADD COLUMN IF NOT EXISTS client_request_id VARCHAR(80),
@@ -1151,6 +1152,7 @@ function mapOrderRow(row: any): Order {
     stockReserved: row.stock_reserved !== false,
     stockReleased: row.stock_released === true,
     smsSent: row.sms_sent === true,
+    shippedSmsSent: row.shipped_sms_sent === true,
     smsDeferred: row.sms_deferred === true
   };
 }
@@ -1287,6 +1289,7 @@ export type NewOrderInput = Omit<
   | 'stockReleased'
   | 'smsSent'
   | 'smsDeferred'
+  | 'shippedSmsSent'
   | 'discount'
   | 'source'
   | 'extras'
@@ -1305,6 +1308,7 @@ export async function addDbOrder(o: NewOrderInput): Promise<Order> {
     stockReleased: o.stockReleased === true,
     smsSent: o.smsSent === true,
     smsDeferred: o.smsDeferred === true,
+    shippedSmsSent: false,
     discount: Number.isFinite(o.discount) ? Math.max(0, Number(o.discount)) : 0,
     source: o.source === 'admin' ? ('admin' as const) : ('web' as const),
     extras: parseOrderExtras(o.extras),
@@ -1831,6 +1835,35 @@ export async function setDbOrderStatus(id: number, status: string): Promise<Orde
     UPDATE orders SET status = ${status} WHERE id = ${id} RETURNING *;
   `;
   return rows.length > 0 ? mapOrderRow(rows[0]) : undefined;
+}
+
+/** Atomically claims one shipping SMS while the order is still shipped. */
+export async function claimDbOrderShippedSms(id: number): Promise<boolean> {
+  if (!isDbConfigured) {
+    const order = sandboxOrders.find((candidate) => candidate.id === id);
+    if (!order || order.status !== 'Shipped' || order.shippedSmsSent) return false;
+    order.shippedSmsSent = true;
+    return true;
+  }
+
+  await ensureOrdersSchema();
+  const rows = await sql`
+    UPDATE orders SET shipped_sms_sent = TRUE
+    WHERE id = ${id} AND status = 'Shipped' AND shipped_sms_sent = FALSE
+    RETURNING id
+  `;
+  return rows.length > 0;
+}
+
+export async function releaseDbOrderShippedSmsClaim(id: number): Promise<void> {
+  if (!isDbConfigured) {
+    const order = sandboxOrders.find((candidate) => candidate.id === id);
+    if (order) order.shippedSmsSent = false;
+    return;
+  }
+
+  await ensureOrdersSchema();
+  await sql`UPDATE orders SET shipped_sms_sent = FALSE WHERE id = ${id}`;
 }
 
 export async function deleteDbOrder(id: number): Promise<boolean> {

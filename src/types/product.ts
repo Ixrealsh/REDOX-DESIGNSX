@@ -202,6 +202,8 @@ export interface Order {
   stockReserved: boolean;
   stockReleased: boolean;
   smsSent: boolean;
+  /** Shipping update accepted by the SMS gateway. Separate from order confirmation. */
+  shippedSmsSent?: boolean;
   /** Admin chose to hold the confirmation SMS until sending it from the order. */
   smsDeferred?: boolean;
 }

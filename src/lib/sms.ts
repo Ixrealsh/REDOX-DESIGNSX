@@ -1,5 +1,6 @@
 import type { Order } from '@/types/product';
 import { formatGhanaPhone, isValidGhanaPhone } from './phone';
+import { buildShippedSms } from './shipping-sms';
 
 const HUBTEL_ENDPOINT = 'https://smsc.hubtel.com/v1/messages/send';
 const SMS_TIMEOUT_MS = 8_000;
@@ -306,5 +307,27 @@ export async function sendOrderSms(order: Order): Promise<SmsResult> {
     recipients: recipients.map((recipient) => maskPhone(recipient.msisdn)),
     deliveries,
     reason: sent ? undefined : customerDelivery?.reason || 'customer_phone_invalid'
+  };
+}
+
+export async function sendShippedSms(order: Order): Promise<SmsResult> {
+  const config = readHubtelConfig();
+  if (!config) return { sent: false, recipients: [], deliveries: [], reason: 'not_configured' };
+
+  const msisdn = formatGhanaPhone(order.customerPhone || '');
+  if (!isValidGhanaPhone(msisdn)) {
+    return { sent: false, recipients: [], deliveries: [], reason: 'customer_phone_invalid' };
+  }
+
+  const delivery = await sendToRecipient(
+    config,
+    { role: 'customer', msisdn },
+    buildShippedSms(order)
+  );
+  return {
+    sent: delivery.ok,
+    recipients: [delivery.msisdn],
+    deliveries: [delivery],
+    reason: delivery.reason
   };
 }

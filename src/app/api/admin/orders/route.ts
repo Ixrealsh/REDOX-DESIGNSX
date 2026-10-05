@@ -1,11 +1,13 @@
 import { NextResponse } from 'next/server';
 import {
+  claimDbOrderShippedSms,
   deleteDbOrder,
   getDbOrderById,
   getDbOrders,
   markDbOrderPaid,
   markDbOrderRefunded,
   revertDbOrderToUnpaid,
+  releaseDbOrderShippedSmsClaim,
   setDbOrderStatus,
   updateDbOrderSmsDetails
 } from '@/lib/catalog-db';
@@ -19,6 +21,7 @@ import {
 } from '@/lib/payment-service';
 import { ORDER_STATUSES } from '@/types/product';
 import { formatGhanaPhone, isValidGhanaPhone } from '@/lib/phone';
+import { sendShippedSms } from '@/lib/sms';
 
 export const dynamic = 'force-dynamic';
 
@@ -230,10 +233,39 @@ export async function POST(request: Request) {
 
       const updated = await setDbOrderStatus(orderId, status);
 
+      let shippedSmsSent: boolean | undefined;
+      let shippedSmsReason: string | undefined;
+      if (status === 'Shipped' && updated && !updated.shippedSmsSent) {
+        const claimed = await claimDbOrderShippedSms(orderId);
+        if (claimed) {
+          try {
+            const result = await sendShippedSms(updated);
+            shippedSmsSent = result.sent;
+            shippedSmsReason = result.reason;
+            if (!result.sent) await releaseDbOrderShippedSmsClaim(orderId);
+          } catch (error) {
+            console.error(`[orders] Shipping SMS failed for #RD-${orderId}:`, error);
+            shippedSmsSent = false;
+            shippedSmsReason = 'send_failed';
+            await releaseDbOrderShippedSmsClaim(orderId);
+          }
+        }
+      }
+
       return NextResponse.json({
         success: true,
-        message: 'Order status updated successfully!',
-        order: updated
+        message: shippedSmsSent === false
+          ? shippedSmsReason === 'not_configured'
+            ? 'Order marked as shipped, but Hubtel SMS credentials are not configured. Add them, then retry the shipping SMS.'
+            : shippedSmsReason === 'customer_phone_invalid'
+              ? 'Order marked as shipped, but the customer phone number is invalid. Correct it, then retry the shipping SMS.'
+              : 'Order marked as shipped, but the shipping SMS was not accepted. Check the SMS gateway and retry.'
+          : shippedSmsSent === true
+            ? 'Order marked as shipped. Shipping SMS accepted by the gateway.'
+            : 'Order status updated successfully.',
+        shippedSmsSent,
+        shippedSmsReason,
+        order: shippedSmsSent === undefined ? updated : await getDbOrderById(orderId)
       });
     }
 
