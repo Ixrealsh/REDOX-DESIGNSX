@@ -1132,7 +1132,7 @@ export function ProductDetail({ product }: ProductDetailProps) {
                   </div>
 
                   <div className={styles.formGroup}>
-                    <label className={styles.fieldLabel}>{delivery.method !== 'none' ? 'PREFERRED STATION / TOWN *' : 'DELIVERY LOCATION *'}</label>
+                    <label className={styles.fieldLabel}>{delivery.method !== 'none' ? 'TOWN *' : 'DELIVERY LOCATION *'}</label>
                     <input
                       type="text"
                       required
