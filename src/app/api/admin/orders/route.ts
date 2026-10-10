@@ -24,7 +24,7 @@ import { ORDER_STATUSES } from '@/types/product';
 import { formatGhanaPhone, isValidGhanaPhone } from '@/lib/phone';
 import { sendShippedSms } from '@/lib/sms';
 import { priceOrderDraft } from '@/lib/order-pricing';
-import { adminOrderSchema, resolveDiscount, sumOrderExtras } from '@/lib/order-schema';
+import { adminOrderEditSchema, resolveDiscount, sumOrderExtras } from '@/lib/order-schema';
 
 export const dynamic = 'force-dynamic';
 
@@ -98,7 +98,7 @@ export async function POST(request: Request) {
       if (order.source !== 'admin') {
         return NextResponse.json({ error: 'Only in-person orders can be edited here.' }, { status: 400 });
       }
-      const parsed = adminOrderSchema.safeParse(body);
+      const parsed = adminOrderEditSchema.safeParse(body);
       if (!parsed.success) {
         const issue = parsed.error.issues[0];
         return NextResponse.json({ error: `${issue.path.join('.')}: ${issue.message}` }, { status: 400 });
@@ -119,6 +119,10 @@ export async function POST(request: Request) {
       }));
       const bill = Math.round((draft.subtotal + sumOrderExtras(extras)) * 100) / 100;
       const discount = resolveDiscount(bill, input.discountType, input.discountValue);
+      const newTotal = Math.round((bill - discount) * 100) / 100;
+      if (order.paymentStatus === 'paid' && newTotal > (order.amountPaid ?? order.price) && body?.confirmAdditionalPaid !== true) {
+        return NextResponse.json({ error: 'Confirm the additional payment before increasing a paid order total.' }, { status: 400 });
+      }
       const primary = draft.items[0];
       const updated = await editDbInPersonOrder(orderId, {
         productId: primary.productId,
@@ -131,7 +135,8 @@ export async function POST(request: Request) {
         subtotal: draft.subtotal,
         extras,
         discount,
-        price: Math.round((bill - discount) * 100) / 100,
+        price: newTotal,
+        amountPaid: order.paymentStatus === 'paid' && newTotal > (order.amountPaid ?? order.price) ? newTotal : order.amountPaid,
         customerName: input.customerName,
         customerPhone: input.customerPhone,
         customerEmail: input.customerEmail || order.customerEmail,

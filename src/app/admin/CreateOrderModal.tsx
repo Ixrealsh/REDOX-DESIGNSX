@@ -154,7 +154,7 @@ export function CreateOrderModal({ products, initialOrder, onClose, onCreated, o
   const [shippingAddress, setShippingAddress] = useState(initialOrder?.shippingAddress || '');
   const [shippingCity, setShippingCity] = useState(initialOrder?.shippingCity || '');
 
-  const [paidNow, setPaidNow] = useState(initialOrder ? initialOrder.paymentStatus === 'paid' : true);
+  const [paidNow, setPaidNow] = useState(initialOrder ? initialOrder.paymentStatus === 'paid' : false);
   const [paymentMethod, setPaymentMethod] = useState<'CASH' | 'MOMO' | 'BANK'>('CASH');
   const [note, setNote] = useState(initialOrder?.paymentNote || '');
 
@@ -363,9 +363,7 @@ export function CreateOrderModal({ products, initialOrder, onClose, onCreated, o
     .filter((extra) => extra.label.length > 0 && Number.isFinite(extra.amount) && extra.amount > 0)
     .map((extra) => ({ label: extra.label, amount: round2(extra.amount) }));
 
-  const incompleteExtras = extras.filter(
-    (extra) => extra.label.trim().length > 0 || extra.amount.trim().length > 0
-  ).length - validExtras.length;
+  const incompleteExtras = extras.length - validExtras.length;
 
   // ── Money ─────────────────────────────────────────────────────
   // Bulk pricing applies to in-person orders too, and the server will apply it
@@ -427,6 +425,13 @@ export function CreateOrderModal({ products, initialOrder, onClose, onCreated, o
   const handleCreate = async () => {
     if (!canSubmit) return;
 
+    const additionalDue = initialOrder?.paymentStatus === 'paid'
+      ? round2(total - (initialOrder.amountPaid ?? initialOrder.price))
+      : 0;
+    if (additionalDue > 0 && !window.confirm(
+      `This edit adds ${formatCurrency(additionalDue)} to a paid order. Confirm you have received the additional payment before saving.`
+    )) return;
+
     setIsCreating(true);
     setError('');
 
@@ -436,6 +441,7 @@ export function CreateOrderModal({ products, initialOrder, onClose, onCreated, o
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ...(initialOrder ? { action: 'editOrder', orderId: initialOrder.id } : {}),
+          ...(additionalDue > 0 ? { confirmAdditionalPaid: true } : {}),
           customerName: customerName.trim(),
           customerPhone: customerPhone.trim(),
           sendSmsNow,
@@ -531,7 +537,7 @@ export function CreateOrderModal({ products, initialOrder, onClose, onCreated, o
     setDiscountValue('0');
     setDiscountType('amount');
     setNote('');
-    setPaidNow(true);
+    setPaidNow(false);
     setPaymentMethod('CASH');
     setSearch('');
     setOpenSlug(null);
@@ -972,13 +978,13 @@ export function CreateOrderModal({ products, initialOrder, onClose, onCreated, o
                 {phoneTouched && (
                   <p className={`${styles.hint} ${phoneValid ? styles.hintOk : styles.hintWarn}`}>
                     {phoneValid
-                      ? sendSmsNow ? `✓ SMS will be sent to ${msisdn}` : `Number saved for SMS later: ${msisdn}`
-                      : sendSmsNow ? '⚠ Not a valid Ghana number — the order will save, but no SMS can be sent.' : 'You can correct this number before sending SMS later.'}
+                      ? initialOrder ? `Valid number: ${msisdn}. Use Edit phone / SMS in Orders to send a text.` : sendSmsNow ? `✓ SMS will be sent to ${msisdn}` : `Number saved for SMS later: ${msisdn}`
+                      : initialOrder ? 'Enter a valid Ghanaian number.' : sendSmsNow ? '⚠ Not a valid Ghana number — the order will save, but no SMS can be sent.' : 'You can correct this number before sending SMS later.'}
                   </p>
                 )}
               </div>
 
-              <fieldset className={`${styles.smsTiming} ${styles.formGridFull}`}>
+              {!initialOrder && <fieldset className={`${styles.smsTiming} ${styles.formGridFull}`}>
                 <legend>Confirmation SMS</legend>
                 <label className={styles.smsTimingOption}>
                   <input checked={sendSmsNow} name="create-order-sms" onChange={() => setSendSmsNow(true)} type="radio" />
@@ -988,7 +994,7 @@ export function CreateOrderModal({ products, initialOrder, onClose, onCreated, o
                   <input checked={!sendSmsNow} name="create-order-sms" onChange={() => setSendSmsNow(false)} type="radio" />
                   <span><strong>Send later</strong><small>Save the order now. Edit the number and send from Orders when ready.</small></span>
                 </label>
-              </fieldset>
+              </fieldset>}
 
               <p className={`${styles.orderBlockTitle} ${styles.formGridFull}`}>Delivery and contact details</p>
               <div className={styles.field}>

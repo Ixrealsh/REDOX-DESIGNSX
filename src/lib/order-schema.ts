@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import type { RequestedLine } from '@/lib/order-pricing';
-import { formatGhanaPhone, isValidGhanaPhone } from '@/lib/phone';
+import { formatGhanaPhone, isValidGhanaPhone } from './phone.ts';
 
 /** Shared request validation for every route that can create an order. */
 
@@ -105,8 +105,8 @@ export const adminOrderSchema = z.object({
   /** Printing, customisation, delivery — anything that is not a catalogue piece. */
   extras: z.array(orderExtraSchema).max(20).optional(),
 
-  discountType: z.enum(['amount', 'percent']).optional(),
-  discountValue: z.number().nonnegative().max(1_000_000).optional(),
+  discountType: z.enum(['amount', 'percent']),
+  discountValue: z.number().nonnegative().max(1_000_000),
 
   /** Sells a variant the catalogue believes is sold out. */
   allowOutOfStock: z.boolean().optional(),

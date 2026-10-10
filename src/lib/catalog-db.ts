@@ -1149,6 +1149,7 @@ async function ensureOrdersSchema(): Promise<void> {
             subtotal = (p_order->>'subtotal')::NUMERIC,
             extras = COALESCE(p_order->'extras', '[]'::jsonb),
             discount = (p_order->>'discount')::NUMERIC, price = (p_order->>'price')::NUMERIC,
+            amount_paid = COALESCE((p_order->>'amountPaid')::NUMERIC, orders.amount_paid),
             customer_name = p_order->>'customerName', customer_phone = p_order->>'customerPhone',
             customer_email = p_order->>'customerEmail', shipping_address = p_order->>'shippingAddress',
             shipping_city = p_order->>'shippingCity',
@@ -1587,7 +1588,7 @@ export async function editDbInPersonOrder(
     'productId' | 'productName' | 'productSlug' | 'selectedColor' | 'selectedSize' |
     'items' | 'totalQuantity' | 'subtotal' | 'extras' | 'discount' | 'price' |
     'customerName' | 'customerPhone' | 'customerEmail' | 'shippingAddress' |
-    'shippingCity' | 'paymentNote'>,
+    'shippingCity' | 'paymentNote' | 'amountPaid'>,
   allowShortfall = false
 ): Promise<Order> {
   await ensureProductsSchema();
