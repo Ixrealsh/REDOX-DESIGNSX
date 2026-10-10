@@ -141,7 +141,7 @@ export async function POST(request: Request) {
         clientRequestId: input.clientRequestId,
         status: 'Awaiting Payment',
         paymentStatus: 'unpaid',
-        stockReserved: true,
+        stockReserved: false,
         stockReleased: false,
         smsSent: false
       }, draft.lines);

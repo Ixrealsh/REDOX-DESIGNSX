@@ -960,23 +960,25 @@ async function ensureOrdersSchema(): Promise<void> {
               END IF;
             END LOOP;
 
-            updated_variants := '[]'::jsonb;
-            FOR variant IN SELECT value FROM jsonb_array_elements(product_row.variants)
-            LOOP
-              SELECT COALESCE(SUM(x.quantity), 0)::INTEGER INTO requested
-              FROM jsonb_to_recordset(p_lines) AS x("productSlug" TEXT, color TEXT, size TEXT, quantity INTEGER)
-              WHERE x."productSlug" = item.slug
-                AND x.color = variant->>'color' AND x.size = variant->>'size';
-              IF requested > 0 AND jsonb_typeof(variant->'inventory') = 'number' THEN
-                remaining := GREATEST((variant->>'inventory')::INTEGER - requested, 0);
-                variant := jsonb_set(variant, '{inventory}', to_jsonb(remaining));
-                variant := jsonb_set(variant, '{stockStatus}', to_jsonb(
-                  CASE WHEN remaining = 0 THEN 'out_of_stock' ELSE 'in_stock' END
-                ));
-              END IF;
-              updated_variants := updated_variants || jsonb_build_array(variant);
-            END LOOP;
-            UPDATE products SET variants = updated_variants WHERE id = product_row.id;
+            IF p_order->>'paymentStatus' = 'paid' THEN
+              updated_variants := '[]'::jsonb;
+              FOR variant IN SELECT value FROM jsonb_array_elements(product_row.variants)
+              LOOP
+                SELECT COALESCE(SUM(x.quantity), 0)::INTEGER INTO requested
+                FROM jsonb_to_recordset(p_lines) AS x("productSlug" TEXT, color TEXT, size TEXT, quantity INTEGER)
+                WHERE x."productSlug" = item.slug
+                  AND x.color = variant->>'color' AND x.size = variant->>'size';
+                IF requested > 0 AND jsonb_typeof(variant->'inventory') = 'number' THEN
+                  remaining := GREATEST((variant->>'inventory')::INTEGER - requested, 0);
+                  variant := jsonb_set(variant, '{inventory}', to_jsonb(remaining));
+                  variant := jsonb_set(variant, '{stockStatus}', to_jsonb(
+                    CASE WHEN remaining = 0 THEN 'out_of_stock' ELSE 'in_stock' END
+                  ));
+                END IF;
+                updated_variants := updated_variants || jsonb_build_array(variant);
+              END LOOP;
+              UPDATE products SET variants = updated_variants WHERE id = product_row.id;
+            END IF;
           END LOOP;
 
           RETURN QUERY INSERT INTO orders (
@@ -1000,13 +1002,209 @@ async function ensureOrdersSchema(): Promise<void> {
             p_order->>'paymentReference', (p_order->>'paidAt')::TIMESTAMPTZ,
             (p_order->>'amountPaid')::NUMERIC, p_order->>'paymentChannel',
             p_order->>'paystackTransactionId', (p_order->>'lastVerifiedAt')::TIMESTAMPTZ,
-            p_order->>'paymentVerifiedBy', p_order->>'gatewayResponse', TRUE, FALSE,
+            p_order->>'paymentVerifiedBy', p_order->>'gatewayResponse',
+            p_order->>'paymentStatus' = 'paid', FALSE,
             FALSE, COALESCE((p_order->>'smsDeferred')::BOOLEAN, FALSE),
             COALESCE((p_order->>'discount')::NUMERIC, 0),
             COALESCE(p_order->>'source', 'web'), p_order->>'clientRequestId',
             p_order->>'paymentNote', COALESCE(p_order->'extras', '[]'::jsonb),
             COALESCE(p_order->>'deliveryMethod', 'none'), COALESCE((p_order->>'deliveryFee')::NUMERIC, 0)
           ) RETURNING *;
+        END;
+        $fn$;
+      `;
+
+      // Payment and the first stock deduction are one transaction. A retry of a
+      // webhook or an admin click sees the paid row and cannot deduct twice.
+      await sql`
+        CREATE OR REPLACE FUNCTION confirm_order_payment(
+          p_id INTEGER, p_paid_at TIMESTAMPTZ, p_amount NUMERIC,
+          p_channel TEXT, p_transaction TEXT, p_response TEXT,
+          p_note TEXT, p_source TEXT
+        ) RETURNS SETOF orders LANGUAGE plpgsql AS $fn$
+        DECLARE
+          order_row orders%ROWTYPE;
+          product_row products%ROWTYPE;
+          item RECORD;
+          variant JSONB;
+          updated_variants JSONB;
+          requested INTEGER;
+          remaining INTEGER;
+        BEGIN
+          SELECT * INTO order_row FROM orders WHERE id = p_id FOR UPDATE;
+          IF NOT FOUND OR order_row.payment_status = 'paid' THEN RETURN; END IF;
+
+          IF NOT order_row.stock_reserved OR order_row.stock_released THEN
+            FOR item IN
+              SELECT DISTINCT x."productSlug" AS slug
+              FROM jsonb_to_recordset(order_row.items) AS x("productSlug" TEXT)
+              ORDER BY slug
+            LOOP
+              SELECT * INTO product_row FROM products WHERE slug = item.slug FOR UPDATE;
+              IF NOT FOUND THEN CONTINUE; END IF;
+              updated_variants := '[]'::jsonb;
+              FOR variant IN SELECT value FROM jsonb_array_elements(product_row.variants)
+              LOOP
+                SELECT COALESCE(SUM(x.quantity), 0)::INTEGER INTO requested
+                FROM jsonb_to_recordset(order_row.items) AS x("productSlug" TEXT, color TEXT, size TEXT, quantity INTEGER)
+                WHERE x."productSlug" = item.slug AND x.color = variant->>'color' AND x.size = variant->>'size';
+                IF requested > 0 AND jsonb_typeof(variant->'inventory') = 'number' THEN
+                  remaining := (variant->>'inventory')::INTEGER - requested;
+                  remaining := GREATEST(remaining, 0);
+                  variant := jsonb_set(variant, '{inventory}', to_jsonb(remaining));
+                  variant := jsonb_set(variant, '{stockStatus}', to_jsonb(
+                    CASE WHEN remaining = 0 THEN 'out_of_stock' ELSE 'in_stock' END
+                  ));
+                END IF;
+                updated_variants := updated_variants || jsonb_build_array(variant);
+              END LOOP;
+              UPDATE products SET variants = updated_variants WHERE id = product_row.id;
+            END LOOP;
+          END IF;
+
+          RETURN QUERY UPDATE orders SET
+            payment_status = 'paid',
+            status = CASE WHEN status IN ('Awaiting Payment', 'Payment Failed') THEN 'Pending' ELSE status END,
+            paid_at = COALESCE(orders.paid_at, p_paid_at),
+            amount_paid = p_amount,
+            payment_channel = COALESCE(p_channel, orders.payment_channel),
+            paystack_transaction_id = COALESCE(p_transaction, orders.paystack_transaction_id),
+            gateway_response = COALESCE(p_response, orders.gateway_response),
+            payment_note = COALESCE(p_note, orders.payment_note),
+            payment_verified_by = p_source,
+            last_verified_at = NOW(),
+            stock_reserved = TRUE,
+            stock_released = FALSE
+          WHERE id = p_id RETURNING *;
+        END;
+        $fn$;
+      `;
+
+      await sql`
+        CREATE OR REPLACE FUNCTION edit_in_person_order(
+          p_id INTEGER, p_order JSONB, p_allow_shortfall BOOLEAN DEFAULT FALSE
+        ) RETURNS SETOF orders LANGUAGE plpgsql AS $fn$
+        DECLARE
+          order_row orders%ROWTYPE;
+          product_row products%ROWTYPE;
+          item RECORD;
+          variant JSONB;
+          updated_variants JSONB;
+          old_quantity INTEGER;
+          new_quantity INTEGER;
+          delta INTEGER;
+          remaining INTEGER;
+        BEGIN
+          SELECT * INTO order_row FROM orders WHERE id = p_id FOR UPDATE;
+          IF NOT FOUND OR order_row.source <> 'admin' THEN
+            RAISE EXCEPTION 'This in-person order no longer exists.' USING ERRCODE = 'P0001';
+          END IF;
+          IF order_row.payment_status NOT IN ('paid', 'unpaid') THEN
+            RAISE EXCEPTION 'This payment state cannot be edited.' USING ERRCODE = 'P0001';
+          END IF;
+
+          FOR item IN
+            SELECT slug FROM (
+              SELECT DISTINCT x."productSlug" AS slug FROM jsonb_to_recordset(order_row.items) AS x("productSlug" TEXT)
+              UNION
+              SELECT DISTINCT x."productSlug" AS slug FROM jsonb_to_recordset(p_order->'items') AS x("productSlug" TEXT)
+            ) AS slugs ORDER BY slug
+          LOOP
+            SELECT * INTO product_row FROM products WHERE slug = item.slug FOR UPDATE;
+            IF NOT FOUND THEN
+              RAISE EXCEPTION 'A product in this order no longer exists.' USING ERRCODE = 'P0001';
+            END IF;
+            updated_variants := '[]'::jsonb;
+            FOR variant IN SELECT value FROM jsonb_array_elements(product_row.variants)
+            LOOP
+              SELECT COALESCE(SUM(x.quantity), 0)::INTEGER INTO old_quantity
+              FROM jsonb_to_recordset(order_row.items) AS x("productSlug" TEXT, color TEXT, size TEXT, quantity INTEGER)
+              WHERE x."productSlug" = item.slug AND x.color = variant->>'color' AND x.size = variant->>'size';
+              SELECT COALESCE(SUM(x.quantity), 0)::INTEGER INTO new_quantity
+              FROM jsonb_to_recordset(p_order->'items') AS x("productSlug" TEXT, color TEXT, size TEXT, quantity INTEGER)
+              WHERE x."productSlug" = item.slug AND x.color = variant->>'color' AND x.size = variant->>'size';
+              delta := CASE WHEN order_row.payment_status = 'paid' THEN new_quantity ELSE 0 END
+                - CASE WHEN order_row.stock_reserved AND NOT order_row.stock_released THEN old_quantity ELSE 0 END;
+              IF delta <> 0 AND jsonb_typeof(variant->'inventory') = 'number' THEN
+                remaining := (variant->>'inventory')::INTEGER - delta;
+                IF remaining < 0 AND NOT p_allow_shortfall THEN
+                  RAISE EXCEPTION 'Requested stock is unavailable.' USING ERRCODE = 'P0001';
+                END IF;
+                remaining := GREATEST(remaining, 0);
+                variant := jsonb_set(variant, '{inventory}', to_jsonb(remaining));
+                variant := jsonb_set(variant, '{stockStatus}', to_jsonb(
+                  CASE WHEN remaining = 0 THEN 'out_of_stock' ELSE 'in_stock' END
+                ));
+              END IF;
+              updated_variants := updated_variants || jsonb_build_array(variant);
+            END LOOP;
+            UPDATE products SET variants = updated_variants WHERE id = product_row.id;
+          END LOOP;
+
+          RETURN QUERY UPDATE orders SET
+            product_id = p_order->>'productId', product_name = p_order->>'productName',
+            product_slug = p_order->>'productSlug', selected_color = p_order->>'selectedColor',
+            selected_size = p_order->>'selectedSize', items = p_order->'items',
+            total_quantity = (p_order->>'totalQuantity')::INTEGER,
+            subtotal = (p_order->>'subtotal')::NUMERIC,
+            extras = COALESCE(p_order->'extras', '[]'::jsonb),
+            discount = (p_order->>'discount')::NUMERIC, price = (p_order->>'price')::NUMERIC,
+            customer_name = p_order->>'customerName', customer_phone = p_order->>'customerPhone',
+            customer_email = p_order->>'customerEmail', shipping_address = p_order->>'shippingAddress',
+            shipping_city = p_order->>'shippingCity',
+            payment_note = p_order->>'paymentNote',
+            sms_sent = CASE WHEN customer_phone = p_order->>'customerPhone' THEN sms_sent ELSE FALSE END,
+            sms_deferred = CASE WHEN customer_phone = p_order->>'customerPhone' THEN sms_deferred ELSE TRUE END,
+            stock_reserved = payment_status = 'paid', stock_released = FALSE
+          WHERE id = p_id RETURNING *;
+        END;
+        $fn$;
+      `;
+
+      await sql`
+        CREATE OR REPLACE FUNCTION undo_order_payment(p_id INTEGER, p_note TEXT)
+        RETURNS SETOF orders LANGUAGE plpgsql AS $fn$
+        DECLARE
+          order_row orders%ROWTYPE;
+          product_row products%ROWTYPE;
+          item RECORD;
+          variant JSONB;
+          updated_variants JSONB;
+          quantity_to_return INTEGER;
+          remaining INTEGER;
+        BEGIN
+          SELECT * INTO order_row FROM orders WHERE id = p_id FOR UPDATE;
+          IF NOT FOUND OR order_row.payment_status = 'unpaid' THEN RETURN; END IF;
+          IF order_row.stock_reserved AND NOT order_row.stock_released THEN
+            FOR item IN
+              SELECT DISTINCT x."productSlug" AS slug
+              FROM jsonb_to_recordset(order_row.items) AS x("productSlug" TEXT)
+              ORDER BY slug
+            LOOP
+              SELECT * INTO product_row FROM products WHERE slug = item.slug FOR UPDATE;
+              IF NOT FOUND THEN CONTINUE; END IF;
+              updated_variants := '[]'::jsonb;
+              FOR variant IN SELECT value FROM jsonb_array_elements(product_row.variants)
+              LOOP
+                SELECT COALESCE(SUM(x.quantity), 0)::INTEGER INTO quantity_to_return
+                FROM jsonb_to_recordset(order_row.items) AS x("productSlug" TEXT, color TEXT, size TEXT, quantity INTEGER)
+                WHERE x."productSlug" = item.slug AND x.color = variant->>'color' AND x.size = variant->>'size';
+                IF quantity_to_return > 0 AND jsonb_typeof(variant->'inventory') = 'number' THEN
+                  remaining := (variant->>'inventory')::INTEGER + quantity_to_return;
+                  variant := jsonb_set(variant, '{inventory}', to_jsonb(remaining));
+                  variant := jsonb_set(variant, '{stockStatus}', '"in_stock"'::jsonb);
+                END IF;
+                updated_variants := updated_variants || jsonb_build_array(variant);
+              END LOOP;
+              UPDATE products SET variants = updated_variants WHERE id = product_row.id;
+            END LOOP;
+          END IF;
+
+          RETURN QUERY UPDATE orders SET payment_status = 'unpaid', paid_at = NULL,
+            amount_paid = NULL, payment_note = COALESCE(p_note, orders.payment_note),
+            payment_verified_by = 'admin', last_verified_at = NOW(),
+            stock_reserved = FALSE, stock_released = FALSE
+          WHERE id = p_id RETURNING *;
         END;
         $fn$;
       `;
@@ -1383,6 +1581,24 @@ export async function createDbOrderWithStock(
   return mapOrderRow(rows[0]);
 }
 
+export async function editDbInPersonOrder(
+  id: number,
+  changes: Pick<NewOrderInput,
+    'productId' | 'productName' | 'productSlug' | 'selectedColor' | 'selectedSize' |
+    'items' | 'totalQuantity' | 'subtotal' | 'extras' | 'discount' | 'price' |
+    'customerName' | 'customerPhone' | 'customerEmail' | 'shippingAddress' |
+    'shippingCity' | 'paymentNote'>,
+  allowShortfall = false
+): Promise<Order> {
+  await ensureProductsSchema();
+  await ensureOrdersSchema();
+  const rows = await sql`
+    SELECT * FROM edit_in_person_order(${id}, ${JSON.stringify(changes)}::jsonb, ${allowShortfall})
+  `;
+  if (!rows[0]) throw new Error('That order could not be updated.');
+  return mapOrderRow(rows[0]);
+}
+
 export interface StockSelectionWithSlug extends StockSelection {
   productSlug: string;
 }
@@ -1464,19 +1680,11 @@ export async function markDbOrderPaid(id: number, input: MarkPaidInput): Promise
 
   await ensureOrdersSchema();
   const rows = await sql`
-    UPDATE orders SET
-      payment_status = 'paid',
-      status = CASE WHEN status IN ('Awaiting Payment', 'Payment Failed') THEN 'Pending' ELSE status END,
-      paid_at = COALESCE(paid_at, ${paidAt}),
-      amount_paid = ${input.amountPaid},
-      payment_channel = COALESCE(${input.channel || null}, payment_channel),
-      paystack_transaction_id = COALESCE(${input.transactionId || null}, paystack_transaction_id),
-      gateway_response = COALESCE(${input.gatewayResponse || null}, gateway_response),
-      payment_note = COALESCE(${input.note || null}, payment_note),
-      payment_verified_by = ${input.source},
-      last_verified_at = NOW()
-    WHERE id = ${id} AND payment_status <> 'paid'
-    RETURNING *;
+    SELECT * FROM confirm_order_payment(
+      ${id}, ${paidAt}::timestamptz, ${input.amountPaid},
+      ${input.channel || null}, ${input.transactionId || null},
+      ${input.gatewayResponse || null}, ${input.note || null}, ${input.source}
+    )
   `;
 
   if (rows.length > 0) {
@@ -1569,23 +1777,15 @@ export async function revertDbOrderToUnpaid(id: number, note?: string): Promise<
     order.paymentStatus = 'unpaid';
     order.paidAt = undefined;
     order.amountPaid = undefined;
+    order.stockReserved = false;
+    order.stockReleased = false;
     order.paymentNote = note || order.paymentNote;
     order.paymentVerifiedBy = 'admin';
     return { transitioned: true, order };
   }
 
   await ensureOrdersSchema();
-  const rows = await sql`
-    UPDATE orders SET
-      payment_status = 'unpaid',
-      paid_at = NULL,
-      amount_paid = NULL,
-      payment_note = COALESCE(${note || null}, payment_note),
-      payment_verified_by = 'admin',
-      last_verified_at = NOW()
-    WHERE id = ${id} AND payment_status <> 'unpaid'
-    RETURNING *;
-  `;
+  const rows = await sql`SELECT * FROM undo_order_payment(${id}, ${note || null})`;
 
   if (rows.length > 0) return { transitioned: true, order: mapOrderRow(rows[0]) };
   return { transitioned: false, order: await getDbOrderById(id) };

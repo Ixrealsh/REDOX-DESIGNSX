@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import type { RequestedLine } from '@/lib/order-pricing';
+import { formatGhanaPhone, isValidGhanaPhone } from '@/lib/phone';
 
 /** Shared request validation for every route that can create an order. */
 
@@ -76,9 +77,7 @@ export const directOrderSchema = customerSchema
  * Body accepted by `POST /api/admin/orders/create` — an order the merchant
  * recorded by hand for someone standing in front of them.
  *
- * Deliberately looser than `customerSchema`: only a name and a phone are
- * required, because the point of this form is that it can be filled in during a
- * conversation. Everything else the order needs is defaulted server-side.
+ * The admin records complete customer and delivery details for each order.
  *
  * The money fields are inputs to a calculation, never the calculation's result.
  * The server prices every line from the database and works the discount out
@@ -86,11 +85,14 @@ export const directOrderSchema = customerSchema
  */
 export const adminOrderSchema = z.object({
   customerName: z.string().trim().min(2).max(255),
-  customerPhone: z.string().trim().min(8).max(100),
+  customerPhone: z.string().trim().min(8).max(100).refine(
+    (phone) => isValidGhanaPhone(formatGhanaPhone(phone)),
+    'Enter a valid Ghanaian phone number.'
+  ),
   sendSmsNow: z.boolean().optional(),
-  customerEmail: z.union([z.string().trim().email().max(255), z.literal('')]).optional(),
-  shippingAddress: z.string().trim().max(500).optional(),
-  shippingCity: z.string().trim().max(255).optional(),
+  customerEmail: z.string().trim().email().max(255),
+  shippingAddress: z.string().trim().min(5).max(500),
+  shippingCity: z.string().trim().min(2).max(255),
   // Unlike the storefront, there is no single-product fallback shape here, so
   // every line must name its own product.
   items: z.array(orderItemSchema.extend({ productSlug: z.string().trim().min(1).max(255) })).min(1).max(50),
@@ -109,11 +111,13 @@ export const adminOrderSchema = z.object({
   /** Sells a variant the catalogue believes is sold out. */
   allowOutOfStock: z.boolean().optional(),
   fulfilmentStatus: z.enum(['Pending', 'Processing', 'Shipped', 'Delivered']).optional(),
-  note: z.string().trim().max(400).optional(),
+  note: z.string().trim().min(1).max(400),
 
   /** Idempotency key. The same key can only ever produce one order. */
   clientRequestId: z.string().trim().min(8).max(80)
 });
+
+export const adminOrderEditSchema = adminOrderSchema.omit({ clientRequestId: true, sendSmsNow: true, paidNow: true, paymentMethod: true, momoNetwork: true });
 
 export type CheckoutInitInput = z.infer<typeof checkoutInitSchema>;
 export type DirectOrderInput = z.infer<typeof directOrderSchema>;

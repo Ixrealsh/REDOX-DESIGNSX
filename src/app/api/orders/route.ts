@@ -143,7 +143,7 @@ export async function POST(request: Request) {
         momoNetwork: orderData.paymentMethod === 'MOMO' ? orderData.momoNetwork : undefined,
         momoNumber: paymentReference,
         status: 'Pending',
-        stockReserved: true,
+        stockReserved: paymentFields.paymentStatus === 'paid',
         stockReleased: false,
         smsSent: false,
         ...paymentFields

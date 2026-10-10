@@ -90,8 +90,10 @@ interface DraftExtra {
 
 interface CreateOrderModalProps {
   products: Product[];
+  initialOrder?: Order;
   onClose: () => void;
   onCreated: (result: CreatedOrderResult) => void;
+  onUpdated?: (order: Order) => void;
   onSmsUpdated: (order: Order) => void;
   onPrint: (order: Order) => void;
 }
@@ -121,32 +123,47 @@ function colorsOf(product: Product): string[] {
   return Array.from(new Set(product.variants.map((variant) => variant.color)));
 }
 
-export function CreateOrderModal({ products, onClose, onCreated, onSmsUpdated, onPrint }: CreateOrderModalProps) {
+export function CreateOrderModal({ products, initialOrder, onClose, onCreated, onUpdated, onSmsUpdated, onPrint }: CreateOrderModalProps) {
   const [clientRequestId, setClientRequestId] = useState(newRequestId);
 
   const [search, setSearch] = useState('');
   const [openSlug, setOpenSlug] = useState<string | null>(null);
   const [openColor, setOpenColor] = useState<string | null>(null);
-  const [lines, setLines] = useState<DraftLine[]>([]);
-  const [showExtras, setShowExtras] = useState(false);
-  const [showCustomerDetails, setShowCustomerDetails] = useState(false);
-  const [showPaymentDetails, setShowPaymentDetails] = useState(false);
+  const [lines, setLines] = useState<DraftLine[]>(() => (initialOrder?.items || []).map((item) => {
+    const product = products.find((candidate) => candidate.slug === item.productSlug);
+    const variant = product?.variants.find((candidate) => candidate.color === item.color && candidate.size === item.size);
+    return {
+      key: lineKey(item.productSlug, item.color, item.size),
+      productSlug: item.productSlug,
+      productName: item.productName,
+      image: product?.image || '',
+      color: item.color,
+      size: item.size,
+      unitPrice: product?.price ?? item.unitPrice,
+      wholesale: product?.wholesale ?? null,
+      quantity: item.quantity,
+      stockLimit: variant ? getVariantStockLimit(variant) + (initialOrder?.stockReserved && !initialOrder.stockReleased ? item.quantity : 0) : item.quantity,
+      override: false
+    };
+  }));
 
-  const [customerName, setCustomerName] = useState('');
-  const [customerPhone, setCustomerPhone] = useState('');
+  const [customerName, setCustomerName] = useState(initialOrder?.customerName || '');
+  const [customerPhone, setCustomerPhone] = useState(initialOrder?.customerPhone || '');
   const [sendSmsNow, setSendSmsNow] = useState(true);
-  const [customerEmail, setCustomerEmail] = useState('');
-  const [shippingAddress, setShippingAddress] = useState('');
-  const [shippingCity, setShippingCity] = useState('');
+  const [customerEmail, setCustomerEmail] = useState(initialOrder?.customerEmail || '');
+  const [shippingAddress, setShippingAddress] = useState(initialOrder?.shippingAddress || '');
+  const [shippingCity, setShippingCity] = useState(initialOrder?.shippingCity || '');
 
-  const [paidNow, setPaidNow] = useState(true);
+  const [paidNow, setPaidNow] = useState(initialOrder ? initialOrder.paymentStatus === 'paid' : true);
   const [paymentMethod, setPaymentMethod] = useState<'CASH' | 'MOMO' | 'BANK'>('CASH');
-  const [note, setNote] = useState('');
+  const [note, setNote] = useState(initialOrder?.paymentNote || '');
 
-  const [extras, setExtras] = useState<DraftExtra[]>([]);
+  const [extras, setExtras] = useState<DraftExtra[]>(() => (initialOrder?.extras || []).map((extra) => ({
+    id: newRequestId(), label: extra.label, amount: String(extra.amount)
+  })));
 
   const [discountType, setDiscountType] = useState<'amount' | 'percent'>('amount');
-  const [discountValue, setDiscountValue] = useState('');
+  const [discountValue, setDiscountValue] = useState(String(initialOrder?.discount ?? 0));
 
   const [isCreating, setIsCreating] = useState(false);
   const [error, setError] = useState('');
@@ -233,7 +250,10 @@ export function CreateOrderModal({ products, onClose, onCreated, onSmsUpdated, o
     // One prompt covers all three: the product is hidden from the site, we have
     // none recorded, or that is more than is recorded. Each time the merchant is
     // overruling the catalogue about something they can physically see.
-    const needsOverride = hidden || !inStock || nextQuantity > stockLimit;
+    const effectiveLimit = stockLimit + (initialOrder?.stockReserved && !initialOrder.stockReleased
+      ? initialOrder.items.find((item) => lineKey(item.productSlug, item.color, item.size) === key)?.quantity || 0
+      : 0);
+    const needsOverride = hidden || nextQuantity > effectiveLimit || (!inStock && !existing);
 
     if (needsOverride && !existing?.override) {
       const detail = hidden
@@ -273,7 +293,7 @@ export function CreateOrderModal({ products, onClose, onCreated, onSmsUpdated, o
         unitPrice: product.price,
         wholesale: product.wholesale ?? null,
         quantity: 1,
-        stockLimit,
+        stockLimit: effectiveLimit,
         override: needsOverride
       }
     ]);
@@ -383,14 +403,24 @@ export function CreateOrderModal({ products, onClose, onCreated, onSmsUpdated, o
   const canSubmit =
     lines.length > 0 &&
     customerName.trim().length >= 2 &&
-    customerPhone.trim().length >= 8 &&
+    phoneValid &&
+    /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(customerEmail.trim()) &&
+    shippingCity.trim().length >= 2 &&
+    shippingAddress.trim().length >= 5 &&
+    discountValue.trim().length > 0 && Number.isFinite(Number(discountValue)) && Number(discountValue) >= 0 &&
+    note.trim().length > 0 &&
     incompleteExtras === 0 &&
     !isCreating;
 
   const nextStep =
     lines.length === 0 ? 'Add at least one item.' :
     customerName.trim().length < 2 ? 'Enter the customer name.' :
-    customerPhone.trim().length < 8 ? 'Enter a phone number with at least 8 characters.' :
+    !phoneValid ? 'Enter a valid Ghanaian phone number.' :
+    !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(customerEmail.trim()) ? 'Enter a valid customer email.' :
+    shippingCity.trim().length < 2 ? 'Select the customer region.' :
+    shippingAddress.trim().length < 5 ? 'Enter the delivery or collection address.' :
+    !discountValue.trim() || !Number.isFinite(Number(discountValue)) || Number(discountValue) < 0 ? 'Enter a discount amount, or 0 for none.' :
+    !note.trim() ? 'Enter an order note.' :
     incompleteExtras > 0 ? 'Complete or remove the unfinished extra charge.' : null;
 
   // ── Submit ────────────────────────────────────────────────────
@@ -401,16 +431,17 @@ export function CreateOrderModal({ products, onClose, onCreated, onSmsUpdated, o
     setError('');
 
     try {
-      const response = await fetch('/api/admin/orders/create', {
+      const response = await fetch(initialOrder ? '/api/admin/orders' : '/api/admin/orders/create', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          ...(initialOrder ? { action: 'editOrder', orderId: initialOrder.id } : {}),
           customerName: customerName.trim(),
           customerPhone: customerPhone.trim(),
           sendSmsNow,
-          customerEmail: customerEmail.trim() || undefined,
-          shippingAddress: shippingAddress.trim() || undefined,
-          shippingCity: shippingCity.trim() || undefined,
+          customerEmail: customerEmail.trim(),
+          shippingAddress: shippingAddress.trim(),
+          shippingCity: shippingCity.trim(),
           items: lines.map((line) => ({
             productSlug: line.productSlug,
             color: line.color,
@@ -423,7 +454,7 @@ export function CreateOrderModal({ products, onClose, onCreated, onSmsUpdated, o
           discountType,
           discountValue: Number(discountValue) || 0,
           allowOutOfStock: hasOverride,
-          note: note.trim() || undefined,
+          note: note.trim(),
           clientRequestId
         })
       });
@@ -441,8 +472,13 @@ export function CreateOrderModal({ products, onClose, onCreated, onSmsUpdated, o
         duplicate: Boolean(data.duplicate)
       };
 
-      setCreated(result);
-      onCreated(result);
+      if (initialOrder) {
+        onUpdated?.(result.order);
+        onClose();
+      } else {
+        setCreated(result);
+        onCreated(result);
+      }
     } catch (err: any) {
       setError(err?.message || 'That order could not be created. Please try again.');
       modalBodyRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
@@ -485,9 +521,6 @@ export function CreateOrderModal({ products, onClose, onCreated, onSmsUpdated, o
   const startAnother = () => {
     setClientRequestId(newRequestId());
     setLines([]);
-    setShowExtras(false);
-    setShowCustomerDetails(false);
-    setShowPaymentDetails(false);
     setCustomerName('');
     setCustomerPhone('');
     setSendSmsNow(true);
@@ -495,7 +528,7 @@ export function CreateOrderModal({ products, onClose, onCreated, onSmsUpdated, o
     setShippingAddress('');
     setShippingCity('');
     setExtras([]);
-    setDiscountValue('');
+    setDiscountValue('0');
     setDiscountType('amount');
     setNote('');
     setPaidNow(true);
@@ -617,7 +650,7 @@ export function CreateOrderModal({ products, onClose, onCreated, onSmsUpdated, o
     <div className={styles.modalOverlay}>
       <div className={`${styles.modalContent} ${styles.orderModal}`}>
         <div className={styles.modalHeader}>
-          <h3 className={styles.modalTitle}>New Order &middot; In Person</h3>
+            <h3 className={styles.modalTitle}>{initialOrder ? `Edit Order #RD-${initialOrder.id}` : 'New Order · In Person'}</h3>
           <button className={styles.closeButton} onClick={requestClose} type="button">
             &times;
           </button>
@@ -842,19 +875,7 @@ export function CreateOrderModal({ products, onClose, onCreated, onSmsUpdated, o
             </div>
 
             {/* ── Extra charges ───────────────────────────── */}
-            <button
-              aria-expanded={showExtras}
-              className={styles.optionalToggle}
-              onClick={() => setShowExtras((open) => !open)}
-              type="button"
-            >
-              <span>{showExtras ? '−' : '+'} Extra charges{extrasTotal > 0 ? ` · ${formatCurrency(extrasTotal)}` : ''}</span>
-              <span className={styles.optionalToggleHint}>
-                {incompleteExtras > 0 ? `${incompleteExtras} unfinished` : 'Printing, delivery, custom work'}
-              </span>
-            </button>
-
-            {showExtras && <>
+            <p className={styles.orderBlockTitle}>Extra charges{extrasTotal > 0 ? ` · ${formatCurrency(extrasTotal)}` : ''}</p>
             <div className={styles.basket}>
               {extras.length === 0 ? (
                 <p className={styles.basketEmpty}>
@@ -920,7 +941,6 @@ export function CreateOrderModal({ products, onClose, onCreated, onSmsUpdated, o
                 {incompleteExtras === 1 ? 'it is' : 'they are'} not counted in the total.
               </p>
             )}
-            </>}
           </div>
 
           {/* ── 3. Customer ───────────────────────────────── */}
@@ -970,38 +990,27 @@ export function CreateOrderModal({ products, onClose, onCreated, onSmsUpdated, o
                 </label>
               </fieldset>
 
-              <button
-                aria-expanded={showCustomerDetails}
-                className={`${styles.optionalToggle} ${styles.formGridFull}`}
-                onClick={() => setShowCustomerDetails((open) => !open)}
-                type="button"
-              >
-                <span>{showCustomerDetails ? '−' : '+'} Delivery and contact details</span>
-                <span className={styles.optionalToggleHint}>
-                  {customerEmail || shippingCity || shippingAddress ? 'Details added' : 'Optional for walk-in orders'}
-                </span>
-              </button>
-
-              {showCustomerDetails && <>
+              <p className={`${styles.orderBlockTitle} ${styles.formGridFull}`}>Delivery and contact details</p>
               <div className={styles.field}>
-                <label className={styles.fieldLabel}>Email (optional)</label>
+                <label className={styles.fieldLabel}>Email *</label>
                 <input
                   className={styles.input}
                   onChange={(event) => setCustomerEmail(event.target.value)}
-                  placeholder="Leave blank for a walk-in"
+                  placeholder="customer@example.com"
+                  required
                   type="email"
                   value={customerEmail}
                 />
               </div>
 
               <div className={styles.field}>
-                <label className={styles.fieldLabel}>Region (optional)</label>
+                <label className={styles.fieldLabel}>Region *</label>
                 <select
                   className={styles.select}
                   onChange={(event) => setShippingCity(event.target.value)}
                   value={shippingCity}
                 >
-                  <option value="">Walk-in / not needed</option>
+                  <option value="">Select a region</option>
                   {GHANA_REGIONS.map((region) => (
                     <option key={region} value={region}>
                       {region} Region
@@ -1011,16 +1020,16 @@ export function CreateOrderModal({ products, onClose, onCreated, onSmsUpdated, o
               </div>
 
               <div className={`${styles.field} ${styles.formGridFull}`}>
-                <label className={styles.fieldLabel}>Delivery Address (optional)</label>
+                <label className={styles.fieldLabel}>Delivery or collection address *</label>
                 <input
                   className={styles.input}
                   onChange={(event) => setShippingAddress(event.target.value)}
-                  placeholder="House No., Street, Area — leave blank if collected in person"
+                  placeholder="House No., Street, Area or collection location"
+                  required
                   type="text"
                   value={shippingAddress}
                 />
               </div>
-              </>}
             </div>
           </div>
 
@@ -1028,9 +1037,11 @@ export function CreateOrderModal({ products, onClose, onCreated, onSmsUpdated, o
           <div>
             <p className={styles.orderBlockTitle}>4 · Payment</p>
 
+            {initialOrder && <p className={styles.hint}>Payment status is managed with Mark paid / Mark unpaid in the Orders table.</p>}
             <div className={styles.segmented}>
               <button
                 className={`${styles.segment} ${paidNow ? styles.segmentActivePaid : ''}`}
+                disabled={Boolean(initialOrder)}
                 onClick={() => setPaidNow(true)}
                 type="button"
               >
@@ -1038,6 +1049,7 @@ export function CreateOrderModal({ products, onClose, onCreated, onSmsUpdated, o
               </button>
               <button
                 className={`${styles.segment} ${!paidNow ? styles.segmentActive : ''}`}
+                disabled={Boolean(initialOrder)}
                 onClick={() => setPaidNow(false)}
                 type="button"
               >
@@ -1045,7 +1057,9 @@ export function CreateOrderModal({ products, onClose, onCreated, onSmsUpdated, o
               </button>
             </div>
 
-            {paidNow ? (
+            {initialOrder ? (
+              <p className={styles.hint}>Recorded payment method: {initialOrder.paymentMethod}</p>
+            ) : paidNow ? (
               <div className={styles.segmented} style={{ marginTop: '8px' }}>
                 {(
                   [
@@ -1073,26 +1087,15 @@ export function CreateOrderModal({ products, onClose, onCreated, onSmsUpdated, o
               </p>
             )}
 
-            <button
-              aria-expanded={showPaymentDetails}
-              className={styles.optionalToggle}
-              onClick={() => setShowPaymentDetails((open) => !open)}
-              type="button"
-            >
-              <span>{showPaymentDetails ? '−' : '+'} Discount and note</span>
-              <span className={styles.optionalToggleHint}>
-                {discount > 0 || note.trim() ? 'Details added' : 'Optional'}
-              </span>
-            </button>
-
-            {showPaymentDetails && <>
+            <p className={styles.orderBlockTitle}>Discount and note</p>
             <div className={styles.field} style={{ marginTop: 'var(--space-4)' }}>
-              <label className={styles.fieldLabel}>Discount (optional)</label>
+              <label className={styles.fieldLabel}>Discount * (enter 0 for none)</label>
               <div style={{ display: 'flex', gap: '6px' }}>
                 <input
                   className={styles.input}
                   inputMode="decimal"
                   min="0"
+                  required
                   onChange={(event) => setDiscountValue(event.target.value)}
                   placeholder="0"
                   step="0.01"
@@ -1124,16 +1127,16 @@ export function CreateOrderModal({ products, onClose, onCreated, onSmsUpdated, o
             </div>
 
             <div className={styles.field} style={{ marginTop: 'var(--space-4)' }}>
-              <label className={styles.fieldLabel}>Note (optional)</label>
+              <label className={styles.fieldLabel}>Order note *</label>
               <input
                 className={styles.input}
                 onChange={(event) => setNote(event.target.value)}
                 placeholder="e.g. Collected at the shop, paid in cash"
+                required
                 type="text"
                 value={note}
               />
             </div>
-            </>}
           </div>
 
           {/* ── Totals ────────────────────────────────────── */}
@@ -1185,7 +1188,7 @@ export function CreateOrderModal({ products, onClose, onCreated, onSmsUpdated, o
             style={{ width: '100%', padding: '14px' }}
             type="button"
           >
-            {isCreating ? 'Creating order…' : `Create order · ${formatCurrency(total)}`}
+            {isCreating ? 'Saving order…' : `${initialOrder ? 'Save changes' : 'Create order'} · ${formatCurrency(total)}`}
           </button>
           <button className={styles.cancelButton} onClick={requestClose} type="button">
             Cancel

@@ -324,6 +324,7 @@ export function AdminDashboard({
   
   // Form Modal States
   const [showCreateOrderModal, setShowCreateOrderModal] = useState(false);
+  const [editOrder, setEditOrder] = useState<Order | null>(null);
   const [smsOrder, setSmsOrder] = useState<Order | null>(null);
   /** Newly created order, briefly highlighted in the table so it is easy to find. */
   const [highlightOrderId, setHighlightOrderId] = useState<number | null>(null);
@@ -455,6 +456,17 @@ export function AdminDashboard({
     setOrders((prev) => prev.map((o) => (o.id === orderId ? { ...o, ...updated } : o)));
   };
 
+  const refreshProductInventory = async () => {
+    try {
+      const response = await fetch('/api/admin/products');
+      if (!response.ok) return;
+      const data = await response.json();
+      if (Array.isArray(data.products)) setProducts(data.products);
+    } catch (error) {
+      console.error('Could not refresh product inventory:', error);
+    }
+  };
+
   const postOrderAction = async (payload: Record<string, unknown>) => {
     const response = await fetch('/api/admin/orders', {
       method: 'POST',
@@ -511,6 +523,7 @@ export function AdminDashboard({
       });
       patchOrder(data.order, order.id);
       await refreshOrders({ silent: true });
+      await refreshProductInventory();
       triggerNotification(
         `${data.message}${data.smsSent ? ' Customer notified by SMS.' : ''}`,
         'success'
@@ -537,6 +550,7 @@ export function AdminDashboard({
       const data = await postOrderAction({ action: 'markUnpaid', orderId: order.id });
       patchOrder(data.order, order.id);
       await refreshOrders({ silent: true });
+      await refreshProductInventory();
       triggerNotification(data.message, 'success');
     } catch (err: any) {
       triggerNotification(err.message || 'Could not revert that order.', 'error');
@@ -597,6 +611,7 @@ export function AdminDashboard({
     setPaymentFilter(result.order.paymentStatus === 'paid' ? 'paid' : 'unpaid');
     setHighlightOrderId(result.order.id);
     await refreshOrders({ silent: true });
+    await refreshProductInventory();
 
     triggerNotification(
       result.duplicate
@@ -2220,6 +2235,11 @@ export function AdminDashboard({
                       <td data-label="Actions" style={{ padding: 'var(--space-3)' }}>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                           {o.source === 'admin' && (
+                            <button className={styles.smsEditButton} onClick={() => setEditOrder(o)} type="button">
+                              Edit order
+                            </button>
+                          )}
+                          {o.source === 'admin' && (
                             <button className={styles.smsEditButton} onClick={() => setSmsOrder(o)} type="button">
                               Edit phone / SMS
                             </button>
@@ -2277,6 +2297,23 @@ export function AdminDashboard({
         <CreateOrderModal
           onClose={() => setShowCreateOrderModal(false)}
           onCreated={handleOrderCreated}
+          onSmsUpdated={(updated) => patchOrder(updated, updated.id)}
+          onPrint={handlePrintOrder}
+          products={products}
+        />
+      )}
+
+      {editOrder && (
+        <CreateOrderModal
+          key={editOrder.id}
+          initialOrder={editOrder}
+          onClose={() => setEditOrder(null)}
+          onCreated={() => {}}
+          onUpdated={(updated) => {
+            patchOrder(updated, updated.id);
+            triggerNotification(`Order #RD-${updated.id} updated.`, 'success');
+            void refreshProductInventory();
+          }}
           onSmsUpdated={(updated) => patchOrder(updated, updated.id)}
           onPrint={handlePrintOrder}
           products={products}

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import {
   claimDbOrderShippedSms,
   deleteDbOrder,
+  editDbInPersonOrder,
   getDbOrderById,
   getDbOrders,
   markDbOrderPaid,
@@ -22,6 +23,8 @@ import {
 import { ORDER_STATUSES } from '@/types/product';
 import { formatGhanaPhone, isValidGhanaPhone } from '@/lib/phone';
 import { sendShippedSms } from '@/lib/sms';
+import { priceOrderDraft } from '@/lib/order-pricing';
+import { adminOrderSchema, resolveDiscount, sumOrderExtras } from '@/lib/order-schema';
 
 export const dynamic = 'force-dynamic';
 
@@ -89,6 +92,54 @@ export async function POST(request: Request) {
     const order = await getDbOrderById(orderId);
     if (!order) {
       return NextResponse.json({ error: 'That order no longer exists.' }, { status: 404 });
+    }
+
+    if (action === 'editOrder') {
+      if (order.source !== 'admin') {
+        return NextResponse.json({ error: 'Only in-person orders can be edited here.' }, { status: 400 });
+      }
+      const parsed = adminOrderSchema.safeParse(body);
+      if (!parsed.success) {
+        const issue = parsed.error.issues[0];
+        return NextResponse.json({ error: `${issue.path.join('.')}: ${issue.message}` }, { status: 400 });
+      }
+      const input = parsed.data;
+      const pricing = await priceOrderDraft(input.items, {
+        applyServiceCharge: false,
+        // Existing paid units may already have brought the catalogue count to zero.
+        // The database edit transaction checks only the additional units needed.
+        allowOutOfStock: true
+      });
+      if (!pricing.ok) {
+        return NextResponse.json({ error: pricing.error }, { status: pricing.status });
+      }
+      const draft = pricing.draft;
+      const extras = (input.extras || []).map((extra) => ({
+        label: extra.label.trim(), amount: Math.round(extra.amount * 100) / 100
+      }));
+      const bill = Math.round((draft.subtotal + sumOrderExtras(extras)) * 100) / 100;
+      const discount = resolveDiscount(bill, input.discountType, input.discountValue);
+      const primary = draft.items[0];
+      const updated = await editDbInPersonOrder(orderId, {
+        productId: primary.productId,
+        productName: primary.productName,
+        productSlug: primary.productSlug,
+        selectedColor: draft.summaryColor,
+        selectedSize: draft.summarySize,
+        items: draft.items,
+        totalQuantity: draft.totalQuantity,
+        subtotal: draft.subtotal,
+        extras,
+        discount,
+        price: Math.round((bill - discount) * 100) / 100,
+        customerName: input.customerName,
+        customerPhone: input.customerPhone,
+        customerEmail: input.customerEmail || order.customerEmail,
+        shippingAddress: input.shippingAddress || order.shippingAddress,
+        shippingCity: input.shippingCity || order.shippingCity,
+        paymentNote: input.note || order.paymentNote
+      }, input.allowOutOfStock === true);
+      return NextResponse.json({ success: true, order: updated, message: `Order #RD-${orderId} updated.` });
     }
 
     // ── Ask Paystack again for this one order ─────────────────────

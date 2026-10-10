@@ -1,5 +1,4 @@
 import {
-  annotateDbOrderPayment,
   claimDbOrderSms,
   claimDbOrderStockRelease,
   getDbOrderById,
@@ -7,12 +6,11 @@ import {
   listDbOrdersMissingSms,
   markDbOrderPaid,
   markDbOrderUnsuccessful,
-  reclaimDbOrderStockReservation,
   releaseDbOrderSmsClaim,
   touchDbOrderVerification,
   unclaimDbOrderStockRelease
 } from '@/lib/catalog-db';
-import { releaseOrderStock, reserveStockForDraft } from '@/lib/order-pricing';
+import { releaseOrderStock } from '@/lib/order-pricing';
 import { adjudicatePayment, verifyPaystackTransaction } from '@/lib/paystack-server';
 import { sendOrderSms, type SmsResult } from '@/lib/sms';
 import type { Order, PaymentVerificationSource } from '@/types/product';
@@ -116,51 +114,6 @@ async function releaseReservationOnce(order: Order): Promise<boolean> {
  * completes a minute later. Take the stock out again and leave a note on the
  * order so the merchant knows the sequence was unusual.
  */
-async function restockAfterLatePayment(order: Order): Promise<void> {
-  const lines = order.items
-    .filter((item) => item.productSlug)
-    .map((item) => ({
-      productSlug: item.productSlug,
-      color: item.color,
-      size: item.size,
-      quantity: item.quantity
-    }));
-
-  if (lines.length === 0) return;
-
-  const draft = {
-    items: order.items,
-    lines,
-    uniqueSlugs: Array.from(new Set(lines.map((line) => line.productSlug))),
-    subtotal: order.subtotal,
-    serviceCharge: order.serviceCharge,
-    grandTotal: order.price,
-    totalQuantity: order.totalQuantity,
-    summaryColor: order.selectedColor,
-    summarySize: order.selectedSize
-  };
-
-  // This customer has already paid. Whatever the catalogue says now — the size
-  // sold out, or the whole product was taken off sale in the meantime — their
-  // units come back out of inventory.
-  const result = await reserveStockForDraft(draft, { allowShortfall: true });
-
-  if (result.ok) {
-    await reclaimDbOrderStockReservation(order.id);
-    console.warn(`[payments] Order #${order.id} paid late; its released stock was taken back out.`);
-    return;
-  }
-
-  console.error(
-    `[payments] Order #${order.id} was paid after its stock had been released, and the units could ` +
-      `not be re-reserved (${result.error}). Check inventory for this order by hand.`
-  );
-  await annotateDbOrderPayment(
-    order.id,
-    'Paid after the reservation was released — inventory could not be re-reserved automatically. Please verify stock.'
-  );
-}
-
 /** Sends the confirmation SMS once per order, freeing the claim if it fails. */
 export async function notifyOrderOnce(order: Order): Promise<boolean> {
   const claimed = await claimDbOrderSms(order.id);
@@ -305,10 +258,6 @@ export async function settleOrderPayment(
     const current = transition.order || order;
 
     // Money arrived after we had already put the units back on sale.
-    if (transition.transitioned && order.stockReleased) {
-      await restockAfterLatePayment(current);
-    }
-
     let smsSent: boolean | undefined;
 
     if (!options.skipSms) {

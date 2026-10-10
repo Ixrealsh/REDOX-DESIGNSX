@@ -9,11 +9,6 @@ import { formatGhanaPhone, isValidGhanaPhone } from '@/lib/phone';
 
 export const dynamic = 'force-dynamic';
 
-/** Placeholders for the fields a walk-in customer is not asked for. */
-const WALK_IN_EMAIL = 'walkin@redoxdesignx.com';
-const WALK_IN_ADDRESS = 'In-person / walk-in';
-const WALK_IN_CITY = 'Walk-in';
-
 /** How the money arrived, in the vocabulary the rest of the panel already uses. */
 const PAYMENT_CHANNELS: Record<string, string> = {
   CASH: 'cash',
@@ -151,12 +146,12 @@ export async function POST(request: Request) {
         price: grandTotal,
         customerName: input.customerName,
         customerPhone: input.customerPhone,
-        customerEmail: input.customerEmail?.trim() || WALK_IN_EMAIL,
-        shippingAddress: input.shippingAddress?.trim() || WALK_IN_ADDRESS,
-        shippingCity: input.shippingCity?.trim() || WALK_IN_CITY,
+        customerEmail: input.customerEmail,
+        shippingAddress: input.shippingAddress,
+        shippingCity: input.shippingCity,
         source: 'admin',
         clientRequestId: input.clientRequestId,
-        stockReserved: true,
+        stockReserved: paidNow,
         stockReleased: false,
         smsSent: false,
         smsDeferred: input.sendSmsNow === false,

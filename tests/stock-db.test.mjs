@@ -5,7 +5,11 @@ import { PGlite } from '@electric-sql/pglite';
 
 const source = await readFile(new URL('../src/lib/catalog-db.ts', import.meta.url), 'utf8');
 const functionSql = source.match(/CREATE OR REPLACE FUNCTION create_order_with_reservation\([\s\S]*?\$fn\$;/)?.[0];
+const confirmSql = source.match(/CREATE OR REPLACE FUNCTION confirm_order_payment\([\s\S]*?\$fn\$;/)?.[0];
+const editSql = source.match(/CREATE OR REPLACE FUNCTION edit_in_person_order\([\s\S]*?\$fn\$;/)?.[0];
+const undoSql = source.match(/CREATE OR REPLACE FUNCTION undo_order_payment\([\s\S]*?\$fn\$;/)?.[0];
 assert.ok(functionSql, 'stock and order function is present');
+assert.ok(confirmSql && editSql && undoSql, 'payment and edit stock functions are present');
 
 function order(clientRequestId, slug) {
   return {
@@ -55,7 +59,10 @@ test('stock and order creation commit or roll back together', async () => {
         WHERE payment_reference IS NOT NULL;
     `);
     await db.exec(functionSql);
-    for (const [slug, inventory] of [['a', 1], ['b', 0], ['c', 1], ['d', 2], ['e', 2], ['f', 1]]) {
+    await db.exec(confirmSql);
+    await db.exec(editSql);
+    await db.exec(undoSql);
+    for (const [slug, inventory] of [['a', 1], ['b', 0], ['c', 1], ['d', 2], ['e', 2], ['f', 1], ['g', 2]]) {
       await db.query('INSERT INTO products (id, slug, variants) VALUES ($1, $1, $2::jsonb)', [
         slug, JSON.stringify([{ color: 'Black', size: 'M', inventory, stockStatus: inventory ? 'in_stock' : 'out_of_stock' }])
       ]);
@@ -63,7 +70,7 @@ test('stock and order creation commit or roll back together', async () => {
 
     const create = (key, lines, slug = lines[0].productSlug, options = {}) => db.query(
       'SELECT id FROM create_order_with_reservation($1::jsonb, $2::jsonb, $3)',
-      [JSON.stringify({ ...order(key, slug), ...options }), JSON.stringify(lines), options.allowShortfall === true]
+      [JSON.stringify({ ...order(key, slug), items: lines, paymentStatus: 'paid', ...options }), JSON.stringify(lines), options.allowShortfall === true]
     );
     const line = (productSlug) => ({ productSlug, color: 'Black', size: 'M', quantity: 1 });
 
@@ -96,6 +103,37 @@ test('stock and order creation commit or roll back together', async () => {
     assert.equal(urgent.delivery_method, 'urgent');
     assert.equal(Number(urgent.delivery_fee), 25);
     assert.equal(Number(urgent.price), 125);
+
+    await create('awaiting-payment', [line('g')], 'g', { source: 'admin', paymentStatus: 'unpaid' });
+    assert.equal((await db.query("SELECT variants->0->>'inventory' AS stock FROM products WHERE slug='g'")).rows[0].stock, '2');
+
+    await create('edit-paid', [line('g')], 'g', { source: 'admin' });
+    const editId = (await db.query("SELECT id FROM orders WHERE client_request_id='edit-paid'")).rows[0].id;
+    const changes = {
+      ...order('edit-paid', 'g'),
+      items: [{ ...line('g'), quantity: 2 }],
+      totalQuantity: 2,
+      subtotal: 200,
+      price: 200,
+      extras: [],
+      discount: 0,
+      paymentNote: 'Edited in person'
+    };
+    await db.query('SELECT * FROM edit_in_person_order($1, $2::jsonb, FALSE)', [editId, JSON.stringify(changes)]);
+    assert.equal((await db.query("SELECT variants->0->>'inventory' AS stock FROM products WHERE slug='g'")).rows[0].stock, '0');
+    assert.equal((await db.query('SELECT total_quantity FROM orders WHERE id=$1', [editId])).rows[0].total_quantity, 2);
+    await db.query('SELECT * FROM edit_in_person_order($1, $2::jsonb, FALSE)', [editId, JSON.stringify({ ...changes, items: [line('g')], totalQuantity: 1 })]);
+    assert.equal((await db.query("SELECT variants->0->>'inventory' AS stock FROM products WHERE slug='g'")).rows[0].stock, '1');
+    const unpaid = (await db.query("SELECT id, stock_reserved FROM orders WHERE client_request_id='awaiting-payment'")).rows[0];
+    assert.equal(unpaid.stock_reserved, false);
+    await db.query('SELECT * FROM confirm_order_payment($1, NOW(), 100, $2, NULL, NULL, NULL, $3)', [unpaid.id, 'cash', 'admin']);
+    assert.equal((await db.query('SELECT stock_reserved FROM orders WHERE id=$1', [unpaid.id])).rows[0].stock_reserved, true);
+    assert.equal((await db.query("SELECT variants->0->>'inventory' AS stock FROM products WHERE slug='g'")).rows[0].stock, '0');
+    await db.query('SELECT * FROM confirm_order_payment($1, NOW(), 100, $2, NULL, NULL, NULL, $3)', [unpaid.id, 'cash', 'admin']);
+    assert.equal((await db.query("SELECT variants->0->>'inventory' AS stock FROM products WHERE slug='g'")).rows[0].stock, '0');
+    await db.query('SELECT * FROM undo_order_payment($1, $2)', [unpaid.id, 'Entered in error']);
+    assert.equal((await db.query('SELECT stock_reserved FROM orders WHERE id=$1', [unpaid.id])).rows[0].stock_reserved, false);
+    assert.equal((await db.query("SELECT variants->0->>'inventory' AS stock FROM products WHERE slug='g'")).rows[0].stock, '1');
   } finally {
     await db.close();
   }
